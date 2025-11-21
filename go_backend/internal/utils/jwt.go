@@ -67,3 +67,64 @@ func VerifyToken(token string) error {
 	}
 	return nil
 }
+
+// GenerateSupplierToken 生成供应商JWT token
+func GenerateSupplierToken(username string, supplierID int) (string, error) {
+	nowTime := time.Now()
+	expireTime := nowTime.Add(24 * time.Hour) // 24小时有效期
+
+	claims := Claims{
+		Username: username,
+		UserID:   supplierID,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expireTime.Unix(),
+			IssuedAt:  nowTime.Unix(),
+			Issuer:    "supplier_console",
+		},
+	}
+
+	tokenClaims := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	token, err := tokenClaims.SignedString(jwtSecret)
+
+	return token, err
+}
+
+// MiniAppClaims 定义小程序用户的JWT payload
+type MiniAppClaims struct {
+	OpenID string `json:"openid"`
+	jwt.StandardClaims
+}
+
+// GenerateMiniAppToken 生成小程序用户token
+func GenerateMiniAppToken(openID string) (string, error) {
+	nowTime := time.Now()
+	expireTime := nowTime.Add(7 * 24 * time.Hour) // 小程序token有效期7天
+
+	claims := MiniAppClaims{
+		OpenID: openID,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expireTime.Unix(),
+			IssuedAt:  nowTime.Unix(),
+			Issuer:    "mini_app",
+		},
+	}
+
+	tokenClaims := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	token, err := tokenClaims.SignedString(jwtSecret)
+	return token, err
+}
+
+// ParseMiniAppToken 解析小程序用户token
+func ParseMiniAppToken(token string) (*MiniAppClaims, error) {
+	tokenClaims, err := jwt.ParseWithClaims(token, &MiniAppClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+
+	if tokenClaims != nil {
+		if claims, ok := tokenClaims.Claims.(*MiniAppClaims); ok && tokenClaims.Valid {
+			return claims, nil
+		}
+	}
+
+	return nil, err
+}

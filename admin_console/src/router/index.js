@@ -38,6 +38,38 @@ const routes = [
         meta: {
           title: '轮播图管理'
         }
+      },
+      {
+        path: 'settings',
+        name: 'Settings',
+        component: () => import('../views/Settings.vue'),
+        meta: {
+          title: '系统设置'
+        }
+      },
+      {
+        path: 'suppliers',
+        name: 'Suppliers',
+        component: () => import('../views/Suppliers.vue'),
+        meta: {
+          title: '供应商管理'
+        }
+      },
+      {
+        path: 'hot-products',
+        name: 'HotProducts',
+        component: () => import('../views/HotProducts.vue'),
+        meta: {
+          title: '热销产品管理'
+        }
+      },
+      {
+        path: 'mini-users',
+        name: 'MiniUsers',
+        component: () => import('../views/MiniUsers.vue'),
+        meta: {
+          title: '小程序用户'
+        }
       }
     ]
   },

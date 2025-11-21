@@ -54,3 +54,12 @@ export function uploadProductImage(data) {
     data
   })
 }
+
+// 更新商品精选状态
+export function updateProductSpecialStatus(id, isSpecial) {
+  return request({
+    url: `/admin/products/${id}/special`,
+    method: 'put',
+    data: { is_special: isSpecial }
+  })
+}

@@ -39,6 +39,21 @@
 				"navigationBarBackgroundColor": "#F8F8F8",
 				"navigationBarTextStyle": "black"
 			}
+		},
+		{
+			"path": "pages/identity/select",
+			"style": {
+				"navigationBarTitleText": "身份类型选择",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path" : "pages/my/my",
+			"style" : 
+			{
+				"navigationBarTitleText" : "我的"
+			}
 		}
 	],
 	"globalStyle": {
@@ -69,6 +84,12 @@
 				"text": "采购单",
 				"iconPath": "static/tabbar/cart.png",
 				"selectedIconPath": "static/tabbar/cart_active.png"
+			},
+			{
+				"pagePath": "pages/my/my",
+				"text": "我的",
+				"iconPath": "static/tabbar/my.png",
+				"selectedIconPath": "static/tabbar/my_a.png"
 			}
 		]
 	},

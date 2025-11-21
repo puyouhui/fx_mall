@@ -16,12 +16,19 @@
 
         <div class="toolbar-left">
           <el-input v-model="searchForm.keyword" placeholder="请输入商品名称" :prefix-icon="Search"
-            style="width: 400px; margin-right: 20px;" />
-          <el-select v-model="searchForm.categoryId" placeholder="选择分类">
-            <el-option label="全部分类" value="" />
-            <el-option v-for="category in categories" :key="category.id" :label="category.name" :value="category.id" />
-          </el-select>
-          <el-button type="primary" @click="handleSearch" style="margin-left: 20px;">
+            style="width: 300px; margin-right: 20px;" @input="handleSearch" />
+          <el-cascader
+            v-model="searchForm.categoryIds"
+            :options="treeCategories"
+            :props="{ checkStrictly: true, label: 'name', value: 'id', children: 'children', emitPath: false }"
+            placeholder="选择分类（一级或二级）"
+            clearable
+            style="width: 250px; margin-right: 20px;"
+            @change="handleCategoryFilterChange"
+            collapse-tags
+            collapse-tags-tooltip
+          />
+          <el-button type="primary" @click="handleSearch">
             搜索
           </el-button>
         </div>
@@ -32,26 +39,31 @@
       <el-card class="products-card">
         <el-table :data="products" stripe>
           <!-- <el-table-column type="index" label="序号" /> -->
+          <el-table-column prop="id" label="商品ID" align="center" width="100" />
           <el-table-column prop="name" label="商品名称" align="center" />
           <el-table-column label="分类" align="center">
             <template #default="scope">
               {{ getCategoryName(scope.row.categoryId) }}
             </template>
           </el-table-column>
-          <el-table-column prop="originalPrice" label="原价" align="center">
+          <el-table-column label="供应商" align="center">
             <template #default="scope">
-              ¥{{ scope.row.originalPrice }}
+              <span v-if="scope.row.supplier_name">{{ scope.row.supplier_name }}</span>
+              <span v-else style="color: #999;">未绑定</span>
             </template>
           </el-table-column>
-          <el-table-column prop="price" label="现价" align="center">
+          <el-table-column label="价格范围" align="center">
             <template #default="scope">
-              ¥{{ scope.row.price }}
+              {{ calculatePriceRange(scope.row.specs) }}
             </template>
           </el-table-column>
-          <el-table-column prop="isSpecial" label="特价" align="center">
+          <el-table-column prop="isSpecial" label="精选" align="center" width="100">
             <template #default="scope">
-              <el-tag v-if="scope.row.isSpecial" type="success">是</el-tag>
-              <el-tag v-else type="default">否</el-tag>
+              <el-switch 
+                v-model="scope.row.isSpecial" 
+                @change="handleSpecialStatusChange(scope.row)"
+                :loading="scope.row.updatingSpecial"
+              />
             </template>
           </el-table-column>
           <el-table-column prop="description" label="描述" align="center">
@@ -111,6 +123,11 @@
               :props="{ checkStrictly: false, label: 'name', value: 'id', children: 'children' }" placeholder="请选择所属分类"
               style="width: 100%;" />
           </el-form-item>
+          <el-form-item label="供应商" prop="supplierId">
+            <el-select v-model="productForm.supplierId" placeholder="请选择供应商" style="width: 100%;">
+              <el-option v-for="supplier in suppliers" :key="supplier.id" :label="supplier.name" :value="supplier.id" />
+            </el-select>
+          </el-form-item>
           <!-- 商品本身价格字段已废弃，实际使用规格价格 -->
           <el-form-item label="商品规格">
             <div class="specs-container">
@@ -126,19 +143,19 @@
                 <el-row :gutter="12" style="margin-bottom: 10px;">
                   <el-col :span="12">
                     <el-input-number 
-                      v-model="currentSpec.originalPrice" 
+                      v-model="currentSpec.wholesalePrice" 
                       :min="0.01" 
                       :step="0.01" 
-                      placeholder="原价" 
+                      placeholder="批发价" 
                       style="width: 100%;"
                     />
                   </el-col>
                   <el-col :span="12">
                     <el-input-number 
-                      v-model="currentSpec.price" 
+                      v-model="currentSpec.retailPrice" 
                       :min="0.01" 
                       :step="0.01" 
-                      placeholder="现价" 
+                      placeholder="零售价" 
                       style="width: 100%;"
                     />
                   </el-col>
@@ -152,15 +169,13 @@
               </div>
               <div class="specs-list" v-if="productForm.specs.length > 0">
                 <div v-for="(spec, index) in productForm.specs" :key="index" class="spec-item">
-                  <span>{{ spec.name }} ({{ spec.description || '-' }}) (原价: ¥{{ spec.originalPrice }}, 现价: ¥{{
-                    spec.price
-                    }})</span>
+                  <span>{{ spec.name }} ({{ spec.description || '-' }}) (批发价: ¥{{ spec.wholesale_price || spec.wholesalePrice }}, 零售价: ¥{{ spec.retail_price || spec.retailPrice }})</span>
                   <el-button type="text" danger @click="removeSpec(index)">删除</el-button>
                 </div>
               </div>
             </div>
           </el-form-item>
-          <el-form-item label="是否特价" prop="isSpecial">
+          <el-form-item label="是否精选" prop="isSpecial">
             <el-switch v-model="productForm.isSpecial" />
           </el-form-item>
           <el-form-item label="商品描述" prop="description">
@@ -199,8 +214,9 @@ import {
   Upload
 } from '@element-plus/icons-vue'
 // 导入相关API函数
-import { getProductList, createProduct, updateProduct, deleteProduct, uploadProductImage } from '../api/product'
+import { getProductList, createProduct, updateProduct, deleteProduct, uploadProductImage, updateProductSpecialStatus } from '../api/product'
 import { getCategoryList } from '../api/category'
+import { getAllSuppliers } from '../api/suppliers'
 import { formatDate } from '../utils/time-format'
 
 // 截断文本函数
@@ -222,6 +238,44 @@ const formatSpecsBrief = (specs) => {
   return truncateText(specs[0].name, 15) + (specs.length > 1 ? ` +${specs.length - 1}` : '')
 }
 
+// 计算价格范围（前端计算，避免后端资源浪费）
+// 显示所有规格的批发价和零售价中的最低价到最高价
+const calculatePriceRange = (specs) => {
+  if (!specs || !Array.isArray(specs) || specs.length === 0) {
+    return '暂无价格'
+  }
+
+  // 收集所有规格的批发价和零售价
+  const allPrices = []
+  
+  specs.forEach(spec => {
+    // 获取批发价
+    const wholesalePrice = spec.wholesale_price || spec.wholesalePrice
+    if (wholesalePrice && wholesalePrice > 0) {
+      allPrices.push(wholesalePrice)
+    }
+    
+    // 获取零售价
+    const retailPrice = spec.retail_price || spec.retailPrice
+    if (retailPrice && retailPrice > 0) {
+      allPrices.push(retailPrice)
+    }
+  })
+
+  if (allPrices.length === 0) {
+    return '暂无价格'
+  }
+
+  const minPrice = Math.min(...allPrices)
+  const maxPrice = Math.max(...allPrices)
+
+  if (minPrice === maxPrice) {
+    return `¥${minPrice.toFixed(2)}`
+  } else {
+    return `¥${minPrice.toFixed(2)} - ¥${maxPrice.toFixed(2)}`
+  }
+}
+
 // 商品列表
 const products = ref([])
 
@@ -231,10 +285,14 @@ const categories = ref([])
 // 树形分类列表（用于级联选择器）
 const treeCategories = ref([])
 
+// 供应商列表
+const suppliers = ref([])
+
 // 搜索表单
 const searchForm = reactive({
   keyword: '',
-  categoryId: ''
+  categoryId: '', // 保留用于API调用
+  categoryIds: null // 级联选择器的值
 })
 
 // 分页信息
@@ -253,6 +311,7 @@ const productForm = reactive({
   name: '',
   categoryIds: [], // 改为数组存储级联选择的分类ID
   categoryId: '', // 保留原字段用于提交
+  supplierId: null, // 供应商ID
   originalPrice: 0,
   price: 0,
   isSpecial: false,
@@ -264,8 +323,9 @@ const productForm = reactive({
 // 规格相关
 const currentSpec = reactive({
   name: '',
-  price: null,
-  originalPrice: null
+  wholesalePrice: null,
+  retailPrice: null,
+  description: ''
 })
 
 // 表单验证规则
@@ -308,6 +368,9 @@ const productRules = {
   ],
   description: [
     { max: 500, message: '商品描述不能超过 500 个字符', trigger: 'blur' }
+  ],
+  supplierId: [
+    { required: true, message: '请选择供应商', trigger: 'change' }
   ]
 }
 
@@ -408,13 +471,22 @@ const initData = async () => {
 
     console.log('树形分类数据:', treeCategories.value);
 
+    // 加载供应商数据
+    try {
+      const supplierResponse = await getAllSuppliers()
+      if (supplierResponse.code === 200 && supplierResponse.data) {
+        suppliers.value = supplierResponse.data
+      }
+    } catch (error) {
+      console.error('加载供应商数据失败:', error)
+    }
 
     // 加载商品数据
     const productResponse = await getProductList({
       pageNum: pagination.pageNum,
       pageSize: pagination.pageSize,
       keyword: searchForm.keyword,
-      categoryId: searchForm.categoryId
+      categoryId: searchForm.categoryId || ''
     })
     // 处理商品数据结构 - 支持嵌套data字段和直接数据
     let productData = []
@@ -424,6 +496,13 @@ const initData = async () => {
       productData = productResponse
     }
 
+    // 更新分页总数（使用后端返回的total，如果没有则使用数组长度）
+    if (productResponse && productResponse.total !== undefined) {
+      pagination.total = productResponse.total
+    } else {
+      pagination.total = productData.length
+    }
+
     if (productData.length > 0) {
       // 确保数据格式正确
       products.value = productData.map(product => ({
@@ -431,13 +510,17 @@ const initData = async () => {
         id: Number(product.id),
         categoryId: Number(product.categoryId || product.category_id || 0),
         categoryName: getCategoryName(Number(product.categoryId || product.category_id || 0)), // 添加分类名称
+        supplierId: product.supplier_id || product.supplierId || null, // 供应商ID
+        supplier_name: product.supplier_name || '', // 供应商名称
         originalPrice: Number(product.originalPrice || product.original_price || 0),
         price: Number(product.price || 0),
         isSpecial: product.isSpecial === true || product.isSpecial === 'true' || product.is_special === true || product.is_special === 'true',
+        updatingSpecial: false, // 添加更新状态标记
         images: Array.isArray(product.images) ? product.images : [],
         specs: Array.isArray(product.specs) ? product.specs : []
       }))
-      pagination.total = productData.length
+    } else {
+      products.value = []
     }
   } catch (error) {
     console.error('加载数据失败:', error)
@@ -446,6 +529,19 @@ const initData = async () => {
 }
 
 // 搜索商品
+// 分类筛选变更处理（选中后立即筛选）
+const handleCategoryFilterChange = (value) => {
+  // 级联选择器设置了 emitPath: false，所以返回的是单个分类ID
+  if (value && value !== null && value !== '') {
+    searchForm.categoryId = value
+  } else {
+    searchForm.categoryId = ''
+  }
+  // 重置到第一页并立即筛选
+  pagination.pageNum = 1
+  initData()
+}
+
 const handleSearch = () => {
   pagination.pageNum = 1
   initData()
@@ -469,12 +565,14 @@ const handleAddProduct = () => {
   if (productFormRef.value) {
     productFormRef.value.resetFields()
   }
-  // 清空表单数据
+  // 清空表单数据，默认选择自营供应商
+  const selfOperatedSupplier = suppliers.value.find(s => s.username === 'self_operated')
   Object.assign(productForm, {
     id: null,
     name: '',
     categoryIds: [],
     categoryId: '',
+    supplierId: selfOperatedSupplier ? selfOperatedSupplier.id : null, // 默认选择自营供应商
     originalPrice: 0, // 保留字段但不再使用
     price: 0, // 保留字段但不再使用
     isSpecial: false,
@@ -524,11 +622,21 @@ const handleEditProduct = (row) => {
   const categoryId = Number(row.categoryId || 0) // 确保分类ID是数字类型
   const categoryPath = getCategoryPath(categoryId)
 
+  // 如果没有供应商，默认选择自营供应商
+  let supplierId = row.supplier_id || row.supplierId || null
+  if (!supplierId) {
+    const selfOperatedSupplier = suppliers.value.find(s => s.username === 'self_operated')
+    if (selfOperatedSupplier) {
+      supplierId = selfOperatedSupplier.id
+    }
+  }
+
   Object.assign(productForm, {
     ...row,
     id: Number(row.id), // 确保id是数字类型
     categoryId: categoryId,
     categoryIds: categoryPath, // 设置级联分类路径
+    supplierId: supplierId, // 设置供应商ID
     images: row.images && Array.isArray(row.images) ?
       row.images.map(img => {
         // 确保img是有效类型
@@ -560,9 +668,42 @@ const handleEditProduct = (row) => {
   // 清空当前规格
   Object.assign(currentSpec, {
     name: '',
-    value: ''
+    wholesalePrice: null,
+    retailPrice: null,
+    description: ''
   })
   dialogVisible.value = true
+}
+
+// 处理精选状态变更
+const handleSpecialStatusChange = async (row) => {
+  try {
+    // 设置更新状态，防止重复点击
+    if (!row.updatingSpecial) {
+      row.updatingSpecial = true
+    }
+    
+    const response = await updateProductSpecialStatus(row.id, row.isSpecial)
+    
+    if (response.code === 200) {
+      ElMessage.success(row.isSpecial ? '已设置为精选商品' : '已取消精选')
+    } else {
+      // 如果更新失败，恢复原状态
+      row.isSpecial = !row.isSpecial
+      ElMessage.error(response.message || '更新失败')
+    }
+  } catch (error) {
+    // 如果更新失败，恢复原状态
+    row.isSpecial = !row.isSpecial
+    console.error('更新精选状态失败:', error)
+    if (error.response && error.response.data && error.response.data.message) {
+      ElMessage.error(error.response.data.message)
+    } else {
+      ElMessage.error('更新精选状态失败')
+    }
+  } finally {
+    row.updatingSpecial = false
+  }
 }
 
 // 删除商品
@@ -594,8 +735,8 @@ const handleDeleteProduct = async (id) => {
 
 // 添加规格
 const addSpec = () => {
-  if (!currentSpec.name || currentSpec.price <= 0 || currentSpec.originalPrice <= 0) {
-    ElMessage.warning('请输入规格名称、现价和原价')
+  if (!currentSpec.name || !currentSpec.wholesalePrice || currentSpec.wholesalePrice <= 0 || !currentSpec.retailPrice || currentSpec.retailPrice <= 0) {
+    ElMessage.warning('请输入规格名称、批发价和零售价')
     return
   }
 
@@ -609,14 +750,20 @@ const addSpec = () => {
     return
   }
 
-  productForm.specs.push({ ...currentSpec })
+  // 添加规格，使用正确的字段名
+  productForm.specs.push({
+    name: currentSpec.name,
+    wholesale_price: currentSpec.wholesalePrice,
+    retail_price: currentSpec.retailPrice,
+    description: currentSpec.description || ''
+  })
 
   // 清空当前输入
   Object.assign(currentSpec, {
     name: '',
-    value: '',
-    price: 0,
-    originalPrice: 0
+    wholesalePrice: null,
+    retailPrice: null,
+    description: ''
   })
 }
 
@@ -638,8 +785,10 @@ const handleSubmit = async () => {
     }
 
     for (const spec of productForm.specs) {
-      if (!spec.name || spec.price <= 0 || spec.originalPrice <= 0) {
-        ElMessage.warning('所有规格都必须有名称、现价和原价')
+      const wholesalePrice = spec.wholesale_price || spec.wholesalePrice
+      const retailPrice = spec.retail_price || spec.retailPrice
+      if (!spec.name || !wholesalePrice || wholesalePrice <= 0 || !retailPrice || retailPrice <= 0) {
+        ElMessage.warning('所有规格都必须有名称、批发价和零售价')
         return
       }
     }
@@ -656,6 +805,7 @@ const handleSubmit = async () => {
       id: productForm.id, // 添加id字段
       name: productForm.name,
       category_id: Number(categoryId), // 转换为数字类型
+      supplier_id: productForm.supplierId || null, // 供应商ID（可选）
       original_price: 0, // 设置为0，实际使用规格价格
       price: 0, // 设置为0，实际使用规格价格
       is_special: productForm.isSpecial, // 转换为后端期望的字段名

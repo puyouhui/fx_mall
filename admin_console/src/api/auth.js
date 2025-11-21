@@ -34,3 +34,16 @@ export function getAdminInfo() {
     method: 'get'
   })
 }
+
+/**
+ * 修改管理员密码接口
+ * @param {Object} params - 密码参数 { old_password, new_password }
+ * @returns {Promise}
+ */
+export function changePassword(params) {
+  return request({
+    url: '/admin/password',
+    method: 'put',
+    data: params
+  })
+}

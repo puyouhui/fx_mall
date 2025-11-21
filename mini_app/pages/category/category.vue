@@ -103,7 +103,7 @@
 						<image :src="product.images[0]" class="product-image"></image>
 						<view class="product-content">
 							<view class="product-name">{{ product.name }}</view>
-							<view class="product-desc">{{ product.description || '极速送达，品质稳定' }}</view>
+							<view class="product-desc">{{ product.description || '价格实惠，品质稳定' }}</view>
 							<view class="product-bottom">
 								<view class="price-container">
 									<view class="product-price"><text
@@ -127,71 +127,18 @@
 		</view>
 	</view>
 
-	<!-- 商品选择弹窗 -->
-	<view class="product-modal" v-if="showProductModal" @click="closeProductModal">
-		<view class="modal-overlay"></view>
-		<view class="modal-content" @click.stop>
-			<!-- 弹窗头部 -->
-			<view class="modal-header">
-				<text class="modal-title">选择规格</text>
-				<view class="modal-close" @click.stop="closeProductModal">
-					<uni-icons type="close" size="24" color="#999"></uni-icons>
-				</view>
-			</view>
-
-			<!-- 商品信息 -->
-			<view class="modal-product-info">
-				<image :src="selectedProduct?.images[0] || ''" class="modal-product-image" mode="aspectFill"></image>
-				<view class="modal-product-details">
-					<view class="modal-product-name">{{ selectedProduct.name }}</view>
-					<view class="modal-product-price">¥{{ selectedProduct.displayPrice }}</view>
-				</view>
-			</view>
-
-			<!-- 规格选择 -->
-			<view class="modal-specs-section" v-if="selectedProduct.specs && selectedProduct.specs.length > 0">
-				<view class="modal-section-title">选择规格</view>
-				<view class="modal-specs-list">
-					<view class="modal-spec-item" :class="{ active: selectedSpec && selectedSpec.id === spec.id }"
-						v-for="spec in selectedProduct.specs" :key="spec.id" @click.stop="selectSpec(spec)">
-						<text>{{ spec.name }}</text>
-						<text class="modal-spec-description" v-if="spec.description">({{ spec.description }})</text>
-						<text class="modal-spec-price" v-if="spec.price && spec.price !== selectedProduct.price">¥{{ spec.price }}</text>
-					</view>
-				</view>
-			</view>
-
-			<!-- 数量选择 -->
-			<view class="modal-quantity-section">
-				<view class="modal-section-title">数量</view>
-				<view class="modal-quantity-control">
-					<view class="modal-decrease-btn" @click.stop="decreaseQuantity" :class="{ disabled: quantity <= 1 }">
-						<image src="/static/icon/minus.png" class="minus-btn-icon"></image>
-					</view>
-					<view class="modal-quantity">{{ quantity }}</view>
-					<view class="modal-increase-btn" @click.stop="increaseQuantity">
-						<uni-icons type="plusempty" size="18" color="#fff"></uni-icons>
-					</view>
-				</view>
-			</view>
-
-			<!-- 底部按钮 -->
-			<view class="modal-bottom">
-				<view class="modal-add-to-cart-btn" @click.stop="addToPurchaseCart">
-					添加到采购单
-				</view>
-			</view>
-		</view>
-	</view>
+	<ProductSelector ref="productSelector" />
 </template>
 
 <script>
-import { log } from 'console';
 import { getCategories } from '../../api/index.js';
 import { getProductsByCategory } from '../../api/products.js';
-import { getProductDetail } from '../../api/products.js';
+import ProductSelector from '../../components/ProductSelector.vue';
 
 export default {
+	components: {
+		ProductSelector
+	},
 	data() {
 		return {
 			// 自定义头部相关
@@ -221,14 +168,7 @@ export default {
 				show: true,
 				categoryId: '',
 				apiResult: ''
-			},
-
-			// 商品选择弹窗相关状态
-			showProductModal: false,
-			selectedProduct: null,
-			selectedSpec: null,
-			quantity: 1,
-			loadingProduct: false
+			}
 		};
 	},
 
@@ -385,182 +325,64 @@ export default {
 		},
 
 		// 显示商品选择弹窗
-		async addToCart(product) {
-			try {
-				// 显示加载状态
-				this.loadingProduct = true;
-				uni.showLoading({
-					title: '加载中',
-					mask: true
-				});
+		addToCart(product) {
+			this.$refs.productSelector?.open(product);
+		},
 
-				// 调用接口获取完整的商品详情
-				const res = await getProductDetail(parseInt(product.id));
-				if (res.code === 200 && res.data) {
-					// 处理返回的商品数据
-					const productDetail = res.data;
-
-					// 处理数据结构差异，确保有规格数据
-					if (!productDetail.specs && productDetail.specifications && productDetail.specifications.length > 0) {
-						if (productDetail.specifications[0].price === undefined) {
-							// 如果specifications没有价格信息，创建默认的specs结构
-							productDetail.specs = productDetail.specifications.map((spec, index) => ({
-								id: index + 1,
-								name: spec.name,
-								description: spec.value || '',
-								price: parseFloat(productDetail.price) || 0
-							}));
-						} else {
-							// 直接使用specifications作为specs
-							productDetail.specs = productDetail.specifications;
-						}
-					}
-
-					// 确保所有规格都有id
-					if (productDetail.specs && productDetail.specs.length > 0) {
-						productDetail.specs.forEach((spec, index) => {
-							if (spec.id === undefined) {
-								spec.id = index + 1;
-							}
-						});
-					}
-
-					// 确保价格字段正确
-					if (productDetail.price !== undefined) {
-						productDetail.price = parseFloat(productDetail.price) || 0;
-					}
-
-					// 计算价格范围
-					this.calculateProductPriceRange(productDetail);
-
-					// 设置选中的商品
-					this.selectedProduct = productDetail;
-					// 默认选择第一个规格
-					this.selectedSpec = productDetail.specs && productDetail.specs.length > 0 ? productDetail.specs[0] : null;
-					// 重置数量
-					this.quantity = 1;
-					// 显示弹窗
-					this.showProductModal = true;
-				} else {
-					// 商品不存在，显示错误提示
-					uni.showToast({
-						title: '商品不存在',
-						icon: 'none',
-						duration: 2000
-					});
+		// 计算并应用商品价格范围（批发价/零售价）
+		applyPriceRange(product) {
+			let specs = product.specs;
+			if (typeof specs === 'string') {
+				try {
+					specs = JSON.parse(specs);
+				} catch (error) {
+					specs = [];
 				}
-			} catch (error) {
-				console.error('加载商品详情失败:', error);
-				uni.showToast({
-					title: '加载失败，请重试',
-					icon: 'none',
-					duration: 2000
-				});
-			} finally {
-				// 隐藏加载动画
-				this.loadingProduct = false;
-				uni.hideLoading();
-			}
-		},
-
-		// 关闭弹窗
-		closeProductModal() {
-			this.showProductModal = false;
-		},
-
-		// 选择规格
-		selectSpec(spec) {
-			this.selectedSpec = spec;
-		},
-
-		// 增加数量
-		increaseQuantity() {
-			this.quantity++;
-		},
-
-		// 减少数量
-		decreaseQuantity() {
-			if (this.quantity > 1) {
-				this.quantity--;
-			}
-		},
-
-		// 添加到采购单
-		addToPurchaseCart() {
-			if (!this.selectedSpec) {
-				uni.showToast({
-					title: '请选择商品规格',
-					icon: 'none'
-				});
-				return;
 			}
 
-			// 获取购物车数据
-			let cart = uni.getStorageSync('cart') || [];
-
-			// 构建商品信息
-			const cartItem = {
-				productId: this.selectedProduct.id,
-				productName: this.selectedProduct.name,
-				productImage: this.selectedProduct.images && this.selectedProduct.images.length > 0 ? this.selectedProduct.images[0] : '',
-				specKey: this.selectedSpec.name + (this.selectedSpec.description ? ':' + this.selectedSpec.description : ''),
-				specName: this.selectedSpec.name,
-				specDescription: this.selectedSpec.description,
-				price: this.selectedSpec.price || this.selectedProduct.price,
-				quantity: this.quantity
-			};
-
-			// 检查商品是否已在购物车中
-			const existingItemIndex = cart.findIndex(item =>
-				item.productId === cartItem.productId && item.specKey === cartItem.specKey
-			);
-
-			if (existingItemIndex >= 0) {
-				// 已存在则增加数量
-				cart[existingItemIndex].quantity += cartItem.quantity;
-			} else {
-				// 不存在则添加新商品
-				cart.push(cartItem);
+			if (!Array.isArray(specs)) {
+				specs = [];
 			}
 
-			// 保存到本地存储
-			uni.setStorageSync('cart', cart);
-
-			// 显示成功提示
-			uni.showToast({
-				title: '已添加到采购单',
-				icon: 'success'
+			const prices = [];
+			specs.forEach(spec => {
+				this.collectPriceValue(spec?.wholesale_price ?? spec?.wholesalePrice, prices);
+				this.collectPriceValue(spec?.retail_price ?? spec?.retailPrice, prices);
+				this.collectPriceValue(spec?.price, prices);
 			});
 
-			// 关闭弹窗
-			this.closeProductModal();
+			if (!prices.length) {
+				const basePrice = Number(product.price) || 0;
+				const formatted = this.formatRangePriceValue(basePrice);
+				product.price_range = formatted;
+				product.displayPrice = formatted;
+				return;
+			}
+
+			const minPrice = Math.min(...prices);
+			const maxPrice = Math.max(...prices);
+			const minFormatted = this.formatRangePriceValue(minPrice);
+			const maxFormatted = this.formatRangePriceValue(maxPrice);
+
+			if (minPrice === maxPrice) {
+				product.price_range = minFormatted;
+				product.displayPrice = minFormatted;
+			} else {
+				product.price_range = `${minFormatted}~${maxFormatted}`;
+				product.displayPrice = minFormatted;
+			}
 		},
 
-		// 计算单个商品的价格范围
-		calculateProductPriceRange(product) {
-			if (!product.specs || !Array.isArray(product.specs) || product.specs.length === 0) {
-				// 如果没有规格数据，使用原价格
-				product.displayPrice = product.price || '0.00';
-				return;
+		collectPriceValue(value, container) {
+			const num = Number(value);
+			if (!Number.isNaN(num) && num > 0) {
+				container.push(num);
 			}
+		},
 
-			// 过滤出有价格的规格
-			const pricedSpecs = product.specs.filter(spec => spec.price > 0);
-			if (pricedSpecs.length === 0) {
-				product.displayPrice = product.price || '0.00';
-				return;
-			}
-
-			// 计算最小和最大价格
-			const minPrice = Math.min(...pricedSpecs.map(spec => spec.price));
-			const maxPrice = Math.max(...pricedSpecs.map(spec => spec.price));
-
-			// 设置价格范围显示
-			if (minPrice === maxPrice) {
-				product.displayPrice = minPrice.toFixed(2);
-			} else {
-				product.displayPrice = minPrice.toFixed(2) + '~' + maxPrice.toFixed(2);
-			}
+		formatRangePriceValue(value) {
+			const num = Number(value) || 0;
+			return num.toFixed(2);
 		},
 
 		// 生成模拟二级分类数据
@@ -625,11 +447,38 @@ export default {
 				console.log('获取分类商品结果:', res);
 				// 更新调试信息
 				this.debugInfo.apiResult = JSON.stringify(res, null, 2);
-				// 从响应的data.list中获取商品列表
-				this.currentProducts = res.data && res.data.list ? res.data.list : [];
+				const productList = res.data && res.data.list ? res.data.list : [];
 
-				// 如果没有商品数据，清空列表以显示空状态提示
-				if (!this.currentProducts || this.currentProducts.length === 0) {
+				this.currentProducts = productList.map(product => {
+					const normalized = { ...product };
+
+					if (!Array.isArray(normalized.images)) {
+						if (normalized.images && typeof normalized.images === 'string') {
+							try {
+								normalized.images = JSON.parse(normalized.images);
+							} catch (error) {
+								normalized.images = [normalized.images];
+							}
+						} else if (normalized.image) {
+							normalized.images = [normalized.image];
+						} else {
+							normalized.images = [];
+						}
+					}
+
+					if (!Array.isArray(normalized.specs) && typeof normalized.specs === 'string') {
+						try {
+							normalized.specs = JSON.parse(normalized.specs);
+						} catch (error) {
+							normalized.specs = [];
+						}
+					}
+
+					this.applyPriceRange(normalized);
+					return normalized;
+				});
+
+				if (!this.currentProducts.length) {
 					console.log('没有找到商品数据，显示空状态');
 					this.currentProducts = [];
 				}
@@ -1435,14 +1284,24 @@ page {
 }
 
 .product-price {
-	font-size: 32rpx;
+	font-size: 30rpx;
 	color: #FF6B6B;
 	font-weight: bold;
 	margin-right: 10rpx;
+	max-width: 320rpx;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.product-price text {
+	font-size: 18rpx;
+	font-weight: normal;
+	margin-right: 4rpx;
 }
 
 .original-price {
-	font-size: 24rpx;
+	font-size: 22rpx;
 	color: #999;
 	text-decoration: line-through;
 }

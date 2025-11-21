@@ -68,10 +68,11 @@
 							<text class="spec-description" v-if="spec.description"> ({{ spec.description }})</text>
 						</view>
 						<view class="spec-prices">
-							<text class="spec-price" v-if="spec.price">￥{{ spec.price.toFixed(2) }}</text>
-							<text class="spec-original-price"
-								v-if="spec.originalPrice && spec.originalPrice > spec.price">
-								￥{{ spec.originalPrice.toFixed(2) }}
+							<text class="spec-price" v-if="spec.retail_price || spec.retailPrice">
+								零售价: ￥{{ (spec.retail_price || spec.retailPrice).toFixed(2) }}
+							</text>
+							<text class="spec-wholesale-price" v-if="spec.wholesale_price || spec.wholesalePrice" style="font-size: 24rpx; color: #999; margin-left: 10rpx;">
+								批发价: ￥{{ (spec.wholesale_price || spec.wholesalePrice).toFixed(2) }}
 							</text>
 						</view>
 					</view>
@@ -313,11 +314,24 @@ export default {
 						}
 					}
 
-					// 确保所有规格都有id
+					// 确保所有规格都有id，并处理价格字段
 					if (this.product.specs && this.product.specs.length > 0) {
 						this.product.specs.forEach((spec, index) => {
 							if (spec.id === undefined) {
 								spec.id = index + 1;
+							}
+							// 确保批发价和零售价为数字
+							if (spec.wholesale_price !== undefined) {
+								spec.wholesale_price = parseFloat(spec.wholesale_price) || 0;
+							}
+							if (spec.wholesalePrice !== undefined) {
+								spec.wholesalePrice = parseFloat(spec.wholesalePrice) || 0;
+							}
+							if (spec.retail_price !== undefined) {
+								spec.retail_price = parseFloat(spec.retail_price) || 0;
+							}
+							if (spec.retailPrice !== undefined) {
+								spec.retailPrice = parseFloat(spec.retailPrice) || 0;
 							}
 						});
 					}
@@ -351,7 +365,7 @@ export default {
 			this.currentImageIndex = e.detail.current;
 		},
 
-		// 计算价格范围
+		// 计算价格范围（使用批发价和零售价）
 		calculatePriceRange() {
 			// 处理没有规格的情况
 			if (!this.product.specs || this.product.specs.length === 0) {
@@ -363,19 +377,37 @@ export default {
 				return;
 			}
 
-			// 获取所有规格的价格
-			const allSpecPrices = this.product.specs.map(spec => parseFloat(spec.price) || 0);
-
-			// 计算最小和最大价格
-			this.product.minPrice = Math.min(...allSpecPrices);
-			this.product.maxPrice = Math.max(...allSpecPrices);
+			// 收集所有规格的批发价和零售价
+			const allPrices = [];
+			this.product.specs.forEach(spec => {
+				// 获取批发价
+				const wholesalePrice = spec.wholesale_price || spec.wholesalePrice;
+				if (wholesalePrice && wholesalePrice > 0) {
+					allPrices.push(parseFloat(wholesalePrice));
+				}
+				
+				// 获取零售价
+				const retailPrice = spec.retail_price || spec.retailPrice;
+				if (retailPrice && retailPrice > 0) {
+					allPrices.push(parseFloat(retailPrice));
+				}
+			});
 
 			// 处理所有价格为0的情况
-			if (this.product.minPrice === 0 && this.product.maxPrice === 0) {
-				// 使用商品本身的价格（如果有）或默认显示0
+			if (allPrices.length === 0) {
 				const fallbackPrice = parseFloat(this.product.price) || 0;
+				this.product.minPrice = fallbackPrice;
+				this.product.maxPrice = fallbackPrice;
 				this.product.priceRange = '¥' + fallbackPrice.toFixed(2);
-			} else if (this.product.minPrice === this.product.maxPrice) {
+				return;
+			}
+
+			// 计算最小和最大价格
+			this.product.minPrice = Math.min(...allPrices);
+			this.product.maxPrice = Math.max(...allPrices);
+
+			// 设置价格范围显示
+			if (this.product.minPrice === this.product.maxPrice) {
 				// 所有规格价格相同
 				this.product.priceRange = '¥' + this.product.minPrice.toFixed(2);
 			} else {
@@ -415,7 +447,8 @@ export default {
 			const specName = spec.name || '默认规格';
 			const specDesc = spec.description || spec.value || '';
 			const specKey = specName + (specDesc ? ':' + specDesc : '');
-			const specPrice = parseFloat(spec.price) || parseFloat(this.product.price) || 0;
+			// 使用零售价作为默认价格
+			const specPrice = parseFloat(spec.retail_price || spec.retailPrice) || parseFloat(this.product.price) || 0;
 
 			// 检查商品是否已在采购单中
 			const index = cart.findIndex(item =>
@@ -434,8 +467,9 @@ export default {
 					specName: specName,
 					specDescription: specDesc,
 					specKey: specKey,
-					price: specPrice,
-					originalPrice: parseFloat(spec.originalPrice) || parseFloat(this.product.originalPrice) || 0,
+					wholesalePrice: parseFloat(spec.wholesale_price || spec.wholesalePrice) || 0,
+					retailPrice: parseFloat(spec.retail_price || spec.retailPrice) || 0,
+					price: specPrice, // 使用零售价作为默认价格
 					image: this.product.images && this.product.images.length > 0 ? this.product.images[0] : '',
 					isSpecial: this.product.isSpecial
 				});

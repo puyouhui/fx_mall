@@ -1,6 +1,6 @@
 // index.js - 小程序首页API
 
-import { get } from './request';
+import { get, post, put } from './request';
 
 /**
  * 获取轮播图数据
@@ -108,5 +108,42 @@ export const getSpecialProducts = (params = { pageNum: 1, pageSize: 10 }) => {
         }
       ]
     };
+  });
+};
+
+/**
+ * 获取热销商品数据
+ * @returns Promise 热销商品数据
+ */
+export const getHotProducts = () => {
+  return get('/products/hot').catch(error => {
+    console.error('获取热销商品失败:', error);
+    // 返回空数据作为后备，避免页面报错
+    return {
+      code: 200,
+      data: []
+    };
+  });
+};
+
+/**
+ * 小程序登录，获取并保存唯一ID
+ * @param {string} code - wx.login 返回的code
+ */
+export const miniLogin = (code) => {
+  return post('/auth/login', { code });
+};
+
+/**
+ * 更新小程序用户身份类型
+ * @param {'retail'|'wholesale'} userType
+ * @param {string} token
+ */
+export const updateMiniUserType = (userType, token) => {
+  return put('/mini-app/users/type', { user_type: userType }, {
+    header: {
+      'content-type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
   });
 };

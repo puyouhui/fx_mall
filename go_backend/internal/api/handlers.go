@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"go_backend/internal/database"
 	"go_backend/internal/model"
 	"go_backend/internal/utils"
-	"go_backend/internal/database"
+
+	"github.com/gin-gonic/gin"
 )
 
 // 响应辅助函数
@@ -119,7 +120,7 @@ func GetAllCategoriesForAdmin(c *gin.Context) {
 		internalErrorResponse(c, "获取分类失败: "+err.Error())
 		return
 	}
-	
+
 	log.Printf("成功获取到分类数量: %d", len(categories))
 
 	successResponse(c, categories, "")
@@ -237,22 +238,87 @@ func DeleteCategory(c *gin.Context) {
 
 // GetAllProductsForAdmin 获取所有商品（管理后台）
 func GetAllProductsForAdmin(c *gin.Context) {
-	// 从数据库获取所有商品
-	products, err := model.GetAllProducts()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取商品失败: " + err.Error()})
-		return
+	// 获取查询参数
+	keyword := c.Query("keyword")
+	categoryIDStr := c.Query("categoryId")
+	pageNum := parseQueryInt(c, "pageNum", 1)
+	pageSize := parseQueryInt(c, "pageSize", 10)
+
+	var products []model.Product
+	var total int
+	var err error
+
+	// 如果有分类ID，使用分类筛选
+	if categoryIDStr != "" {
+		categoryID, err := strconv.Atoi(categoryIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的分类ID"})
+			return
+		}
+		// 使用分类筛选和分页
+		products, total, err = model.GetProductsByCategoryWithPagination(categoryID, pageNum, pageSize)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取商品失败: " + err.Error()})
+			return
+		}
+		// 如果有关键词，在结果中进一步筛选
+		if keyword != "" {
+			filteredProducts := []model.Product{}
+			for _, product := range products {
+				if strings.Contains(strings.ToLower(product.Name), strings.ToLower(keyword)) ||
+					strings.Contains(strings.ToLower(product.Description), strings.ToLower(keyword)) {
+					filteredProducts = append(filteredProducts, product)
+				}
+			}
+			products = filteredProducts
+			total = len(filteredProducts)
+		}
+	} else if keyword != "" {
+		// 只有关键词，使用搜索功能
+		products, total, err = model.SearchProductsWithPagination(keyword, pageNum, pageSize)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "搜索商品失败: " + err.Error()})
+			return
+		}
+	} else {
+		// 没有筛选条件，获取所有商品（带分页）
+		products, total, err = model.GetAllProductsWithPagination(pageNum, pageSize)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取商品失败: " + err.Error()})
+			return
+		}
 	}
 
-	// 获取分类名称
+	// 获取分类名称 - 直接从数据库查询所有分类，确保能获取到所有分类名称
 	categoryMap := make(map[int]string)
-	categories, err := model.GetAllCategories()
+	categoryQuery := "SELECT id, name FROM categories"
+	categoryRows, err := database.DB.Query(categoryQuery)
 	if err == nil {
-		// 从分类树中提取所有分类ID和名称
-		extractCategories(categories, categoryMap)
+		defer categoryRows.Close()
+		for categoryRows.Next() {
+			var categoryID int
+			var categoryName string
+			if err := categoryRows.Scan(&categoryID, &categoryName); err == nil {
+				categoryMap[categoryID] = categoryName
+			}
+		}
 	}
 
-	// 转换商品数据格式，添加分类名称
+	// 获取供应商名称
+	supplierMap := make(map[int]string)
+	var selfOperatedSupplierID int
+	suppliers, err := model.GetAllSuppliers(database.DB)
+	if err == nil {
+		for _, supplier := range suppliers {
+			supplierMap[supplier.ID] = supplier.Name
+			// 记录自营供应商ID
+			if supplier.Username == "self_operated" {
+				selfOperatedSupplierID = supplier.ID
+			}
+		}
+	}
+
+	// 转换商品数据格式，添加分类名称和供应商信息
 	result := []map[string]interface{}{}
 	for _, product := range products {
 		productMap := make(map[string]interface{})
@@ -263,6 +329,21 @@ func GetAllProductsForAdmin(c *gin.Context) {
 		productMap["price"] = product.Price
 		productMap["category_id"] = product.CategoryID
 		productMap["category_name"] = categoryMap[product.CategoryID]
+
+		// 处理供应商信息：如果为null，自动绑定自营供应商
+		if product.SupplierID != nil {
+			productMap["supplier_id"] = *product.SupplierID
+			productMap["supplier_name"] = supplierMap[*product.SupplierID]
+		} else {
+			// 如果供应商ID为null，自动设置为自营供应商
+			if selfOperatedSupplierID > 0 {
+				productMap["supplier_id"] = selfOperatedSupplierID
+				productMap["supplier_name"] = supplierMap[selfOperatedSupplierID]
+			} else {
+				productMap["supplier_id"] = nil
+				productMap["supplier_name"] = ""
+			}
+		}
 		productMap["is_special"] = product.IsSpecial
 		productMap["images"] = product.Images
 		productMap["specs"] = product.Specs
@@ -272,7 +353,7 @@ func GetAllProductsForAdmin(c *gin.Context) {
 		result = append(result, productMap)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 200, "data": result, "message": "success"})
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": result, "total": total, "message": "success"})
 }
 
 // 辅助函数：从分类树中提取所有分类ID和名称
@@ -310,6 +391,21 @@ func CreateProduct(c *gin.Context) {
 	if category == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "分类不存在"})
 		return
+	}
+
+	// 如果没有选择供应商，默认绑定"自营"供应商
+	if product.SupplierID == nil {
+		selfOperatedSupplier, err := model.GetSupplierByUsername(database.DB, "self_operated")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取默认供应商失败: " + err.Error()})
+			return
+		}
+		if selfOperatedSupplier == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "系统错误：默认供应商不存在"})
+			return
+		}
+		selfOperatedID := selfOperatedSupplier.ID
+		product.SupplierID = &selfOperatedID
 	}
 
 	// 创建商品
@@ -362,12 +458,29 @@ func UpdateProduct(c *gin.Context) {
 		}
 	}
 
+	// 如果没有选择供应商，默认绑定"自营"供应商
+	supplierID := updateData.SupplierID
+	if supplierID == nil {
+		selfOperatedSupplier, err := model.GetSupplierByUsername(database.DB, "self_operated")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取默认供应商失败: " + err.Error()})
+			return
+		}
+		if selfOperatedSupplier == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "系统错误：默认供应商不存在"})
+			return
+		}
+		selfOperatedID := selfOperatedSupplier.ID
+		supplierID = &selfOperatedID
+	}
+
 	// 更新商品信息
 	product.Name = updateData.Name
 	product.Description = updateData.Description
 	product.OriginalPrice = updateData.OriginalPrice
 	product.Price = updateData.Price
 	product.CategoryID = updateData.CategoryID
+	product.SupplierID = supplierID
 	product.IsSpecial = updateData.IsSpecial
 	product.Images = updateData.Images
 	product.Specs = updateData.Specs
@@ -380,6 +493,46 @@ func UpdateProduct(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": product, "message": "更新成功"})
+}
+
+// UpdateProductSpecialStatus 快速更新商品精选状态
+func UpdateProductSpecialStatus(c *gin.Context) {
+	id := c.Param("id")
+	productID, err := strconv.Atoi(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的商品ID"})
+		return
+	}
+
+	var updateData struct {
+		IsSpecial bool `json:"is_special"`
+	}
+	if err := c.ShouldBindJSON(&updateData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	// 查找商品
+	product, err := model.GetProductByID(productID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取商品失败: " + err.Error()})
+		return
+	}
+
+	if product == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "商品不存在"})
+		return
+	}
+
+	// 更新精选状态
+	query := "UPDATE products SET is_special = ?, updated_at = NOW() WHERE id = ?"
+	_, err = database.DB.Exec(query, updateData.IsSpecial, productID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新精选状态失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "更新成功"})
 }
 
 // DeleteProduct 删除商品
@@ -446,20 +599,20 @@ func UploadProductImage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": map[string]string{"imageUrl": fileURL}, "message": "图片上传成功"})
 }
 
-// GetSpecialProducts 获取特价商品
+// GetSpecialProducts 获取精选商品
 func GetSpecialProducts(c *gin.Context) {
 	// 解析分页参数
 	pageNum := parseQueryInt(c, "pageNum", 1)
 	pageSize := parseQueryInt(c, "pageSize", 10)
-	
+
 	// 从数据库获取特价商品
 	specialProducts, total, err := model.GetSpecialProductsWithPagination(pageNum, pageSize)
 	if err != nil {
-		log.Printf("获取特价商品失败: %v", err)
-		internalErrorResponse(c, "获取特价商品失败: "+err.Error())
+		log.Printf("获取精选商品失败: %v", err)
+		internalErrorResponse(c, "获取精选商品失败: "+err.Error())
 		return
 	}
-	
+
 	// 返回数据
 	result := map[string]interface{}{
 		"list":     specialProducts,
@@ -593,24 +746,24 @@ func GetProductDetail(c *gin.Context) {
 
 	// 构建返回的数据结构，添加前端需要的额外字段
 	responseData := struct {
-		ID           int       `json:"id"`
-		Name         string    `json:"name"`
-		Description  string    `json:"description"`
-		Price        float64   `json:"price"`
-		OriginalPrice float64  `json:"original_price"`
-		CategoryID   int       `json:"category_id"`
-		CategoryName string    `json:"category_name"` // 分类名称（默认值）
-		IsSpecial    bool      `json:"is_special"`
-		Images       []string  `json:"images"`
+		ID             int      `json:"id"`
+		Name           string   `json:"name"`
+		Description    string   `json:"description"`
+		Price          float64  `json:"price"`
+		OriginalPrice  float64  `json:"original_price"`
+		CategoryID     int      `json:"category_id"`
+		CategoryName   string   `json:"category_name"` // 分类名称（默认值）
+		IsSpecial      bool     `json:"is_special"`
+		Images         []string `json:"images"`
 		Specifications []struct {
 			Name string `json:"name"`
 		} `json:"specifications"`
-		Specs        []model.Spec `json:"specs"` // 完整规格信息，包含名称、描述、价格和原价
-		Stock        int       `json:"stock"` // 库存（默认值）
-		Sales        int       `json:"sales"` // 销量（默认值）
-		Details      string    `json:"details"` // 详细描述（默认值）
-		CreatedAt    time.Time `json:"created_at"`
-		UpdatedAt    time.Time `json:"updated_at"`
+		Specs     []model.Spec `json:"specs"`   // 完整规格信息，包含名称、描述、价格和原价
+		Stock     int          `json:"stock"`   // 库存（默认值）
+		Sales     int          `json:"sales"`   // 销量（默认值）
+		Details   string       `json:"details"` // 详细描述（默认值）
+		CreatedAt time.Time    `json:"created_at"`
+		UpdatedAt time.Time    `json:"updated_at"`
 	}{}
 
 	// 填充数据
@@ -624,9 +777,9 @@ func GetProductDetail(c *gin.Context) {
 	responseData.IsSpecial = product.IsSpecial
 	responseData.Images = product.Images
 	responseData.Specifications = specifications
-	responseData.Specs = product.Specs // 完整的规格信息，包含名称、描述、价格和原价
-	responseData.Stock = 100 // 可以后续从数据库获取真实库存
-	responseData.Sales = 50 // 可以后续从数据库获取真实销量
+	responseData.Specs = product.Specs         // 完整的规格信息，包含名称、描述、价格和原价
+	responseData.Stock = 100                   // 可以后续从数据库获取真实库存
+	responseData.Sales = 50                    // 可以后续从数据库获取真实销量
 	responseData.Details = product.Description // 使用描述作为详情
 	responseData.CreatedAt = product.CreatedAt
 	responseData.UpdatedAt = product.UpdatedAt
@@ -695,12 +848,12 @@ func GetCartItems(c *gin.Context) {
 			"product_id": item.ProductID,
 			"quantity":   item.Quantity,
 		}
-		
+
 		// 添加价格（如果有）
 		if item.Price > 0 {
 			cartMap["price"] = item.Price
 		}
-		
+
 		// 从数据库获取商品详情
 		product, err := model.GetProductByID(item.ProductID)
 		if err == nil && product != nil {
@@ -709,10 +862,10 @@ func GetCartItems(c *gin.Context) {
 				cartMap["product_image"] = product.Images[0]
 			}
 		}
-		
+
 		result = append(result, cartMap)
 	}
-	
+
 	successResponse(c, result, "")
 }
 
@@ -722,7 +875,7 @@ func DeleteCartItem(c *gin.Context) {
 	if !ok {
 		return
 	}
-	
+
 	var newCartItems []struct {
 		ID        int       `json:"id"`
 		ProductID int       `json:"product_id"`
@@ -769,14 +922,20 @@ func AdminLogin(c *gin.Context) {
 		return
 	}
 
-	// 从数据库验证管理员账号密码
-	admin, err := model.GetAdminByUsernameAndPassword(database.DB, loginReq.Username, loginReq.Password)
+	// 根据用户名获取管理员信息
+	admin, err := model.GetAdminByUsername(database.DB, loginReq.Username)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "登录失败: " + err.Error()})
 		return
 	}
 
 	if admin == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "用户名或密码错误"})
+		return
+	}
+
+	// 使用bcrypt验证密码
+	if !utils.CheckPasswordHash(loginReq.Password, admin.Password) {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "用户名或密码错误"})
 		return
 	}
@@ -812,7 +971,7 @@ func AdminLogin(c *gin.Context) {
 
 // AdminLogout 管理员登出
 func AdminLogout(c *gin.Context) {
-	// 在JWT方案中，登出通常由前端处理（删除本地存储的token）	
+	// 在JWT方案中，登出通常由前端处理（删除本地存储的token）
 	// 后端可以选择维护一个token黑名单，但这需要额外的存储
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "登出成功"})
 }
@@ -845,7 +1004,7 @@ func GetAdminInfo(c *gin.Context) {
 		return
 	}
 
-	// 返回管理员信息（不包含密码）	
+	// 返回管理员信息（不包含密码）
 	adminInfo := struct {
 		ID        int       `json:"id"`
 		Username  string    `json:"username"`
@@ -854,6 +1013,65 @@ func GetAdminInfo(c *gin.Context) {
 	}{admin.ID, admin.Username, admin.CreatedAt, admin.UpdatedAt}
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": adminInfo, "message": "success"})
+}
+
+// ChangePassword 修改管理员密码
+func ChangePassword(c *gin.Context) {
+	// 从上下文中获取管理员ID
+	adminIDInterface, exists := c.Get("adminID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未登录"})
+		return
+	}
+
+	adminID, ok := adminIDInterface.(int)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "内部服务器错误"})
+		return
+	}
+
+	var changePasswordReq struct {
+		OldPassword string `json:"old_password" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required,min=6"`
+	}
+
+	if err := c.ShouldBindJSON(&changePasswordReq); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	// 获取当前管理员信息
+	admin, err := model.GetAdminByID(database.DB, adminID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取管理员信息失败: " + err.Error()})
+		return
+	}
+
+	if admin == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "管理员不存在"})
+		return
+	}
+
+	// 验证旧密码
+	if !utils.CheckPasswordHash(changePasswordReq.OldPassword, admin.Password) {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "原密码错误"})
+		return
+	}
+
+	// 加密新密码
+	hashedPassword, err := utils.HashPassword(changePasswordReq.NewPassword)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "加密密码失败: " + err.Error()})
+		return
+	}
+
+	// 更新密码
+	if err := model.UpdateAdminPassword(database.DB, adminID, hashedPassword); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新密码失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "密码修改成功"})
 }
 
 // AuthMiddleware JWT认证中间件
@@ -944,7 +1162,7 @@ func isImageFile(filename string) bool {
 	extension := ""
 	for i := len(filename) - 1; i >= 0; i-- {
 		if filename[i] == '.' {
-		extension = filename[i:]
+			extension = filename[i:]
 			break
 		}
 	}
@@ -1072,4 +1290,250 @@ func DeleteCarousel(c *gin.Context) {
 	}(imageURL)
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "删除成功"})
+}
+
+// ==================== 热销产品管理 ====================
+
+// GetHotProducts 获取热销产品（小程序用）
+func GetHotProducts(c *gin.Context) {
+	products, err := model.GetHotProducts(database.DB)
+	if err != nil {
+		log.Printf("获取热销产品失败: %v", err)
+		internalErrorResponse(c, "获取热销产品失败: "+err.Error())
+		return
+	}
+
+	successResponse(c, products, "获取成功")
+}
+
+// GetAllHotProductsForAdmin 获取所有热销产品（管理后台）
+func GetAllHotProductsForAdmin(c *gin.Context) {
+	hotProducts, err := model.GetAllHotProducts(database.DB)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取热销产品失败: " + err.Error()})
+		return
+	}
+
+	// 获取所有商品信息
+	allProducts, err := model.GetAllProducts()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取商品列表失败: " + err.Error()})
+		return
+	}
+
+	// 创建商品映射
+	productMap := make(map[int]*model.Product)
+	for i := range allProducts {
+		productMap[allProducts[i].ID] = &allProducts[i]
+	}
+
+	// 填充商品信息
+	result := make([]gin.H, 0)
+	for _, hp := range hotProducts {
+		product := productMap[hp.ProductID]
+		if product != nil {
+			result = append(result, gin.H{
+				"id":         hp.ID,
+				"product_id": hp.ProductID,
+				"product": gin.H{
+					"id":          product.ID,
+					"name":        product.Name,
+					"description": product.Description,
+					"images":      product.Images,
+					"price":       product.Price,
+					"category_id": product.CategoryID,
+					"status":      product.Status,
+				},
+				"sort":       hp.Sort,
+				"status":     hp.Status,
+				"created_at": hp.CreatedAt,
+				"updated_at": hp.UpdatedAt,
+			})
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": result, "message": "获取成功"})
+}
+
+// CreateHotProduct 创建热销产品关联
+func CreateHotProduct(c *gin.Context) {
+	var req struct {
+		ProductID int `json:"product_id" binding:"required"`
+		Sort      int `json:"sort"`
+		Status    int `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	// 检查商品是否存在
+	product, err := model.GetProductByID(req.ProductID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取商品信息失败: " + err.Error()})
+		return
+	}
+	if product == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "商品不存在"})
+		return
+	}
+
+	// 检查是否已经存在
+	existing, err := model.GetHotProductByProductID(database.DB, req.ProductID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "检查热销产品失败: " + err.Error()})
+		return
+	}
+	if existing != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "该商品已经是热销产品"})
+		return
+	}
+
+	// 如果没有指定排序，自动设置为最大值+1
+	if req.Sort == 0 {
+		allHotProducts, err := model.GetAllHotProducts(database.DB)
+		if err == nil && len(allHotProducts) > 0 {
+			maxSort := 0
+			for _, hp := range allHotProducts {
+				if hp.Sort > maxSort {
+					maxSort = hp.Sort
+				}
+			}
+			req.Sort = maxSort + 1
+		} else {
+			req.Sort = 1
+		}
+	}
+
+	// 默认状态为启用
+	if req.Status == 0 {
+		req.Status = 1
+	}
+
+	hp := &model.HotProduct{
+		ProductID: req.ProductID,
+		Sort:      req.Sort,
+		Status:    req.Status,
+	}
+
+	if err := model.CreateHotProduct(database.DB, hp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建热销产品失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": hp, "message": "创建成功"})
+}
+
+// UpdateHotProduct 更新热销产品关联
+func UpdateHotProduct(c *gin.Context) {
+	id := c.Param("id")
+	hotProductID, err := strconv.Atoi(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的热销产品ID"})
+		return
+	}
+
+	var req struct {
+		ProductID int `json:"product_id"`
+		Sort      int `json:"sort"`
+		Status    int `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	// 查找热销产品
+	hp, err := model.GetHotProductByID(database.DB, hotProductID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取热销产品失败: " + err.Error()})
+		return
+	}
+	if hp == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "热销产品不存在"})
+		return
+	}
+
+	// 如果更新了商品ID，检查新商品是否存在且不重复
+	if req.ProductID > 0 && req.ProductID != hp.ProductID {
+		product, err := model.GetProductByID(req.ProductID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取商品信息失败: " + err.Error()})
+			return
+		}
+		if product == nil {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "商品不存在"})
+			return
+		}
+
+		// 检查新商品是否已经是热销产品
+		existing, err := model.GetHotProductByProductID(database.DB, req.ProductID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "检查热销产品失败: " + err.Error()})
+			return
+		}
+		if existing != nil && existing.ID != hotProductID {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "该商品已经是热销产品"})
+			return
+		}
+		hp.ProductID = req.ProductID
+	}
+
+	if req.Sort > 0 {
+		hp.Sort = req.Sort
+	}
+	if req.Status > 0 {
+		hp.Status = req.Status
+	}
+
+	if err := model.UpdateHotProduct(database.DB, hp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新热销产品失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": hp, "message": "更新成功"})
+}
+
+// DeleteHotProduct 删除热销产品关联
+func DeleteHotProduct(c *gin.Context) {
+	id := c.Param("id")
+	hotProductID, err := strconv.Atoi(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的热销产品ID"})
+		return
+	}
+
+	if err := model.DeleteHotProduct(database.DB, hotProductID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除热销产品失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "删除成功"})
+}
+
+// UpdateHotProductSort 批量更新热销产品排序
+func UpdateHotProductSort(c *gin.Context) {
+	var req struct {
+		Items []struct {
+			ID   int `json:"id" binding:"required"`
+			Sort int `json:"sort" binding:"required"`
+		} `json:"items" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	items := make([]model.UpdateHotProductSortItem, len(req.Items))
+	for i, item := range req.Items {
+		items[i].ID = item.ID
+		items[i].Sort = item.Sort
+	}
+
+	if err := model.UpdateHotProductSort(database.DB, items); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新排序失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "更新排序成功"})
 }

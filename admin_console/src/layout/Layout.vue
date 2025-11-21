@@ -30,6 +30,30 @@
           </el-icon>
           <span>轮播图管理</span>
         </el-menu-item>
+        <el-menu-item index="/settings">
+          <el-icon>
+            <Setting />
+          </el-icon>
+          <span>系统设置</span>
+        </el-menu-item>
+        <el-menu-item index="/suppliers">
+          <el-icon>
+            <Shop />
+          </el-icon>
+          <span>供应商管理</span>
+        </el-menu-item>
+        <el-menu-item index="/hot-products">
+          <el-icon>
+            <ShoppingCart />
+          </el-icon>
+          <span>热销产品管理</span>
+        </el-menu-item>
+      <el-menu-item index="/mini-users">
+        <el-icon>
+          <User />
+        </el-icon>
+        <span>小程序用户</span>
+      </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -85,7 +109,9 @@ import {
   ShoppingCart,
   Menu,
   User,
-  SwitchFilled
+  SwitchFilled,
+  Setting,
+  Shop
 } from '@element-plus/icons-vue'
 import { logout, getAdminInfo } from '../api/auth'
 import { ElMessage } from 'element-plus'

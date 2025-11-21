@@ -16,9 +16,10 @@
       </div>
 
       <!-- 轮播图列表 -->
-        <div class="carousel-list">
-          <div v-for="item in carousels" :key="item.id" class="carousel-item">
-            <el-card class="item-card">
+      <div class="carousel-list">
+        <div v-for="item in carousels" :key="item.id" class="carousel-item">
+          <el-card class="item-card" shadow="hover">
+            <div class="card-media">
               <img v-if="item.image" :src="item.image" alt="轮播图" class="carousel-image" />
               <div v-else class="image-placeholder">
                 <el-icon>
@@ -27,28 +28,71 @@
                 <span>暂无图片</span>
               </div>
 
-              <div class="item-info">
-                <div class="info-row">
-                  <span class="label">标题:</span>
-                  <span class="value">{{ item.title || '未设置' }}</span>
+              <div class="media-overlay">
+                <el-tag :type="item.status ? 'success' : 'info'" size="small">
+                  {{ item.status ? '已启用' : '已停用' }}
+                </el-tag>
+                <span class="sort-pill">排序 {{ item.sort }}</span>
+              </div>
+
+              <div class="media-actions">
+                <el-tooltip content="编辑" placement="top">
+                  <el-button
+                    circle
+                    size="small"
+                    type="primary"
+                    @click.stop="handleEditCarousel(item)"
+                  >
+                    <el-icon>
+                      <Edit />
+                    </el-icon>
+                  </el-button>
+                </el-tooltip>
+                <el-tooltip content="删除" placement="top">
+                  <el-button
+                    circle
+                    size="small"
+                    type="danger"
+                    @click.stop="handleDeleteCarousel(item.id)"
+                  >
+                    <el-icon>
+                      <Delete />
+                    </el-icon>
+                  </el-button>
+                </el-tooltip>
+              </div>
+            </div>
+
+            <div class="item-content">
+              <div class="title-row">
+                <div>
+                  <p class="carousel-title">{{ item.title || '未设置标题' }}</p>
+                  <p class="carousel-subtitle">创建于 {{ formatDate(item.created_at) }}</p>
                 </div>
-                <div class="info-row">
-                  <span class="label">链接:</span>
-                  <span class="value">{{ item.link || '未设置' }}</span>
+                <el-switch v-model="item.status" @change="handleStatusChange(item)" />
+              </div>
+
+              <div v-if="item.link" class="carousel-link">
+                <el-icon>
+                  <Link />
+                </el-icon>
+                <a :href="item.link" target="_blank" rel="noopener">{{ item.link }}</a>
+              </div>
+              <div v-else class="carousel-link muted">
+                <el-icon>
+                  <Link />
+                </el-icon>
+                <span>未设置跳转链接</span>
+              </div>
+
+              <div class="meta-row">
+                <div class="meta-pill">
+                  <span>排序</span>
+                  <strong>{{ item.sort }}</strong>
                 </div>
-                <div class="info-row">
-                  <span class="label">排序:</span>
-                  <!-- <el-input-number v-model="item.sort" :min="1" :max="999" :step="1" @change="handleSortChange(item)"
-                    style="width: 80px;" /> -->
-                    <span>{{item.sort}}</span>
-                </div>
-                <div class="info-row">
-                  <span class="label">状态:</span>
-                  <el-switch v-model="item.status" @change="handleStatusChange(item)" />
-                </div>
-                <div class="info-row">
-                  <span class="label">创建时间:</span>
-                  <span class="value">{{ formatDate(item.created_at) }}</span>
+                <div class="meta-pill">
+                  <span>ID</span>
+                  <strong>{{ item.id }}</strong>
                 </div>
               </div>
 
@@ -60,30 +104,42 @@
                   删除
                 </el-button>
               </div>
-            </el-card>
-          </div>
-
-          <!-- 空状态 -->
-          <div v-if="carousels.length === 0" class="empty-state">
-            <el-empty description="暂无轮播图数据" />
-          </div>
+            </div>
+          </el-card>
         </div>
+
+        <!-- 空状态 -->
+        <div v-if="carousels.length === 0" class="empty-state">
+          <el-empty description="暂无轮播图数据" />
+        </div>
+      </div>
       </el-card>
 
       <!-- 新增/编辑轮播图弹窗 -->
       <el-dialog v-model="dialogVisible" :title="dialogType === 'add' ? '新增轮播图' : '编辑轮播图'" width="500px">
         <el-form ref="carouselFormRef" :model="carouselForm" :rules="carouselRules" label-width="80px">
           <el-form-item label="图片" prop="imageUrl">
-            <el-upload class="avatar-uploader" action="" :show-file-list="false" :on-success="handleImageUploadSuccess"
-              :before-upload="beforeUpload">
-              <img v-if="carouselForm.imageUrl" :src="carouselForm.imageUrl" class="avatar" />
-              <div v-else class="avatar-uploader-icon">
-                <el-icon>
-                  <Upload />
-                </el-icon>
+            <div class="upload-card">
+              <el-upload
+                class="avatar-uploader"
+                action=""
+                :show-file-list="false"
+                :on-success="handleImageUploadSuccess"
+                :before-upload="beforeUpload"
+              >
+                <img v-if="carouselForm.imageUrl" :src="carouselForm.imageUrl" class="avatar" />
+                <div v-else class="avatar-uploader-icon">
+                  <el-icon>
+                    <Upload />
+                  </el-icon>
+                  <span class="upload-text">上传轮播图</span>
+                </div>
+              </el-upload>
+              <div class="upload-meta">
+                <p>建议尺寸 1200×400， JPG/PNG 不超过 2MB</p>
+                <p>上传后可实时预览，支持重新选择</p>
               </div>
-            </el-upload>
-            <div class="upload-hint">点击上传轮播图，建议尺寸：1200x400</div>
+            </div>
           </el-form-item>
           <el-form-item label="标题" prop="title">
             <el-input v-model="carouselForm.title" placeholder="请输入轮播图标题" />
@@ -109,7 +165,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Upload, Picture } from '@element-plus/icons-vue'
+import { Plus, Upload, Picture, Link, Edit, Delete } from '@element-plus/icons-vue'
 import { getCarouselList, createCarousel, updateCarousel, deleteCarousel, uploadCarouselImage } from '../api/carousel'
 import { formatDate } from '../utils/time-format'
 
@@ -127,6 +183,15 @@ const carouselForm = reactive({
   link: '',
   sort: 1,
   status: true
+})
+
+// 构建请求负载
+const buildRequestPayload = (source) => ({
+  image: source.imageUrl || source.image || '',
+  title: source.title || '',
+  link: source.link || '',
+  sort: Number(source.sort) || 1,
+  status: source.status ? 1 : 0
 })
 
 // 表单验证规则
@@ -152,15 +217,21 @@ const initData = async () => {
     // 加载轮播图数据
     const response = await getCarouselList()
 
-    // 转换后端数据格式，确保前端正确显示
-    carousels.value = response.data.map(item => ({
-      ...item,
-      status: item.status === 1, // 将后端的整数状态(1/0)转换为前端的布尔值(true/false)
-      title: item.title || ''   // 保留后端返回的title值，如果没有则设为空字符串
-    }))
+    if (response && response.code === 200 && Array.isArray(response.data)) {
+      // 转换后端数据格式，确保前端正确显示
+      carousels.value = response.data.map(item => ({
+        ...item,
+        status: item.status === 1, // 将后端的整数状态(1/0)转换为前端的布尔值(true/false)
+        title: item.title || ''   // 保留后端返回的title值，如果没有则设为空字符串
+      }))
+    } else {
+      const msg = response?.message || '加载轮播图数据失败'
+      console.warning(msg, response)
+      ElMessage.warning(msg)
+    }
   } catch (error) {
     console.error('加载数据失败:', error)
-    ElMessage.error('加载轮播图数据失败')
+    ElMessage.warning('加载轮播图数据失败')
   }
 }
 
@@ -225,17 +296,10 @@ const handleSubmit = async () => {
     // 验证表单
     await carouselFormRef.value.validate()
 
+    const payload = buildRequestPayload(carouselForm)
+
     if (dialogType.value === 'add') {
-      // 创建新对象，不包含id字段，并且将imageUrl改为image，与后端结构体字段名保持一致
-      const carouselData = {
-        image: carouselForm.imageUrl, // 注意：后端字段名是image，不是imageUrl
-        title: carouselForm.title,    // 添加title字段，确保标题数据被保存
-        link: carouselForm.link,
-        sort: carouselForm.sort,
-        status: carouselForm.status ? 1 : 0 // 后端status是整数类型：1-启用，0-禁用
-      }
-      // 调用真实的新增API
-      await createCarousel(carouselData)
+      await createCarousel(payload)
 
       // 重新加载数据
       await initData()
@@ -243,15 +307,7 @@ const handleSubmit = async () => {
       ElMessage.success('新增成功')
     } else {
       // 创建更新对象，将布尔值status转换为整数类型
-      const updateData = {
-        image: carouselForm.imageUrl, // 确保使用正确的字段名
-        title: carouselForm.title,    // 明确添加title字段
-        link: carouselForm.link,
-        sort: carouselForm.sort,
-        status: carouselForm.status ? 1 : 0 // 后端status是整数类型：1-启用，0-禁用
-      }
-      // 调用真实的更新API
-      await updateCarousel(carouselForm.id, updateData)
+      await updateCarousel(carouselForm.id, payload)
 
       // 重新加载数据
       await initData()
@@ -269,8 +325,7 @@ const handleSubmit = async () => {
 // 更新排序
 const handleSortChange = async (item) => {
   try {
-    // 向后端发送排序更新请求
-    await updateCarousel(item.id, { sort: item.sort })
+    await updateCarousel(item.id, buildRequestPayload(item))
 
     // 重新加载数据以确保排序正确显示
     await initData()
@@ -285,8 +340,7 @@ const handleSortChange = async (item) => {
 // 更新状态
 const handleStatusChange = async (item) => {
   try {
-    // 将前端的布尔值状态转换为后端需要的整数(1/0)，然后发送请求
-    await updateCarousel(item.id, { status: item.status ? 1 : 0 })
+    await updateCarousel(item.id, buildRequestPayload(item))
 
     ElMessage.success('状态已更新')
   } catch (error) {
@@ -392,62 +446,137 @@ onMounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.card-media {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 12px;
 }
 
 .carousel-image {
   width: 100%;
-  height: 200px;
+  height: 220px;
   object-fit: cover;
-  margin-bottom: 15px;
+  display: block;
 }
 
 .image-placeholder {
   width: 100%;
-  height: 200px;
+  height: 220px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: #f5f7fa;
+  background: linear-gradient(135deg, #eef2ff, #f8fbff);
   border: 1px dashed #dcdfe6;
-  margin-bottom: 15px;
+  color: #a0a7b4;
+  gap: 8px;
 }
 
 .image-placeholder .el-icon {
   font-size: 48px;
-  color: #c0c4cc;
+}
+
+.media-overlay {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.media-actions {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 8px;
+}
+
+.sort-pill {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+}
+
+.item-content {
+  padding: 16px 4px 4px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
   margin-bottom: 10px;
 }
 
-.image-placeholder span {
-  color: #909399;
+.carousel-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2d3d;
+  margin: 0;
 }
 
-.item-info {
-  margin-bottom: 15px;
+.carousel-subtitle {
+  margin: 4px 0 0;
+  color: #9aa5b1;
+  font-size: 13px;
 }
 
-.info-row {
+.carousel-link {
   display: flex;
   align-items: center;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin: 8px 0 16px;
+  font-size: 14px;
+  color: #409eff;
+  word-break: break-all;
 }
 
-.info-row:last-child {
-  margin-bottom: 0;
+.carousel-link.muted {
+  color: #c0c4cc;
 }
 
-.label {
-  width: 80px;
-  color: #606266;
+.carousel-link a {
+  color: inherit;
+  text-decoration: none;
 }
 
-.value {
+.carousel-link a:hover {
+  text-decoration: underline;
+}
+
+.meta-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.meta-pill {
   flex: 1;
+  background: #f5f7fa;
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #606266;
+  font-size: 13px;
+}
+
+.meta-pill strong {
+  font-size: 16px;
   color: #303133;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .item-actions {
@@ -463,30 +592,62 @@ onMounted(() => {
 }
 
 /* 上传组件样式 */
+.upload-card {
+  width: 100%;
+  border: 1px dashed #dcdfe6;
+  border-radius: 12px;
+  padding: 16px;
+  background: #f9fbff;
+}
+
+.avatar-uploader {
+  width: 100%;
+  display: block;
+}
+
 .avatar-uploader .avatar {
   width: 100%;
-  height: 200px;
+  height: 220px;
   display: block;
   object-fit: cover;
+  border-radius: 8px;
+}
+
+:deep(.el-upload) {
+  width: 100%;
+  display: block;
 }
 
 .avatar-uploader-icon {
   width: 100%;
-  height: 200px;
+  height: 220px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: #f5f7fa;
-  border: 1px dashed #dcdfe6;
-  font-size: 28px;
-  color: #c0c4cc;
+  background-color: #f1f5ff;
+  border-radius: 8px;
+  color: #8690a3;
   cursor: pointer;
+  border: 2px dashed #cfd8ff;
+  gap: 8px;
+  transition: border-color 0.3s ease, color 0.3s ease;
 }
 
-.upload-hint {
-  margin-top: 8px;
-  color: #909399;
-  font-size: 12px;
+.avatar-uploader-icon:hover {
+  border-color: #8da2ff;
+  color: #5c6ddc;
+}
+
+.upload-text {
+  font-size: 14px;
+}
+
+.upload-meta {
+  margin-top: 12px;
+  color: #8c939d;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 /* 响应式布局 */

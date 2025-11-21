@@ -28,6 +28,10 @@ var Config = struct {
 		SecretKey string `json:"secret_key"`
 		Bucket    string `json:"bucket"`
 	} `json:"minio"`
+	MiniApp struct {
+		AppID     string `json:"app_id"`
+		AppSecret string `json:"app_secret"`
+	} `json:"mini_app"`
 }{}
 
 // InitConfig 初始化配置
@@ -40,10 +44,10 @@ func InitConfig() {
 	Config.CORS.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	Config.CORS.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
 	// 设置MySQL数据库配置
-	Config.Database.Host = "113.44.164.151"
+	Config.Database.Host = "localhost"
 	Config.Database.Port = 3306
 	Config.Database.Username = "root"
-	Config.Database.Password = "hn02le.34lkdLKD"
+	Config.Database.Password = "12580abc"
 	Config.Database.DBName = "product_shop"
 	Config.Database.Charset = "utf8mb4"
 	// 设置MinIO配置
@@ -51,4 +55,7 @@ func InitConfig() {
 	Config.MinIO.AccessKey = "admin"
 	Config.MinIO.SecretKey = "hn02le.34lkdLKD"
 	Config.MinIO.Bucket = "selected"
+	// 小程序配置（用于用户登录）
+	Config.MiniApp.AppID = "wxa2535727aedb00cc"
+	Config.MiniApp.AppSecret = "4e39a349d4eff820c3d4fa8f6441f3f0"
 }
