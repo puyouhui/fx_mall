@@ -49,6 +49,14 @@
 			}
 		},
 		{
+			"path": "pages/profile/form",
+			"style": {
+				"navigationBarTitleText": "完善资料",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
 			"path" : "pages/my/my",
 			"style" : 
 			{

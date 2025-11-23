@@ -96,7 +96,7 @@ import { ref } from 'vue'
 import { getProductDetail } from '../api/products'
 import { miniLogin } from '../api/index'
 
-const IDENTITY_SELECT_PAGE = '/pages/identity/select'
+const PROFILE_FORM_PAGE = '/pages/profile/form'
 
 const isVisible = ref(false)
 const loading = ref(false)
@@ -190,14 +190,14 @@ const ensureMiniUserInfo = async () => {
   return await performMiniLogin()
 }
 
-const navigateToIdentityPage = () => {
+const navigateToProfilePage = () => {
   if (identityNavigating.value) {
     return
   }
 
   identityNavigating.value = true
   uni.navigateTo({
-    url: IDENTITY_SELECT_PAGE,
+    url: PROFILE_FORM_PAGE,
     complete: () => {
       setTimeout(() => {
         identityNavigating.value = false
@@ -214,14 +214,14 @@ const ensureUserReady = async () => {
       return false
     }
 
-    const userType = (info.user_type || info.userType || '').toLowerCase()
-    if (!userType || userType === 'unknown') {
+    const profileCompleted = info.profile_completed || info.profileCompleted || false
+    if (!profileCompleted) {
       uni.showToast({
-        title: '请先选择身份类型',
+        title: '请先完善资料',
         icon: 'none'
       })
       setTimeout(() => {
-        navigateToIdentityPage()
+        navigateToProfilePage()
       }, 500)
       return false
     }
@@ -242,6 +242,9 @@ const open = async (product) => {
     uni.showToast({ title: '商品信息有误', icon: 'none' })
     return
   }
+
+  // 刷新用户状态，确保获取最新信息（特别是从资料填写页面返回后）
+  refreshUserStateFromStorage()
 
   loading.value = true
   uni.showLoading({

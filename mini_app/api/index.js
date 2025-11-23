@@ -1,6 +1,6 @@
 // index.js - 小程序首页API
 
-import { get, post, put } from './request';
+import { get, post, put, BASE_URL } from './request';
 
 /**
  * 获取轮播图数据
@@ -145,5 +145,58 @@ export const updateMiniUserType = (userType, token) => {
       'content-type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     }
+  });
+};
+
+/**
+ * 更新小程序用户资料
+ * @param {Object} profileData - 用户资料数据
+ * @param {string} profileData.name - 店铺名称
+ * @param {string} profileData.contact - 联系人
+ * @param {string} profileData.phone - 手机号码
+ * @param {string} profileData.address - 地址
+ * @param {string} profileData.storeType - 店铺类型（可选）
+ * @param {string} profileData.salesCode - 销售员代码（可选）
+ * @param {string} token - 用户token
+ */
+export const updateMiniUserProfile = (profileData, token) => {
+  return put('/mini-app/users/profile', profileData, {
+    header: {
+      'content-type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
+ * 上传小程序用户头像
+ * @param {string} filePath - 图片文件路径
+ * @param {string} token - 用户token
+ */
+export const uploadMiniUserAvatar = (filePath, token) => {
+  return new Promise((resolve, reject) => {
+    uni.uploadFile({
+      url: BASE_URL + '/mini-app/users/avatar',
+      filePath: filePath,
+      name: 'file',
+      header: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      success: (res) => {
+        try {
+          const data = JSON.parse(res.data);
+          if (data.code === 200) {
+            resolve(data);
+          } else {
+            reject(new Error(data.message || '上传失败'));
+          }
+        } catch (error) {
+          reject(new Error('解析响应失败'));
+        }
+      },
+      fail: (err) => {
+        reject(err);
+      }
+    });
   });
 };

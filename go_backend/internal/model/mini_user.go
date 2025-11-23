@@ -2,6 +2,7 @@ package model
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 
 	"go_backend/internal/database"
@@ -201,6 +202,72 @@ func UpdateMiniAppUserType(uniqueID, userType string) error {
 		SET user_type = ?, updated_at = NOW()
 		WHERE unique_id = ?
 	`, userType, uniqueID)
+	return err
+}
+
+// UpdateMiniAppUserAvatar 更新用户头像
+func UpdateMiniAppUserAvatar(uniqueID, avatarURL string) error {
+	_, err := database.DB.Exec(`
+		UPDATE mini_app_users
+		SET avatar = ?, updated_at = NOW()
+		WHERE unique_id = ?
+	`, avatarURL, uniqueID)
+	return err
+}
+
+// UpdateMiniAppUserProfile 更新用户资料，提交后自动设为零售身份并标记资料已完善
+func UpdateMiniAppUserProfile(uniqueID string, profileData map[string]interface{}) error {
+	// 构建更新SQL
+	updates := []string{}
+	args := []interface{}{}
+
+	if name, ok := profileData["name"].(string); ok && name != "" {
+		updates = append(updates, "name = ?")
+		args = append(args, name)
+	}
+	if contact, ok := profileData["contact"].(string); ok && contact != "" {
+		updates = append(updates, "contact = ?")
+		args = append(args, contact)
+	}
+	if phone, ok := profileData["phone"].(string); ok && phone != "" {
+		updates = append(updates, "phone = ?")
+		args = append(args, phone)
+	}
+	if address, ok := profileData["address"].(string); ok && address != "" {
+		updates = append(updates, "address = ?")
+		args = append(args, address)
+	}
+	if storeType, ok := profileData["storeType"].(string); ok {
+		updates = append(updates, "store_type = ?")
+		args = append(args, storeType)
+	}
+	if salesCode, ok := profileData["salesCode"].(string); ok {
+		updates = append(updates, "sales_code = ?")
+		args = append(args, salesCode)
+	}
+	if latitude, ok := profileData["latitude"].(float64); ok {
+		updates = append(updates, "latitude = ?")
+		args = append(args, latitude)
+	}
+	if longitude, ok := profileData["longitude"].(float64); ok {
+		updates = append(updates, "longitude = ?")
+		args = append(args, longitude)
+	}
+
+	// 提交资料后，自动设置为零售身份，并标记资料已完善
+	updates = append(updates, "user_type = ?")
+	args = append(args, "retail")
+	updates = append(updates, "profile_completed = ?")
+	args = append(args, 1)
+	updates = append(updates, "updated_at = NOW()")
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	args = append(args, uniqueID)
+	query := "UPDATE mini_app_users SET " + strings.Join(updates, ", ") + " WHERE unique_id = ?"
+	_, err := database.DB.Exec(query, args...)
 	return err
 }
 

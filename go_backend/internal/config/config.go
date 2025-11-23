@@ -51,10 +51,10 @@ func InitConfig() {
 	Config.Database.DBName = "product_shop"
 	Config.Database.Charset = "utf8mb4"
 	// 设置MinIO配置
-	Config.MinIO.Endpoint = "113.44.164.151:9000"
-	Config.MinIO.AccessKey = "admin"
-	Config.MinIO.SecretKey = "hn02le.34lkdLKD"
-	Config.MinIO.Bucket = "selected"
+	Config.MinIO.Endpoint = "124.223.94.29:9000"
+	Config.MinIO.AccessKey = "puyouhui"
+	Config.MinIO.SecretKey = "zxcvbnmasABC123!"
+	Config.MinIO.Bucket = "fengxing"
 	// 小程序配置（用于用户登录）
 	Config.MiniApp.AppID = "wxa2535727aedb00cc"
 	Config.MiniApp.AppSecret = "4e39a349d4eff820c3d4fa8f6441f3f0"

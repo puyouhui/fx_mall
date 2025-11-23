@@ -51,6 +51,14 @@ func main() {
 		apiGroup.GET("/products/hot", api.GetHotProducts)         // 获取热销商品列表
 		apiGroup.POST("/auth/login", api.MiniAppLogin)            // 小程序登录
 		apiGroup.PUT("/mini-app/users/type", api.UpdateMiniAppUserType)
+		apiGroup.PUT("/mini-app/users/profile", api.UpdateMiniAppUserProfile)
+		
+		// 需要认证的小程序用户接口
+		miniAppProtectedGroup := apiGroup.Group("/mini-app/users")
+		miniAppProtectedGroup.Use(api.MiniAppAuthMiddleware())
+		{
+			miniAppProtectedGroup.POST("/avatar", api.UploadMiniAppUserAvatar) // 上传用户头像
+		}
 
 		// 分类相关接口
 		apiGroup.GET("/products/category", api.GetProductsByCategory) // 根据分类ID获取该分类下的商品列表
