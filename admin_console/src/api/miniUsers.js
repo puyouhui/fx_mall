@@ -8,3 +8,18 @@ export function getMiniUsers(params) {
   })
 }
 
+export function getMiniUserDetail(id) {
+  return request({
+    url: `/admin/mini-app/users/${id}`,
+    method: 'get'
+  })
+}
+
+export function updateMiniUser(id, data) {
+  return request({
+    url: `/admin/mini-app/users/${id}`,
+    method: 'put',
+    data
+  })
+}
+

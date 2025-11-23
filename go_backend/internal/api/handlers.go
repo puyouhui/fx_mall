@@ -624,6 +624,7 @@ func GetSpecialProducts(c *gin.Context) {
 }
 
 // SearchProductSuggestions 搜索商品建议
+// 搜索范围：商品名称和描述
 func SearchProductSuggestions(c *gin.Context) {
 	// 从查询参数中获取搜索关键词
 	keyword := strings.TrimSpace(c.Query("keyword"))
@@ -635,8 +636,14 @@ func SearchProductSuggestions(c *gin.Context) {
 
 	// 解析限制参数
 	limit := parseQueryInt(c, "limit", 10)
+	if limit <= 0 {
+		limit = 10 // 默认返回10条建议
+	}
+	if limit > 50 {
+		limit = 50 // 最大限制50条
+	}
 
-	// 从数据库获取商品建议
+	// 从数据库获取商品建议（搜索范围：商品名称和描述）
 	suggestions, err := model.SearchProductSuggestions(keyword, limit)
 	if err != nil {
 		log.Printf("获取搜索建议失败: %v", err)
@@ -648,6 +655,7 @@ func SearchProductSuggestions(c *gin.Context) {
 }
 
 // SearchProducts 搜索商品
+// 搜索范围：商品名称和描述
 func SearchProducts(c *gin.Context) {
 	// 从查询参数中获取搜索关键词
 	keyword := strings.TrimSpace(c.Query("keyword"))
@@ -660,7 +668,18 @@ func SearchProducts(c *gin.Context) {
 	pageNum := parseQueryInt(c, "pageNum", 1)
 	pageSize := parseQueryInt(c, "pageSize", 10)
 
-	// 从数据库搜索商品
+	// 限制分页参数范围
+	if pageNum <= 0 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	if pageSize > 100 {
+		pageSize = 100 // 最大每页100条
+	}
+
+	// 从数据库搜索商品（搜索范围：商品名称和描述）
 	products, total, err := model.SearchProductsWithPagination(keyword, pageNum, pageSize)
 	if err != nil {
 		log.Printf("搜索商品失败: %v", err)

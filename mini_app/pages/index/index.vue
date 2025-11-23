@@ -137,7 +137,7 @@
 </template>
 
 <script>
-import { getCarousels, getCategories, getSpecialProducts, getHotProducts } from '../../api/index';
+import { getCarousels, getCategories, getSpecialProducts, getHotProducts, getMiniUserInfo } from '../../api/index';
 import ProductSelector from '../../components/ProductSelector.vue';
 export default {
 	components: {
@@ -171,6 +171,9 @@ export default {
 		};
 	},
 	onLoad() {
+		// 初始化用户类型
+		this.initUserType();
+		
 		this.loadCarousels();
 		this.loadCategories();
 		this.loadSpecialProducts();
@@ -186,6 +189,10 @@ export default {
 		// 获取胶囊按钮信息，实现精确对齐
 		this.getMenuButtonInfo();
 	},
+	// 页面显示时更新用户信息
+	onShow() {
+		this.updateUserInfo();
+	},
 	// 页面滚动事件
 	onPageScroll(e) {
 		const scrollTop = e.scrollTop;
@@ -199,6 +206,71 @@ export default {
 		this.lastScrollTop = scrollTop;
 	},
 	methods: {
+		// 初始化用户类型
+		initUserType() {
+			const userInfo = uni.getStorageSync('miniUserInfo');
+			if (userInfo && userInfo.user_type) {
+				this.userType = userInfo.user_type;
+			} else {
+				this.userType = null;
+			}
+		},
+		
+		// 更新用户信息
+		async updateUserInfo() {
+			try {
+				const token = uni.getStorageSync('miniUserToken');
+				if (!token) {
+					// 未登录，不获取用户信息
+					this.userType = null;
+					return;
+				}
+
+				const res = await getMiniUserInfo(token);
+				if (res && res.code === 200 && res.data) {
+					// 更新本地存储的用户信息
+					uni.setStorageSync('miniUserInfo', res.data);
+					if (res.data.unique_id) {
+						uni.setStorageSync('miniUserUniqueId', res.data.unique_id);
+					}
+					// 更新用户类型
+					this.userType = res.data.user_type || null;
+					// 重新计算产品价格
+					this.recalculateAllPrices();
+				}
+			} catch (error) {
+				console.error('获取用户信息失败:', error);
+				// 静默失败，不显示错误提示
+				this.userType = null;
+			}
+		},
+		
+		// 重新计算所有产品价格
+		recalculateAllPrices() {
+			// 重新计算热销产品价格
+			if (this.hotProducts && this.hotProducts.length > 0) {
+				this.hotProducts.forEach(product => {
+					this.calculateProductPriceRange(product);
+				});
+			}
+			// 重新计算特价产品价格
+			if (this.specialProducts && this.specialProducts.length > 0) {
+				this.specialProducts.forEach(product => {
+					this.calculateProductPriceRange(product);
+				});
+			}
+			// 重新计算分类产品价格
+			if (this.sections && this.sections.length > 0) {
+				this.sections.forEach(section => {
+					if (section.products && section.products.length > 0) {
+						section.products.forEach(product => {
+							this.calculateProductPriceRange(product);
+						});
+					}
+				});
+			}
+		},
+		
 		// 跳转到搜索页面
 		goToSearch() {
 			uni.navigateTo({
@@ -337,29 +409,53 @@ export default {
 				return;
 			}
 
-			// 收集所有规格的批发价和零售价
-			const allPrices = [];
+			// 根据用户类型决定显示哪种价格
+			const isWholesaleUser = this.userType === 'wholesale';
+			
+			// 收集价格
+			const prices = [];
 			product.specs.forEach(spec => {
-				// 获取批发价
-				const wholesalePrice = spec.wholesale_price || spec.wholesalePrice;
-				if (wholesalePrice && wholesalePrice > 0) {
-					allPrices.push(parseFloat(wholesalePrice));
-				}
-				
-				// 获取零售价
-				const retailPrice = spec.retail_price || spec.retailPrice;
-				if (retailPrice && retailPrice > 0) {
-					allPrices.push(parseFloat(retailPrice));
+				if (isWholesaleUser) {
+					// 批发用户：显示批发价
+					const wholesalePrice = spec.wholesale_price || spec.wholesalePrice;
+					if (wholesalePrice && wholesalePrice > 0) {
+						prices.push(parseFloat(wholesalePrice));
+					}
+				} else {
+					// 未登录或零售用户：显示零售价
+					const retailPrice = spec.retail_price || spec.retailPrice;
+					if (retailPrice && retailPrice > 0) {
+						prices.push(parseFloat(retailPrice));
+					}
 				}
 			});
 
-			if (allPrices.length === 0) {
+			if (prices.length === 0) {
+				// 如果没有找到对应类型的价格，尝试使用另一种价格作为后备
+				product.specs.forEach(spec => {
+					if (isWholesaleUser) {
+						// 批发用户找不到批发价，使用零售价作为后备
+						const retailPrice = spec.retail_price || spec.retailPrice;
+						if (retailPrice && retailPrice > 0) {
+							prices.push(parseFloat(retailPrice));
+						}
+					} else {
+						// 零售用户找不到零售价，使用批发价作为后备
+						const wholesalePrice = spec.wholesale_price || spec.wholesalePrice;
+						if (wholesalePrice && wholesalePrice > 0) {
+							prices.push(parseFloat(wholesalePrice));
+						}
+					}
+				});
+			}
+
+			if (prices.length === 0) {
 				product.displayPrice = product.price || '0.00';
 				return;
 			}
 
-			// 只计算最低价格
-			const minPrice = Math.min(...allPrices);
+			// 计算最低价格
+			const minPrice = Math.min(...prices);
 			product.displayPrice = minPrice.toFixed(2);
 		},
 

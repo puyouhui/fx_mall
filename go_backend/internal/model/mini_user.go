@@ -88,6 +88,67 @@ func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 	return &user, nil
 }
 
+// GetMiniAppUserByID 根据ID获取用户详情（后台管理使用）
+func GetMiniAppUserByID(id int) (*MiniAppUser, error) {
+	query := `
+		SELECT id, unique_id, avatar, name, contact, phone, address, latitude, longitude, sales_code, store_type, user_type, profile_completed, created_at, updated_at
+		FROM mini_app_users
+		WHERE id = ?
+		LIMIT 1`
+
+	var (
+		user                          MiniAppUser
+		avatar, name, contact, phone  sql.NullString
+		address, salesCode, storeType sql.NullString
+		latitude, longitude           sql.NullFloat64
+		profileCompleted              sql.NullInt64
+	)
+
+	err := database.DB.QueryRow(query, id).Scan(
+		&user.ID,
+		&user.UniqueID,
+		&avatar,
+		&name,
+		&contact,
+		&phone,
+		&address,
+		&latitude,
+		&longitude,
+		&salesCode,
+		&storeType,
+		&user.UserType,
+		&profileCompleted,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	user.Avatar = nullString(avatar)
+	user.Name = nullString(name)
+	user.Contact = nullString(contact)
+	user.Phone = nullString(phone)
+	user.Address = nullString(address)
+	user.SalesCode = nullString(salesCode)
+	user.StoreType = nullString(storeType)
+	if latitude.Valid {
+		val := latitude.Float64
+		user.Latitude = &val
+	}
+	if longitude.Valid {
+		val := longitude.Float64
+		user.Longitude = &val
+	}
+	user.ProfileCompleted = profileCompleted.Valid && profileCompleted.Int64 == 1
+
+	return &user, nil
+}
+
 // CreateMiniAppUser 创建用户（仅记录唯一ID，其他信息后续完善）
 func CreateMiniAppUser(uniqueID string) (*MiniAppUser, error) {
 	_, err := database.DB.Exec(`
@@ -267,6 +328,78 @@ func UpdateMiniAppUserProfile(uniqueID string, profileData map[string]interface{
 
 	args = append(args, uniqueID)
 	query := "UPDATE mini_app_users SET " + strings.Join(updates, ", ") + " WHERE unique_id = ?"
+	_, err := database.DB.Exec(query, args...)
+	return err
+}
+
+// UpdateMiniAppUserByAdmin 管理员更新用户信息（可修改所有字段包括用户类型）
+func UpdateMiniAppUserByAdmin(id int, updateData map[string]interface{}) error {
+	// 构建更新SQL
+	updates := []string{}
+	args := []interface{}{}
+
+	if name, ok := updateData["name"].(string); ok {
+		updates = append(updates, "name = ?")
+		args = append(args, name)
+	}
+	if contact, ok := updateData["contact"].(string); ok {
+		updates = append(updates, "contact = ?")
+		args = append(args, contact)
+	}
+	if phone, ok := updateData["phone"].(string); ok {
+		updates = append(updates, "phone = ?")
+		args = append(args, phone)
+	}
+	if address, ok := updateData["address"].(string); ok {
+		updates = append(updates, "address = ?")
+		args = append(args, address)
+	}
+	if storeType, ok := updateData["storeType"].(string); ok {
+		updates = append(updates, "store_type = ?")
+		args = append(args, storeType)
+	}
+	if salesCode, ok := updateData["salesCode"].(string); ok {
+		updates = append(updates, "sales_code = ?")
+		args = append(args, salesCode)
+	}
+	if avatar, ok := updateData["avatar"].(string); ok {
+		updates = append(updates, "avatar = ?")
+		args = append(args, avatar)
+	}
+	if latitude, ok := updateData["latitude"].(float64); ok {
+		updates = append(updates, "latitude = ?")
+		args = append(args, latitude)
+	}
+	if longitude, ok := updateData["longitude"].(float64); ok {
+		updates = append(updates, "longitude = ?")
+		args = append(args, longitude)
+	}
+	// 管理员可以修改用户类型
+	if userType, ok := updateData["userType"].(string); ok {
+		updates = append(updates, "user_type = ?")
+		args = append(args, userType)
+	}
+	// 管理员可以修改资料完善状态
+	if profileCompleted, ok := updateData["profileCompleted"].(bool); ok {
+		var completedValue int
+		if profileCompleted {
+			completedValue = 1
+		} else {
+			completedValue = 0
+		}
+		updates = append(updates, "profile_completed = ?")
+		args = append(args, completedValue)
+	}
+
+	// 更新更新时间
+	updates = append(updates, "updated_at = NOW()")
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	args = append(args, id)
+	query := "UPDATE mini_app_users SET " + strings.Join(updates, ", ") + " WHERE id = ?"
 	_, err := database.DB.Exec(query, args...)
 	return err
 }

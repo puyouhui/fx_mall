@@ -131,7 +131,7 @@
 </template>
 
 <script>
-import { getCategories } from '../../api/index.js';
+import { getCategories, getMiniUserInfo } from '../../api/index.js';
 import { getProductsByCategory } from '../../api/products.js';
 import ProductSelector from '../../components/ProductSelector.vue';
 
@@ -156,6 +156,7 @@ export default {
 
 			// 商品相关
 			currentProducts: [],
+			userType: null, // 用户类型：'retail' | 'wholesale' | null（未登录）
 
 			// 布局相关
 			categoriesContainerHeight: 100, // 分类容器固定高度
@@ -174,6 +175,9 @@ export default {
 
 	// 生命周期函数 - 监听页面加载
 	onLoad(options) {
+		// 初始化用户类型
+		this.initUserType();
+		
 		// 获取设备信息，设置状态栏高度
 		const systemInfo = uni.getSystemInfoSync();
 		this.statusBarHeight = systemInfo.statusBarHeight;
@@ -195,6 +199,9 @@ export default {
 
 	// 生命周期函数 - 监听页面显示
 	onShow() {
+		// 更新用户信息
+		this.updateUserInfo();
+		
 		// 只在分类数据为空时才重新加载
 		if (this.primaryCategories.length === 0) {
 			this.loadPrimaryCategories();
@@ -224,6 +231,57 @@ export default {
 	},
 
 	methods: {
+		// 初始化用户类型
+		initUserType() {
+			const userInfo = uni.getStorageSync('miniUserInfo');
+			if (userInfo && userInfo.user_type) {
+				this.userType = userInfo.user_type;
+			} else {
+				this.userType = null;
+			}
+		},
+		
+		// 更新用户信息
+		async updateUserInfo() {
+			try {
+				const token = uni.getStorageSync('miniUserToken');
+				if (!token) {
+					// 未登录，不获取用户信息
+					this.userType = null;
+					// 重新计算产品价格
+					this.recalculateAllPrices();
+					return;
+				}
+
+				const res = await getMiniUserInfo(token);
+				if (res && res.code === 200 && res.data) {
+					// 更新本地存储的用户信息
+					uni.setStorageSync('miniUserInfo', res.data);
+					if (res.data.unique_id) {
+						uni.setStorageSync('miniUserUniqueId', res.data.unique_id);
+					}
+					// 更新用户类型
+					this.userType = res.data.user_type || null;
+					// 重新计算产品价格
+					this.recalculateAllPrices();
+				}
+			} catch (error) {
+				console.error('获取用户信息失败:', error);
+				// 静默失败，不显示错误提示
+				this.userType = null;
+			}
+		},
+		
+		// 重新计算所有产品价格
+		recalculateAllPrices() {
+			// 重新计算当前分类的产品价格
+			if (this.currentProducts && this.currentProducts.length > 0) {
+				this.currentProducts.forEach(product => {
+					this.applyPriceRange(product);
+				});
+			}
+		},
+		
 		// 跳转到搜索页面
 		goToSearch() {
 			uni.navigateTo({
@@ -329,7 +387,7 @@ export default {
 			this.$refs.productSelector?.open(product);
 		},
 
-		// 计算并应用商品价格范围（批发价/零售价）
+		// 计算并应用商品价格范围（根据用户类型显示批发价或零售价）
 		applyPriceRange(product) {
 			let specs = product.specs;
 			if (typeof specs === 'string') {
@@ -344,12 +402,36 @@ export default {
 				specs = [];
 			}
 
+			// 根据用户类型决定显示哪种价格
+			const isWholesaleUser = this.userType === 'wholesale';
+			
 			const prices = [];
 			specs.forEach(spec => {
-				this.collectPriceValue(spec?.wholesale_price ?? spec?.wholesalePrice, prices);
-				this.collectPriceValue(spec?.retail_price ?? spec?.retailPrice, prices);
-				this.collectPriceValue(spec?.price, prices);
+				if (isWholesaleUser) {
+					// 批发用户：显示批发价
+					this.collectPriceValue(spec?.wholesale_price ?? spec?.wholesalePrice, prices);
+				} else {
+					// 未登录或零售用户：显示零售价
+					this.collectPriceValue(spec?.retail_price ?? spec?.retailPrice, prices);
+				}
 			});
+
+			// 如果没有找到对应类型的价格，使用另一种价格作为后备
+			if (!prices.length) {
+				specs.forEach(spec => {
+					if (isWholesaleUser) {
+						// 批发用户找不到批发价，使用零售价作为后备
+						this.collectPriceValue(spec?.retail_price ?? spec?.retailPrice, prices);
+					} else {
+						// 零售用户找不到零售价，使用批发价作为后备
+						this.collectPriceValue(spec?.wholesale_price ?? spec?.wholesalePrice, prices);
+					}
+					// 最后使用通用价格字段
+					if (!prices.length) {
+						this.collectPriceValue(spec?.price, prices);
+					}
+				});
+			}
 
 			if (!prices.length) {
 				const basePrice = Number(product.price) || 0;
@@ -359,18 +441,11 @@ export default {
 				return;
 			}
 
+			// 只显示最低价格
 			const minPrice = Math.min(...prices);
-			const maxPrice = Math.max(...prices);
-			const minFormatted = this.formatRangePriceValue(minPrice);
-			const maxFormatted = this.formatRangePriceValue(maxPrice);
-
-			if (minPrice === maxPrice) {
-				product.price_range = minFormatted;
-				product.displayPrice = minFormatted;
-			} else {
-				product.price_range = `${minFormatted}~${maxFormatted}`;
-				product.displayPrice = minFormatted;
-			}
+			const formatted = this.formatRangePriceValue(minPrice);
+			product.price_range = formatted;
+			product.displayPrice = formatted;
 		},
 
 		collectPriceValue(value, container) {

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"go_backend/internal/database"
@@ -313,16 +314,24 @@ func DeleteProduct(id int) error {
 }
 
 // SearchProductSuggestions 搜索商品建议（只返回商品名称）
+// 搜索范围：商品名称(name)和商品描述(description)
 func SearchProductSuggestions(keyword string, limit int) ([]string, error) {
 	if limit <= 0 {
 		limit = 10 // 默认返回10条建议
 	}
 
+	// 如果关键词为空，返回空数组
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		return []string{}, nil
+	}
+
 	var suggestions []string
 	searchPattern := "%" + keyword + "%"
 
-	// 查询商品名称，去重并按ID排序
-	query := "SELECT DISTINCT name FROM products WHERE status = 1 AND (name LIKE ? OR description LIKE ?) ORDER BY id DESC LIMIT ?"
+	// 查询商品名称，搜索范围：商品名称和描述
+	// 使用 GROUP BY 去重，按最大 ID 降序排列（最新商品优先）
+	query := "SELECT name FROM products WHERE status = 1 AND (name LIKE ? OR description LIKE ?) GROUP BY name ORDER BY MAX(id) DESC LIMIT ?"
 	rows, err := database.DB.Query(query, searchPattern, searchPattern, limit)
 	if err != nil {
 		return nil, fmt.Errorf("搜索商品建议失败: %v", err)
@@ -337,28 +346,46 @@ func SearchProductSuggestions(keyword string, limit int) ([]string, error) {
 		suggestions = append(suggestions, name)
 	}
 
+	// 检查是否有错误
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("遍历搜索结果失败: %v", err)
+	}
+
 	return suggestions, nil
 }
 
 // SearchProductsWithPagination 搜索商品并支持分页
+// 搜索范围：商品名称(name)和商品描述(description)
 func SearchProductsWithPagination(keyword string, pageNum, pageSize int) ([]Product, int, error) {
 	var products []Product
 	var total int
 
+	// 如果关键词为空，返回空结果
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		return []Product{}, 0, nil
+	}
+
 	// 计算偏移量
 	offset := (pageNum - 1) * pageSize
+	if offset < 0 {
+		offset = 0
+	}
+	if pageSize <= 0 {
+		pageSize = 10 // 默认每页10条
+	}
 
 	// 构建搜索查询（搜索商品名称和描述）
 	searchPattern := "%" + keyword + "%"
 
 	// 先查询总数
-	countQuery := "SELECT COUNT(*) FROM products WHERE status = 1 AND (name LIKE ? OR description LIKE ?)"
+	countQuery := "SELECT COUNT(DISTINCT id) FROM products WHERE status = 1 AND (name LIKE ? OR description LIKE ?)"
 	err := database.DB.QueryRow(countQuery, searchPattern, searchPattern).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询商品总数失败: %v", err)
 	}
 
-	// 查询商品列表
+	// 查询商品列表（搜索范围：商品名称和描述）
 	query := "SELECT id, name, description, original_price, price, category_id, is_special, images, specs, status, created_at, updated_at FROM products WHERE status = 1 AND (name LIKE ? OR description LIKE ?) ORDER BY id DESC LIMIT ? OFFSET ?"
 	rows, err := database.DB.Query(query, searchPattern, searchPattern, pageSize, offset)
 	if err != nil {
@@ -393,6 +420,11 @@ func SearchProductsWithPagination(keyword string, pageNum, pageSize int) ([]Prod
 		}
 
 		products = append(products, product)
+	}
+
+	// 检查是否有错误
+	if err = rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("遍历搜索结果失败: %v", err)
 	}
 
 	return products, total, nil

@@ -370,7 +370,8 @@ const productRules = {
     { max: 500, message: '商品描述不能超过 500 个字符', trigger: 'blur' }
   ],
   supplierId: [
-    { required: true, message: '请选择供应商', trigger: 'change' }
+    // 供应商ID为可选，后端会自动分配默认供应商
+    // 如果用户未选择供应商，后端会使用默认的自营供应商
   ]
 }
 
@@ -565,14 +566,15 @@ const handleAddProduct = () => {
   if (productFormRef.value) {
     productFormRef.value.resetFields()
   }
-  // 清空表单数据，默认选择自营供应商
+  // 清空表单数据，尝试默认选择自营供应商
+  // 如果供应商列表还未加载完成，supplierId 将为 null，后端会自动分配默认供应商
   const selfOperatedSupplier = suppliers.value.find(s => s.username === 'self_operated')
   Object.assign(productForm, {
     id: null,
     name: '',
     categoryIds: [],
     categoryId: '',
-    supplierId: selfOperatedSupplier ? selfOperatedSupplier.id : null, // 默认选择自营供应商
+    supplierId: selfOperatedSupplier ? selfOperatedSupplier.id : null, // 如果找到自营供应商则使用，否则为 null（后端会自动分配）
     originalPrice: 0, // 保留字段但不再使用
     price: 0, // 保留字段但不再使用
     isSpecial: false,

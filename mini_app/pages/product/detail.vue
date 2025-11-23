@@ -65,15 +65,21 @@
 					<view class="spec-info">
 						<view class="spec-header">
 							<text class="spec-name">{{ spec.name }}</text>
-							<text class="spec-description" v-if="spec.description"> ({{ spec.description }})</text>
+							<text class="spec-description" v-if="spec.description && userType === 'wholesale'"> ({{ spec.description }})</text>
 						</view>
 						<view class="spec-prices">
-							<text class="spec-price" v-if="spec.retail_price || spec.retailPrice">
-								零售价: ￥{{ (spec.retail_price || spec.retailPrice).toFixed(2) }}
-							</text>
-							<text class="spec-wholesale-price" v-if="spec.wholesale_price || spec.wholesalePrice" style="font-size: 24rpx; color: #999; margin-left: 10rpx;">
-								批发价: ￥{{ (spec.wholesale_price || spec.wholesalePrice).toFixed(2) }}
-							</text>
+							<view class="spec-price-container" :class="{ 'wholesale-layout': userType === 'wholesale' }">
+								<text v-if="userType === 'wholesale'" class="spec-price">
+									批发价: ￥{{ formatSpecPrice(spec, 'wholesale') }}
+								</text>
+								<text v-else class="spec-price">
+									￥{{ formatSpecPrice(spec, 'retail') }}
+								</text>
+								<!-- 批发用户显示零售价（灰色） -->
+								<text v-if="userType === 'wholesale'" class="spec-retail-price">
+									零售价: ￥{{ formatSpecPrice(spec, 'retail') }}
+								</text>
+							</view>
 						</view>
 					</view>
 					<view class="spec-action">
@@ -216,6 +222,7 @@
 
 <script>
 import { getProductDetail } from '../../api/products';
+import { getMiniUserInfo } from '../../api/index';
 export default {
 	data() {
 		return {
@@ -245,10 +252,14 @@ export default {
 			statusBarHeight: 0,
 			cartCount: 0, // 购物车商品总数
 			scrollTop: 0, // 滚动距离
-			hasScrolled: false // 是否已经滚动
+			hasScrolled: false, // 是否已经滚动
+			userType: null // 用户类型：'retail' | 'wholesale' | null（未登录）
 		};
 	},
 	onLoad(options) {
+		// 初始化用户类型
+		this.initUserType();
+		
 		// 获取设备信息，特别是状态栏高度
 		const systemInfo = uni.getSystemInfoSync();
 		this.statusBarHeight = systemInfo.statusBarHeight;
@@ -256,6 +267,10 @@ export default {
 		if (options && options.id) {
 			this.loadProductDetail(options.id);
 		}
+	},
+	// 页面显示时更新用户信息
+	onShow() {
+		this.updateUserInfo();
 	},
 	onPageScroll(e) {
 		// 监听页面滚动
@@ -269,6 +284,51 @@ export default {
 		this.scrollTop = currentScrollTop;
 	},
 	methods: {
+		// 初始化用户类型
+		initUserType() {
+			const userInfo = uni.getStorageSync('miniUserInfo');
+			if (userInfo && userInfo.user_type) {
+				this.userType = userInfo.user_type;
+			} else {
+				this.userType = null;
+			}
+		},
+		
+		// 更新用户信息
+		async updateUserInfo() {
+			try {
+				const token = uni.getStorageSync('miniUserToken');
+				if (!token) {
+					// 未登录，不获取用户信息
+					this.userType = null;
+					// 重新计算价格
+					if (this.product && this.product.id) {
+						this.calculatePriceRange();
+					}
+					return;
+				}
+
+				const res = await getMiniUserInfo(token);
+				if (res && res.code === 200 && res.data) {
+					// 更新本地存储的用户信息
+					uni.setStorageSync('miniUserInfo', res.data);
+					if (res.data.unique_id) {
+						uni.setStorageSync('miniUserUniqueId', res.data.unique_id);
+					}
+					// 更新用户类型
+					this.userType = res.data.user_type || null;
+					// 重新计算价格
+					if (this.product && this.product.id) {
+						this.calculatePriceRange();
+					}
+				}
+			} catch (error) {
+				console.error('获取用户信息失败:', error);
+				// 静默失败，不显示错误提示
+				this.userType = null;
+			}
+		},
+		
 		// 加载商品详情
 		async loadProductDetail(productId) {
 			try {
@@ -365,7 +425,7 @@ export default {
 			this.currentImageIndex = e.detail.current;
 		},
 
-		// 计算价格范围（使用批发价和零售价）
+		// 计算价格范围（根据用户类型显示批发价或零售价）
 		calculatePriceRange() {
 			// 处理没有规格的情况
 			if (!this.product.specs || this.product.specs.length === 0) {
@@ -377,24 +437,52 @@ export default {
 				return;
 			}
 
-			// 收集所有规格的批发价和零售价
-			const allPrices = [];
+			// 根据用户类型决定显示哪种价格
+			const isWholesaleUser = this.userType === 'wholesale';
+			
+			// 收集价格
+			const prices = [];
 			this.product.specs.forEach(spec => {
-				// 获取批发价
-				const wholesalePrice = spec.wholesale_price || spec.wholesalePrice;
-				if (wholesalePrice && wholesalePrice > 0) {
-					allPrices.push(parseFloat(wholesalePrice));
-				}
-				
-				// 获取零售价
-				const retailPrice = spec.retail_price || spec.retailPrice;
-				if (retailPrice && retailPrice > 0) {
-					allPrices.push(parseFloat(retailPrice));
+				if (isWholesaleUser) {
+					// 批发用户：显示批发价
+					const wholesalePrice = spec.wholesale_price || spec.wholesalePrice;
+					if (wholesalePrice && wholesalePrice > 0) {
+						prices.push(parseFloat(wholesalePrice));
+					}
+				} else {
+					// 未登录或零售用户：显示零售价
+					const retailPrice = spec.retail_price || spec.retailPrice;
+					if (retailPrice && retailPrice > 0) {
+						prices.push(parseFloat(retailPrice));
+					}
 				}
 			});
 
+			// 如果没有找到对应类型的价格，使用另一种价格作为后备
+			if (prices.length === 0) {
+				this.product.specs.forEach(spec => {
+					if (isWholesaleUser) {
+						// 批发用户找不到批发价，使用零售价作为后备
+						const retailPrice = spec.retail_price || spec.retailPrice;
+						if (retailPrice && retailPrice > 0) {
+							prices.push(parseFloat(retailPrice));
+						}
+					} else {
+						// 零售用户找不到零售价，使用批发价作为后备
+						const wholesalePrice = spec.wholesale_price || spec.wholesalePrice;
+						if (wholesalePrice && wholesalePrice > 0) {
+							prices.push(parseFloat(wholesalePrice));
+						}
+					}
+					// 最后使用通用价格字段
+					if (prices.length === 0 && spec.price && spec.price > 0) {
+						prices.push(parseFloat(spec.price));
+					}
+				});
+			}
+
 			// 处理所有价格为0的情况
-			if (allPrices.length === 0) {
+			if (prices.length === 0) {
 				const fallbackPrice = parseFloat(this.product.price) || 0;
 				this.product.minPrice = fallbackPrice;
 				this.product.maxPrice = fallbackPrice;
@@ -402,18 +490,29 @@ export default {
 				return;
 			}
 
-			// 计算最小和最大价格
-			this.product.minPrice = Math.min(...allPrices);
-			this.product.maxPrice = Math.max(...allPrices);
+			// 只显示最低价格
+			this.product.minPrice = Math.min(...prices);
+			this.product.maxPrice = Math.max(...prices);
+			this.product.priceRange = '¥' + this.product.minPrice.toFixed(2);
+		},
 
-			// 设置价格范围显示
-			if (this.product.minPrice === this.product.maxPrice) {
-				// 所有规格价格相同
-				this.product.priceRange = '¥' + this.product.minPrice.toFixed(2);
+		// 格式化规格价格
+		formatSpecPrice(spec, priceType = 'retail') {
+			let price = 0;
+			if (priceType === 'wholesale') {
+				// 批发价
+				price = spec.wholesale_price || spec.wholesalePrice || 0;
 			} else {
-				// 显示价格范围
-				this.product.priceRange = '¥' + this.product.minPrice.toFixed(2) + '~' + this.product.maxPrice.toFixed(2);
+				// 零售价
+				price = spec.retail_price || spec.retailPrice || 0;
 			}
+			
+			// 如果指定类型的价格不存在，使用通用价格字段作为后备
+			if (!price || price === 0) {
+				price = spec.price || this.product.price || 0;
+			}
+			
+			return parseFloat(price || 0).toFixed(2);
 		},
 
 		// 初始化规格数量并从本地存储同步
@@ -447,8 +546,16 @@ export default {
 			const specName = spec.name || '默认规格';
 			const specDesc = spec.description || spec.value || '';
 			const specKey = specName + (specDesc ? ':' + specDesc : '');
-			// 使用零售价作为默认价格
-			const specPrice = parseFloat(spec.retail_price || spec.retailPrice) || parseFloat(this.product.price) || 0;
+			
+			// 根据用户类型选择价格
+			let specPrice = 0;
+			if (this.userType === 'wholesale') {
+				// 批发用户使用批发价
+				specPrice = parseFloat(spec.wholesale_price || spec.wholesalePrice || spec.price || this.product.price || 0);
+			} else {
+				// 零售用户或未登录用户使用零售价
+				specPrice = parseFloat(spec.retail_price || spec.retailPrice || spec.price || this.product.price || 0);
+			}
 
 			// 检查商品是否已在采购单中
 			const index = cart.findIndex(item =>
@@ -469,7 +576,7 @@ export default {
 					specKey: specKey,
 					wholesalePrice: parseFloat(spec.wholesale_price || spec.wholesalePrice) || 0,
 					retailPrice: parseFloat(spec.retail_price || spec.retailPrice) || 0,
-					price: specPrice, // 使用零售价作为默认价格
+					price: specPrice, // 根据用户类型选择的价格
 					image: this.product.images && this.product.images.length > 0 ? this.product.images[0] : '',
 					isSpecial: this.product.isSpecial
 				});
@@ -1102,7 +1209,30 @@ export default {
 	display: flex;
 	align-items: center;
 	margin-top: 10rpx;
-	font-size: 40rpx;
+}
+
+.spec-price-container {
+	display: flex;
+	flex-direction: column;
+	gap: 4rpx;
+}
+
+.spec-price-container.wholesale-layout {
+	flex-direction: row;
+	align-items: baseline;
+	gap: 12rpx;
+}
+
+.spec-price {
+	font-size: 32rpx;
+	color: #f00;
+	font-weight: bold;
+}
+
+.spec-retail-price {
+	font-size: 24rpx;
+	color: #999;
+	text-decoration: line-through;
 }
 
 .spec-original-price {

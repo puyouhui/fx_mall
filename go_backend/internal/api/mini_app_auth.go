@@ -95,6 +95,176 @@ func GetMiniAppUsers(c *gin.Context) {
 	})
 }
 
+// GetMiniAppCurrentUser 获取当前登录的小程序用户信息
+func GetMiniAppCurrentUser(c *gin.Context) {
+	token := extractBearerToken(c.GetHeader("Authorization"))
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
+		return
+	}
+
+	claims, err := utils.ParseMiniAppToken(token)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "登录状态已失效，请重新登录"})
+		return
+	}
+
+	user, err := model.GetMiniAppUserByUniqueID(claims.OpenID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
+		return
+	}
+
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "获取成功",
+		"data":    user,
+	})
+}
+
+// GetMiniAppUserDetail 获取小程序用户详情（后台管理使用）
+func GetMiniAppUserDetail(c *gin.Context) {
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供用户ID"})
+		return
+	}
+
+	var id int
+	_, err := fmt.Sscanf(idStr, "%d", &id)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "用户ID格式错误"})
+		return
+	}
+
+	user, err := model.GetMiniAppUserByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户详情失败: " + err.Error()})
+		return
+	}
+
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "获取成功",
+		"data":    user,
+	})
+}
+
+type updateMiniAppUserByAdminRequest struct {
+	Name             string   `json:"name"`
+	Contact          string   `json:"contact"`
+	Phone            string   `json:"phone"`
+	Address          string   `json:"address"`
+	StoreType        string   `json:"storeType"`
+	SalesCode        string   `json:"salesCode"`
+	Avatar           string   `json:"avatar"`
+	Latitude         *float64 `json:"latitude,omitempty"`
+	Longitude        *float64 `json:"longitude,omitempty"`
+	UserType         string   `json:"userType"`
+	ProfileCompleted *bool    `json:"profileCompleted,omitempty"`
+}
+
+// UpdateMiniAppUserByAdmin 管理员更新小程序用户信息（可修改所有字段包括用户类型）
+func UpdateMiniAppUserByAdmin(c *gin.Context) {
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供用户ID"})
+		return
+	}
+
+	var id int
+	_, err := fmt.Sscanf(idStr, "%d", &id)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "用户ID格式错误"})
+		return
+	}
+
+	var req updateMiniAppUserByAdminRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误: " + err.Error()})
+		return
+	}
+
+	// 验证用户类型
+	if req.UserType != "" {
+		req.UserType = strings.ToLower(strings.TrimSpace(req.UserType))
+		if req.UserType != "retail" && req.UserType != "wholesale" && req.UserType != "unknown" {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "用户类型仅支持 retail、wholesale 或 unknown"})
+			return
+		}
+	}
+
+	// 构建更新数据
+	updateData := map[string]interface{}{}
+	if req.Name != "" {
+		updateData["name"] = strings.TrimSpace(req.Name)
+	}
+	if req.Contact != "" {
+		updateData["contact"] = strings.TrimSpace(req.Contact)
+	}
+	if req.Phone != "" {
+		updateData["phone"] = strings.TrimSpace(req.Phone)
+	}
+	if req.Address != "" {
+		updateData["address"] = strings.TrimSpace(req.Address)
+	}
+	if req.StoreType != "" {
+		updateData["storeType"] = strings.TrimSpace(req.StoreType)
+	}
+	if req.SalesCode != "" {
+		updateData["salesCode"] = strings.TrimSpace(req.SalesCode)
+	}
+	if req.Avatar != "" {
+		updateData["avatar"] = strings.TrimSpace(req.Avatar)
+	}
+	if req.Latitude != nil {
+		updateData["latitude"] = *req.Latitude
+	}
+	if req.Longitude != nil {
+		updateData["longitude"] = *req.Longitude
+	}
+	if req.UserType != "" {
+		updateData["userType"] = req.UserType
+	}
+	if req.ProfileCompleted != nil {
+		updateData["profileCompleted"] = *req.ProfileCompleted
+	}
+
+	// 更新用户信息
+	if err := model.UpdateMiniAppUserByAdmin(id, updateData); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新用户信息失败: " + err.Error()})
+		return
+	}
+
+	// 返回更新后的用户信息
+	user, err := model.GetMiniAppUserByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
+		return
+	}
+
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "更新成功",
+		"data":    user,
+	})
+}
+
 func fetchWeChatSessionInfo(code string) (*weChatSessionResponse, error) {
 	appID := config.Config.MiniApp.AppID
 	appSecret := config.Config.MiniApp.AppSecret

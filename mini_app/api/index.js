@@ -169,6 +169,18 @@ export const updateMiniUserProfile = (profileData, token) => {
 };
 
 /**
+ * 获取当前登录用户信息
+ * @param {string} token - 用户token
+ */
+export const getMiniUserInfo = (token) => {
+  return get('/mini-app/users/info', {}, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
  * 上传小程序用户头像
  * @param {string} filePath - 图片文件路径
  * @param {string} token - 用户token

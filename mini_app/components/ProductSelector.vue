@@ -39,9 +39,18 @@
                 <text class="ps-spec-name">{{ spec.name }}</text>
                 <text class="ps-spec-desc" v-if="spec.description">{{ spec.description }}</text>
               </view>
-              <text class="ps-spec-price">
-                零售价：¥{{ formatSpecPrice(spec) }}
-              </text>
+              <view class="ps-spec-price-container" :class="{ 'wholesale-layout': isWholesaleUser }">
+                <text v-if="isWholesaleUser" class="ps-spec-price">
+                  批发价：¥{{ formatSpecPrice(spec, 'wholesale') }}
+                </text>
+                <text v-else class="ps-spec-price">
+                  ¥{{ formatSpecPrice(spec, 'retail') }}
+                </text>
+                <!-- 批发用户显示零售价（灰色） -->
+                <text v-if="isWholesaleUser" class="ps-spec-retail-price">
+                  零售价：¥{{ formatSpecPrice(spec, 'retail') }}
+                </text>
+              </view>
             </view>
             <view class="ps-spec-actions">
               <view
@@ -92,7 +101,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { getProductDetail } from '../api/products'
 import { miniLogin } from '../api/index'
 
@@ -331,32 +340,65 @@ const calculateProductPriceRange = (product) => {
     return (product.price || 0).toFixed(2)
   }
 
-  const allPrices = []
+  // 根据用户类型决定显示哪种价格
+  const info = userState.value.info
+  const isWholesale = info && info.user_type === 'wholesale'
+
+  const prices = []
   product.specs.forEach(spec => {
-    if (spec.wholesale_price && spec.wholesale_price > 0) {
-      allPrices.push(parseFloat(spec.wholesale_price))
-    } else if (spec.wholesalePrice && spec.wholesalePrice > 0) {
-      allPrices.push(parseFloat(spec.wholesalePrice))
-    }
-    if (spec.retail_price && spec.retail_price > 0) {
-      allPrices.push(parseFloat(spec.retail_price))
-    } else if (spec.retailPrice && spec.retailPrice > 0) {
-      allPrices.push(parseFloat(spec.retailPrice))
-    }
-    if (spec.price && spec.price > 0) {
-      allPrices.push(parseFloat(spec.price))
+    if (isWholesale) {
+      // 批发用户：显示批发价
+      const wholesalePrice = spec.wholesale_price || spec.wholesalePrice
+      if (wholesalePrice && wholesalePrice > 0) {
+        prices.push(parseFloat(wholesalePrice))
+      }
+    } else {
+      // 未登录或零售用户：显示零售价
+      const retailPrice = spec.retail_price || spec.retailPrice
+      if (retailPrice && retailPrice > 0) {
+        prices.push(parseFloat(retailPrice))
+      }
     }
   })
 
-  if (allPrices.length === 0) {
+  // 如果没有找到对应类型的价格，使用另一种价格作为后备
+  if (prices.length === 0) {
+    product.specs.forEach(spec => {
+      if (isWholesale) {
+        // 批发用户找不到批发价，使用零售价作为后备
+        const retailPrice = spec.retail_price || spec.retailPrice
+        if (retailPrice && retailPrice > 0) {
+          prices.push(parseFloat(retailPrice))
+        }
+      } else {
+        // 零售用户找不到零售价，使用批发价作为后备
+        const wholesalePrice = spec.wholesale_price || spec.wholesalePrice
+        if (wholesalePrice && wholesalePrice > 0) {
+          prices.push(parseFloat(wholesalePrice))
+        }
+      }
+      // 最后使用通用价格字段
+      if (spec.price && spec.price > 0 && prices.length === 0) {
+        prices.push(parseFloat(spec.price))
+      }
+    })
+  }
+
+  if (prices.length === 0) {
     return (product.price || 0).toFixed(2)
   }
 
-  const minPrice = Math.min(...allPrices)
-  const maxPrice = Math.max(...allPrices)
-  return minPrice === maxPrice
-    ? minPrice.toFixed(2)
-    : `${minPrice.toFixed(2)}~${maxPrice.toFixed(2)}`
+  // 显示价格范围（最低价~最高价）
+  const minPrice = Math.min(...prices)
+  const maxPrice = Math.max(...prices)
+  
+  if (minPrice === maxPrice) {
+    // 如果所有规格价格相同，只显示一个价格
+    return minPrice.toFixed(2)
+  } else {
+    // 显示价格范围
+    return `${minPrice.toFixed(2)}~${maxPrice.toFixed(2)}`
+  }
 }
 
 const getSpecQuantity = (spec) => {
@@ -364,11 +406,27 @@ const getSpecQuantity = (spec) => {
   return quantityMap.value[spec.id] || 0
 }
 
-const formatSpecPrice = (spec) => {
-  const price =
-    spec?.retail_price ?? spec?.retailPrice ??
-    spec?.price ??
-    selectedProduct.value?.price ?? 0
+// 计算是否为批发用户
+const isWholesaleUser = computed(() => {
+  const info = userState.value.info
+  return info && info.user_type === 'wholesale'
+})
+
+const formatSpecPrice = (spec, priceType = 'retail') => {
+  let price = 0
+  if (priceType === 'wholesale') {
+    // 批发价
+    price = spec?.wholesale_price ?? spec?.wholesalePrice ?? 0
+  } else {
+    // 零售价
+    price = spec?.retail_price ?? spec?.retailPrice ?? 0
+  }
+  
+  // 如果指定类型的价格不存在，使用通用价格字段作为后备
+  if (!price || price === 0) {
+    price = spec?.price ?? selectedProduct.value?.price ?? 0
+  }
+  
   return parseFloat(price || 0).toFixed(2)
 }
 
@@ -422,6 +480,16 @@ const addToCart = async () => {
     }
 
     selectedSpecs.forEach(spec => {
+      // 根据用户类型选择价格
+      let price = 0
+      if (isWholesaleUser.value) {
+        // 批发用户使用批发价
+        price = spec.wholesale_price || spec.wholesalePrice || spec.price || selectedProduct.value.price || 0
+      } else {
+        // 零售用户或未登录用户使用零售价
+        price = spec.retail_price || spec.retailPrice || spec.price || selectedProduct.value.price || 0
+      }
+      
       const cartItem = {
         productId: selectedProduct.value.id,
         productName: selectedProduct.value.name,
@@ -429,7 +497,7 @@ const addToCart = async () => {
         specKey: spec.name + (spec.description ? ':' + spec.description : ''),
         specName: spec.name,
         specDescription: spec.description,
-        price: spec.price || selectedProduct.value.price || 0,
+        price: price,
         quantity: getSpecQuantity(spec)
       }
 
@@ -628,9 +696,28 @@ defineExpose({
   color: #8a8a8a;
 }
 
+.ps-spec-price-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.ps-spec-price-container.wholesale-layout {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 12rpx;
+}
+
 .ps-spec-price {
-  color: #ff7a45;
-  font-size: 26rpx;
+  color: #f00;
+  font-size: 32rpx;
+  font-weight: bold;
+}
+
+.ps-spec-retail-price {
+  color: #999;
+  font-size: 24rpx;
+  text-decoration: line-through;
 }
 
 .ps-empty-specs {

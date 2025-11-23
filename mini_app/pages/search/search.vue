@@ -20,8 +20,13 @@
       <view class="search-suggestions" v-if="searchText.trim() && suggestions.length > 0">
         <view class="suggestions-list">
           <view class="suggestion-item" v-for="(suggestion, index) in suggestions" :key="index" @click="selectSuggestion(suggestion)">
-            <uni-icons type="search" size="14" color="#999" class="suggestion-icon"></uni-icons>
+            <view class="suggestion-icon-wrapper">
+              <uni-icons type="search" size="16" color="#20CB6B" class="suggestion-icon"></uni-icons>
+            </view>
             <text class="suggestion-text">{{ suggestion }}</text>
+            <view class="suggestion-arrow">
+              <uni-icons type="right" size="14" color="#ccc"></uni-icons>
+            </view>
           </view>
         </view>
       </view>
@@ -174,6 +179,7 @@ export default {
       systemInfo: {}, // 系统信息
       searchText: '',
       suggestions: [], // 搜索建议列表
+      searchTimer: null, // 搜索防抖定时器
       hotSearchTags: ['火锅食材', '调味品', '饮料', '零食', '水果', '蔬菜', '肉类', '乳制品'],
       specialProducts: [
         { id: 1, name: '精选澳洲牛肉卷', price: '98.99', images: ['/static/test/product1.jpg'] },
@@ -214,12 +220,19 @@ export default {
     });
   },
   methods: {
-    // 输入框输入事件（获取搜索建议）
-    async onSearchInput() {
+    // 输入框输入事件（获取搜索建议）- 添加防抖处理
+    onSearchInput() {
+      // 清除之前的定时器
+      if (this.searchTimer) {
+        clearTimeout(this.searchTimer);
+      }
+      
       const keyword = this.searchText.trim();
       if (keyword) {
-        // 获取搜索建议
-        await this.getSearchSuggestions(keyword);
+        // 防抖：延迟300ms后执行搜索建议请求
+        this.searchTimer = setTimeout(() => {
+          this.getSearchSuggestions(keyword);
+        }, 300);
       } else {
         // 清空建议列表
         this.suggestions = [];
@@ -228,15 +241,23 @@ export default {
     
     // 获取搜索建议
     async getSearchSuggestions(keyword) {
+      // 如果关键词为空，直接返回
+      if (!keyword || !keyword.trim()) {
+        this.suggestions = [];
+        return;
+      }
+      
       try {
-        const res = await searchProductSuggestions(keyword, 10);
-        if (res.code === 200 && res.data) {
-          this.suggestions = res.data || [];
+        const res = await searchProductSuggestions(keyword.trim(), 10);
+        if (res && res.code === 200 && res.data) {
+          // 确保返回的是数组
+          this.suggestions = Array.isArray(res.data) ? res.data : [];
         } else {
           this.suggestions = [];
         }
       } catch (error) {
         console.error('获取搜索建议失败:', error);
+        // 静默失败，不显示错误提示，避免影响用户体验
         this.suggestions = [];
       }
     },
@@ -744,9 +765,11 @@ page{
 .search-suggestions {
   background-color: #fff;
   border-radius: 20rpx;
-  padding: 20rpx;
-  padding-left: 0;
+  padding: 0;
+  margin: 20rpx;
   margin-bottom: 20rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.08);
+  overflow: hidden;
 }
 
 .suggestions-list {
@@ -757,24 +780,52 @@ page{
 .suggestion-item {
   display: flex;
   align-items: center;
-  padding: 20rpx 0;
-  border-bottom: 1rpx solid #f0f0f0;
+  padding: 24rpx 30rpx;
+  border-bottom: 1rpx solid #f5f5f5;
   cursor: pointer;
+  transition: background-color 0.2s;
+  position: relative;
+}
+
+.suggestion-item:active {
+  background-color: #f8f8f8;
 }
 
 .suggestion-item:last-child {
   border-bottom: none;
 }
 
+.suggestion-icon-wrapper {
+  width: 48rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f0f9f4;
+  border-radius: 50%;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+}
+
 .suggestion-icon {
-  margin-right: 15rpx;
   flex-shrink: 0;
 }
 
 .suggestion-text {
   flex: 1;
-  font-size: 28rpx;
+  font-size: 30rpx;
   color: #333;
+  font-weight: 400;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestion-arrow {
+  margin-left: 15rpx;
+  flex-shrink: 0;
+  opacity: 0.5;
 }
 
 /* 搜索结果样式 */

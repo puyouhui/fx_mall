@@ -57,6 +57,7 @@ func main() {
 		miniAppProtectedGroup := apiGroup.Group("/mini-app/users")
 		miniAppProtectedGroup.Use(api.MiniAppAuthMiddleware())
 		{
+			miniAppProtectedGroup.GET("/info", api.GetMiniAppCurrentUser)      // 获取当前用户信息
 			miniAppProtectedGroup.POST("/avatar", api.UploadMiniAppUserAvatar) // 上传用户头像
 		}
 
@@ -125,7 +126,9 @@ func main() {
 				protectedGroup.DELETE("/suppliers/:id", api.DeleteSupplier) // 删除供应商
 
 				// 小程序用户
-				protectedGroup.GET("/mini-app/users", api.GetMiniAppUsers) // 查看小程序用户
+				protectedGroup.GET("/mini-app/users", api.GetMiniAppUsers)          // 查看小程序用户列表
+				protectedGroup.GET("/mini-app/users/:id", api.GetMiniAppUserDetail) // 查看小程序用户详情
+				protectedGroup.PUT("/mini-app/users/:id", api.UpdateMiniAppUserByAdmin) // 管理员更新小程序用户信息
 			}
 		}
 
