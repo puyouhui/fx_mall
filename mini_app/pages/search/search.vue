@@ -169,6 +169,7 @@
 
 <script>
 import { getProductDetail, searchProducts, searchProductSuggestions } from '../../api/products';
+import { addItemToPurchaseList } from '../../utils/purchaseList';
 
 export default {
   data() {
@@ -466,8 +467,8 @@ export default {
       });
     },
     
-    // 添加到购物车
-    addToCart() {
+    // 添加到采购单
+    async addToCart() {
       if (!this.selectedSpec) {
         uni.showToast({
           title: '请选择商品规格',
@@ -475,46 +476,34 @@ export default {
         });
         return;
       }
-      
-      // 获取购物车数据
-      let cart = uni.getStorageSync('cart') || [];
-      
-      // 构建商品信息
-      const cartItem = {
-        productId: this.selectedProduct.id,
-        productName: this.selectedProduct.name,
-        productImage: this.selectedProduct.images && this.selectedProduct.images.length > 0 ? this.selectedProduct.images[0] : '',
-        specKey: this.selectedSpec.name + (this.selectedSpec.description ? ':' + this.selectedSpec.description : ''),
-        specName: this.selectedSpec.name,
-        specDescription: this.selectedSpec.description,
-        price: this.selectedSpec.price || this.selectedProduct.price,
-        quantity: this.quantity
-      };
-      
-      // 检查商品是否已在购物车中
-      const existingItemIndex = cart.findIndex(item => 
-        item.productId === cartItem.productId && item.specKey === cartItem.specKey
-      );
-      
-      if (existingItemIndex >= 0) {
-        // 已存在则增加数量
-        cart[existingItemIndex].quantity += cartItem.quantity;
-      } else {
-        // 不存在则添加新商品
-        cart.push(cartItem);
+      const token = uni.getStorageSync('miniUserToken');
+      if (!token) {
+        uni.showToast({
+          title: '请先登录',
+          icon: 'none'
+        });
+        return;
       }
-      
-      // 保存到本地存储
-      uni.setStorageSync('cart', cart);
-      
-      // 显示成功提示
+
+      try {
+        await addItemToPurchaseList({
+          token,
+        productId: this.selectedProduct.id,
+        specName: this.selectedSpec.name,
+        quantity: this.quantity
+        });
       uni.showToast({
         title: '已添加到采购单',
         icon: 'success'
       });
-      
-      // 关闭弹窗
       this.closeProductModal();
+      } catch (error) {
+        console.error('添加采购单失败:', error);
+        uni.showToast({
+          title: '添加失败，请稍后再试',
+          icon: 'none'
+        });
+      }
     }
   }
 };

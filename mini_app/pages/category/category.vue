@@ -400,7 +400,7 @@ export default {
 
 			if (!Array.isArray(specs)) {
 				specs = [];
-			}
+					}
 
 			// 根据用户类型决定显示哪种价格
 			const isWholesaleUser = this.userType === 'wholesale';
@@ -422,7 +422,7 @@ export default {
 					if (isWholesaleUser) {
 						// 批发用户找不到批发价，使用零售价作为后备
 						this.collectPriceValue(spec?.retail_price ?? spec?.retailPrice, prices);
-					} else {
+			} else {
 						// 零售用户找不到零售价，使用批发价作为后备
 						this.collectPriceValue(spec?.wholesale_price ?? spec?.wholesalePrice, prices);
 					}

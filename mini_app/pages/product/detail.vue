@@ -78,7 +78,7 @@
 								<!-- 批发用户显示零售价（灰色） -->
 								<text v-if="userType === 'wholesale'" class="spec-retail-price">
 									零售价: ￥{{ formatSpecPrice(spec, 'retail') }}
-								</text>
+							</text>
 							</view>
 						</view>
 					</view>
@@ -223,6 +223,7 @@
 <script>
 import { getProductDetail } from '../../api/products';
 import { getMiniUserInfo } from '../../api/index';
+import { fetchPurchaseList, addItemToPurchaseList, updatePurchaseListQuantity, deletePurchaseListItemById } from '../../utils/purchaseList';
 export default {
 	data() {
 		return {
@@ -253,7 +254,9 @@ export default {
 			cartCount: 0, // 购物车商品总数
 			scrollTop: 0, // 滚动距离
 			hasScrolled: false, // 是否已经滚动
-			userType: null // 用户类型：'retail' | 'wholesale' | null（未登录）
+			userType: null, // 用户类型：'retail' | 'wholesale' | null（未登录）
+			purchaseList: [],
+			token: ''
 		};
 	},
 	onLoad(options) {
@@ -321,6 +324,7 @@ export default {
 					if (this.product && this.product.id) {
 						this.calculatePriceRange();
 					}
+					await this.refreshPurchaseList(true);
 				}
 			} catch (error) {
 				console.error('获取用户信息失败:', error);
@@ -395,10 +399,9 @@ export default {
 							}
 						});
 					}
-					// 初始化规格数量并从本地存储同步
-					this.initSpecQuantities();
-					// 更新购物车数量显示
-					this.updateCartCount();
+					// 初始化规格数量并同步采购单
+					this.resetSpecQuantities();
+					await this.refreshPurchaseList(true);
 				} else {
 					// 商品不存在，显示错误提示
 					uni.showToast({
@@ -493,7 +496,7 @@ export default {
 			// 只显示最低价格
 			this.product.minPrice = Math.min(...prices);
 			this.product.maxPrice = Math.max(...prices);
-			this.product.priceRange = '¥' + this.product.minPrice.toFixed(2);
+				this.product.priceRange = '¥' + this.product.minPrice.toFixed(2);
 		},
 
 		// 格式化规格价格
@@ -515,188 +518,143 @@ export default {
 			return parseFloat(price || 0).toFixed(2);
 		},
 
-		// 初始化规格数量并从本地存储同步
-		initSpecQuantities() {
-			// 获取现有采购单数据
-			const cart = uni.getStorageSync('cart') || [];
-
-			// 为每个规格初始化quantity为0
+		resetSpecQuantities() {
+			if (!Array.isArray(this.product.specs)) return;
 			this.product.specs.forEach(spec => {
 				spec.quantity = 0;
-
-				// 检查该规格是否已在购物车中
-				const specKey = spec.name + (spec.description ? ':' + spec.description : '');
-				const cartItem = cart.find(item =>
-					item.productId === this.product.id && item.specKey === specKey
-				);
-
-				// 如果在购物车中，更新数量
-				if (cartItem) {
-					spec.quantity = cartItem.quantity;
-				}
+				spec.purchaseItemId = null;
 			});
 		},
 
-		// 添加规格到采购单
-		addSpecToCart(spec) {
-			// 获取现有采购单数据
-			let cart = uni.getStorageSync('cart') || [];
-
-			// 为规格创建唯一标识，即使信息不完整也能正确处理
-			const specName = spec.name || '默认规格';
-			const specDesc = spec.description || spec.value || '';
-			const specKey = specName + (specDesc ? ':' + specDesc : '');
-			
-			// 根据用户类型选择价格
-			let specPrice = 0;
-			if (this.userType === 'wholesale') {
-				// 批发用户使用批发价
-				specPrice = parseFloat(spec.wholesale_price || spec.wholesalePrice || spec.price || this.product.price || 0);
-			} else {
-				// 零售用户或未登录用户使用零售价
-				specPrice = parseFloat(spec.retail_price || spec.retailPrice || spec.price || this.product.price || 0);
-			}
-
-			// 检查商品是否已在采购单中
-			const index = cart.findIndex(item =>
-				item.productId === this.product.id && item.specKey === specKey
-			);
-
-			if (index > -1) {
-				// 商品已存在，增加数量
-				cart[index].quantity += 1;
-			} else {
-				// 商品不存在，添加新商品
-				cart.push({
-					productId: this.product.id,
-					quantity: 1,
-					name: this.product.name,
-					specName: specName,
-					specDescription: specDesc,
-					specKey: specKey,
-					wholesalePrice: parseFloat(spec.wholesale_price || spec.wholesalePrice) || 0,
-					retailPrice: parseFloat(spec.retail_price || spec.retailPrice) || 0,
-					price: specPrice, // 根据用户类型选择的价格
-					image: this.product.images && this.product.images.length > 0 ? this.product.images[0] : '',
-					isSpecial: this.product.isSpecial
-				});
-			}
-
-			// 保存到本地存储
-			uni.setStorageSync('cart', cart);
-
-			// 更新规格数量
-			spec.quantity = (spec.quantity || 0) + 1;
-
-			// 更新购物车数量
-			this.updateCartCount();
-
-			// 提示成功
-			uni.showToast({
-				title: '已添加到采购单',
-				icon: 'success',
-				duration: 2000
-			});
-		},
-
-		// 增加规格数量
-		increaseQuantity(spec) {
-			// 获取现有采购单数据
-			let cart = uni.getStorageSync('cart') || [];
-
-			// 为规格创建唯一标识，即使信息不完整也能正确处理
-			const specName = spec.name || '默认规格';
-			const specDesc = spec.description || spec.value || '';
-			const specKey = specName + (specDesc ? ':' + specDesc : '');
-
-			// 查找采购单中的对应项
-			const index = cart.findIndex(item =>
-				item.productId === this.product.id && item.specKey === specKey
-			);
-
-			if (index > -1) {
-				// 增加采购单中的数量
-				cart[index].quantity += 1;
-				// 保存到本地存储
-				uni.setStorageSync('cart', cart);
-				// 更新规格数量
-				spec.quantity = (spec.quantity || 0) + 1;
-				// 更新购物车数量
-				this.updateCartCount();
-			}
-		},
-
-		// 减少规格数量
-		decreaseQuantity(spec) {
-			// 确保数量是有效的数字
-			const currentQuantity = parseInt(spec.quantity) || 0;
-
-			if (currentQuantity <= 1) {
-				// 如果数量为1或更少，减少后从购物车移除
-				this.removeSpecFromCart(spec);
-			} else {
-				// 获取现有采购单数据
-				let cart = uni.getStorageSync('cart') || [];
-
-				// 为规格创建唯一标识，即使信息不完整也能正确处理
+		syncSpecQuantitiesFromList() {
+			if (!Array.isArray(this.product.specs)) return;
+			this.product.specs.forEach(spec => {
 				const specName = spec.name || '默认规格';
-				const specDesc = spec.description || spec.value || '';
-				const specKey = specName + (specDesc ? ':' + specDesc : '');
-
-				// 查找采购单中的对应项
-				const index = cart.findIndex(item =>
-					item.productId === this.product.id && item.specKey === specKey
+				const matched = this.purchaseList.find(item =>
+					item.product_id === this.product.id && item.spec_name === specName
 				);
+				spec.quantity = matched ? matched.quantity : 0;
+				spec.purchaseItemId = matched ? matched.id : null;
+			});
+		},
 
-				if (index > -1) {
-					// 减少采购单中的数量
-					cart[index].quantity -= 1;
-					// 保存到本地存储
-					uni.setStorageSync('cart', cart);
-					// 更新规格数量
-					spec.quantity = currentQuantity - 1;
-					// 更新购物车数量
-					this.updateCartCount();
+		async refreshPurchaseList(silent = false) {
+			const token = uni.getStorageSync('miniUserToken') || '';
+			this.token = token;
+			if (!token || !this.product.id) {
+				this.purchaseList = [];
+				this.resetSpecQuantities();
+				this.cartCount = 0;
+				return;
+			}
+			try {
+				const list = await fetchPurchaseList(token);
+				this.purchaseList = list;
+				this.syncSpecQuantitiesFromList();
+				this.updateCartCount();
+			} catch (error) {
+				console.error('获取采购单失败:', error);
+				if (!silent) {
+					uni.showToast({ title: '同步采购单失败', icon: 'none' });
 				}
 			}
 		},
 
-		// 从采购单移除规格
-		removeSpecFromCart(spec) {
-			// 获取现有采购单数据
-			let cart = uni.getStorageSync('cart') || [];
-
-			// 为规格创建唯一标识，即使信息不完整也能正确处理
-			const specName = spec.name || '默认规格';
-			const specDesc = spec.description || spec.value || '';
-			const specKey = specName + (specDesc ? ':' + specDesc : '');
-
-			// 查找采购单中的对应项并过滤掉
-			cart = cart.filter(item =>
-				!(item.productId === this.product.id && item.specKey === specKey)
-			);
-
-			// 保存到本地存储
-			uni.setStorageSync('cart', cart);
-
-			// 更新规格数量
-			spec.quantity = 0;
-
-			// 更新购物车数量
-			this.updateCartCount();
-		},
-
-		// 更新购物车商品总数
 		updateCartCount() {
-			// 获取现有采购单数据
-			const cart = uni.getStorageSync('cart') || [];
-			// 计算商品总数
-			this.cartCount = cart.reduce((total, item) => total + item.quantity, 0);
+			this.cartCount = this.purchaseList.reduce((total, item) => total + (item.quantity || 0), 0);
 		},
 
-		// 添加到采购单（兼容旧调用）
+		async ensureUserLoggedIn() {
+			const token = uni.getStorageSync('miniUserToken') || '';
+			if (!token) {
+				uni.showToast({ title: '请先登录', icon: 'none' });
+				return false;
+			}
+			this.token = token;
+			return true;
+		},
+
+		async addSpecToCart(spec) {
+			if (!spec || !this.product.id) return;
+			const ready = await this.ensureUserLoggedIn();
+			if (!ready) return;
+			try {
+				await addItemToPurchaseList({
+					token: this.token,
+					productId: this.product.id,
+					specName: spec.name || '默认规格',
+					quantity: 1
+				});
+				await this.refreshPurchaseList(true);
+				uni.showToast({ title: '已添加到采购单', icon: 'success' });
+			} catch (error) {
+				console.error('添加采购单失败:', error);
+				uni.showToast({ title: '添加失败，请稍后再试', icon: 'none' });
+			}
+		},
+
+		async increaseQuantity(spec) {
+			if (!spec || !this.product.id) return;
+			const ready = await this.ensureUserLoggedIn();
+			if (!ready) return;
+			try {
+				if (spec.purchaseItemId) {
+					await updatePurchaseListQuantity({
+						token: this.token,
+						itemId: spec.purchaseItemId,
+						quantity: (spec.quantity || 0) + 1
+					});
+				} else {
+					await addItemToPurchaseList({
+						token: this.token,
+						productId: this.product.id,
+						specName: spec.name || '默认规格',
+						quantity: 1
+					});
+				}
+				await this.refreshPurchaseList(true);
+			} catch (error) {
+				console.error('更新采购单失败:', error);
+				uni.showToast({ title: '操作失败，请稍后再试', icon: 'none' });
+			}
+		},
+
+		async decreaseQuantity(spec) {
+			if (!spec || !this.product.id || !spec.purchaseItemId) return;
+			const ready = await this.ensureUserLoggedIn();
+			if (!ready) return;
+			const current = spec.quantity || 0;
+			try {
+				if (current <= 1) {
+					await deletePurchaseListItemById({ token: this.token, itemId: spec.purchaseItemId });
+			} else {
+					await updatePurchaseListQuantity({
+						token: this.token,
+						itemId: spec.purchaseItemId,
+						quantity: current - 1
+					});
+				}
+				await this.refreshPurchaseList(true);
+			} catch (error) {
+				console.error('更新采购单失败:', error);
+				uni.showToast({ title: '操作失败，请稍后再试', icon: 'none' });
+			}
+		},
+
+		async removeSpecFromCart(spec) {
+			if (!spec || !spec.purchaseItemId) return;
+			const ready = await this.ensureUserLoggedIn();
+			if (!ready) return;
+			try {
+				await deletePurchaseListItemById({ token: this.token, itemId: spec.purchaseItemId });
+				await this.refreshPurchaseList(true);
+			} catch (error) {
+				console.error('删除采购单项失败:', error);
+				uni.showToast({ title: '删除失败，请稍后再试', icon: 'none' });
+			}
+		},
+
 		addToCart() {
-			// 提示用户直接点击规格添加
 			uni.showToast({
 				title: '请点击具体规格添加',
 				icon: 'none',

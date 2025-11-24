@@ -282,6 +282,32 @@ func InitDB() error {
 			return
 		}
 
+		// 创建采购单表（类似购物车）
+		createPurchaseListTableSQL := `
+		CREATE TABLE IF NOT EXISTS purchase_list_items (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    user_id INT NOT NULL COMMENT '小程序用户ID',
+		    product_id INT NOT NULL COMMENT '商品ID',
+		    product_name VARCHAR(255) NOT NULL COMMENT '商品名称快照',
+		    product_image VARCHAR(255) DEFAULT NULL COMMENT '商品图片快照',
+		    spec_name VARCHAR(100) NOT NULL COMMENT '规格名称',
+		    spec_snapshot TEXT NOT NULL COMMENT '规格快照（JSON）',
+		    quantity INT NOT NULL DEFAULT 1 COMMENT '采购数量',
+		    is_special TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否精选商品',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    UNIQUE KEY uk_user_product_spec (user_id, product_id, spec_name),
+		    KEY idx_user_id (user_id),
+		    CONSTRAINT fk_purchase_list_user FOREIGN KEY (user_id) REFERENCES mini_app_users(id) ON DELETE CASCADE,
+		    CONSTRAINT fk_purchase_list_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序采购单';
+		`
+
+		if _, err = DB.Exec(createPurchaseListTableSQL); err != nil {
+			log.Printf("创建purchase_list_items表失败: %v", err)
+			return
+		}
+
 		// 检查并更新products表结构，确保price和original_price字段是可空的
 		// 首先检查表是否存在
 		var tableExists bool
@@ -386,20 +412,18 @@ func InitDB() error {
 		CREATE TABLE IF NOT EXISTS mini_app_users (
 		    id INT PRIMARY KEY AUTO_INCREMENT,
 		    unique_id VARCHAR(64) NOT NULL COMMENT '小程序用户唯一标识（OpenID）',
+		    user_code VARCHAR(10) DEFAULT NULL COMMENT '用户编号（4-5位数）',
+		    name VARCHAR(50) DEFAULT NULL COMMENT '用户姓名',
 		    avatar VARCHAR(255) DEFAULT NULL COMMENT '用户头像',
-		    name VARCHAR(100) DEFAULT NULL COMMENT '名称',
-		    contact VARCHAR(50) DEFAULT NULL COMMENT '联系人',
 		    phone VARCHAR(20) DEFAULT NULL COMMENT '手机号码',
-		    address VARCHAR(255) DEFAULT NULL COMMENT '中文地址',
-		    latitude DECIMAL(10,6) DEFAULT NULL COMMENT '纬度',
-		    longitude DECIMAL(10,6) DEFAULT NULL COMMENT '经度',
 		    sales_code VARCHAR(50) DEFAULT NULL COMMENT '绑定的销售员代码',
 		    store_type VARCHAR(50) DEFAULT NULL COMMENT '店铺类型',
 		    user_type VARCHAR(20) NOT NULL DEFAULT 'unknown' COMMENT '用户类型：retail/wholesale/unknown',
 		    profile_completed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '资料是否完善：0-未完善，1-已完善',
 		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-		    UNIQUE KEY uk_unique_id (unique_id)
+		    UNIQUE KEY uk_unique_id (unique_id),
+		    UNIQUE KEY uk_user_code (user_code)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序用户表';
 		`
 
@@ -407,6 +431,57 @@ func InitDB() error {
 			log.Printf("创建mini_app_users表失败: %v", err)
 			return
 		}
+
+		// 创建mini_app_addresses表（用户地址表）
+		createMiniAppAddressesTableSQL := `
+		CREATE TABLE IF NOT EXISTS mini_app_addresses (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    user_id INT NOT NULL COMMENT '用户ID（关联mini_app_users.id）',
+		    name VARCHAR(100) NOT NULL COMMENT '地址名称（如：明丽烧烤）',
+		    contact VARCHAR(50) NOT NULL COMMENT '联系人',
+		    phone VARCHAR(20) NOT NULL COMMENT '手机号码',
+		    address VARCHAR(255) NOT NULL COMMENT '详细地址',
+		    avatar VARCHAR(255) DEFAULT NULL COMMENT '地址照片（门头照片）',
+		    latitude DECIMAL(10,6) DEFAULT NULL COMMENT '纬度',
+		    longitude DECIMAL(10,6) DEFAULT NULL COMMENT '经度',
+		    store_type VARCHAR(50) DEFAULT NULL COMMENT '店铺类型',
+		    sales_code VARCHAR(50) DEFAULT NULL COMMENT '业务员代码',
+		    is_default TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认地址：0-否，1-是',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    INDEX idx_user_id (user_id),
+		    INDEX idx_is_default (is_default),
+		    FOREIGN KEY (user_id) REFERENCES mini_app_users(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序用户地址表';
+		`
+
+		if _, err = DB.Exec(createMiniAppAddressesTableSQL); err != nil {
+			log.Printf("创建mini_app_addresses表失败: %v", err)
+			return
+		}
+
+		// 确保地址表有avatar字段（兼容旧表）
+		ensureAddressColumn := func(columnName, columnDefinition string) {
+			var columnCount int
+			checkQuery := `
+				SELECT COUNT(*)
+				FROM information_schema.columns
+				WHERE table_schema = ? AND table_name = 'mini_app_addresses' AND column_name = ?
+			`
+			if err := DB.QueryRow(checkQuery, cfg.DBName, columnName).Scan(&columnCount); err != nil {
+				log.Printf("检查mini_app_addresses.%s字段失败: %v", columnName, err)
+				return
+			}
+			if columnCount == 0 {
+				alterSQL := fmt.Sprintf("ALTER TABLE mini_app_addresses ADD COLUMN %s", columnDefinition)
+				if _, err := DB.Exec(alterSQL); err != nil {
+					log.Printf("添加mini_app_addresses.%s字段失败: %v", columnName, err)
+				} else {
+					log.Printf("已为mini_app_addresses添加%s字段", columnName)
+				}
+			}
+		}
+		ensureAddressColumn("avatar", "avatar VARCHAR(255) DEFAULT NULL COMMENT '地址照片（门头照片）'")
 
 		ensureColumn := func(columnName, columnDefinition string) {
 			var columnCount int
@@ -431,6 +506,36 @@ func InitDB() error {
 
 		ensureColumn("user_type", "user_type VARCHAR(20) NOT NULL DEFAULT 'unknown' COMMENT '用户类型：retail/wholesale/unknown'")
 		ensureColumn("profile_completed", "profile_completed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '资料是否完善：0-未完善，1-已完善'")
+		ensureColumn("user_code", "user_code VARCHAR(10) DEFAULT NULL COMMENT '用户编号（4-5位数）'")
+		ensureColumn("name", "name VARCHAR(50) DEFAULT NULL COMMENT '用户姓名' AFTER user_code")
+
+		// 删除不需要的字段（如果存在）
+		dropColumn := func(columnName string) {
+			var columnCount int
+			checkQuery := `
+				SELECT COUNT(*)
+				FROM information_schema.columns
+				WHERE table_schema = ? AND table_name = 'mini_app_users' AND column_name = ?
+			`
+			if err := DB.QueryRow(checkQuery, cfg.DBName, columnName).Scan(&columnCount); err != nil {
+				log.Printf("检查mini_app_users.%s字段失败: %v", columnName, err)
+				return
+			}
+			if columnCount > 0 {
+				alterSQL := fmt.Sprintf("ALTER TABLE mini_app_users DROP COLUMN %s", columnName)
+				if _, err := DB.Exec(alterSQL); err != nil {
+					log.Printf("删除mini_app_users.%s字段失败: %v", columnName, err)
+				} else {
+					log.Printf("已删除mini_app_users.%s字段", columnName)
+				}
+			}
+		}
+		// 删除已迁移到地址表的字段
+		dropColumn("address")
+		dropColumn("latitude")
+		dropColumn("longitude")
+		dropColumn("contact")
+		// 注意：name字段现在用于存储用户姓名，不再删除
 
 		// 将未完善资料的用户类型重置为未选择
 		if _, err := DB.Exec(`
@@ -440,6 +545,30 @@ func InitDB() error {
 			  AND (profile_completed IS NULL OR profile_completed = 0)
 		`); err != nil {
 			log.Printf("更新未完善资料的用户类型失败: %v", err)
+		}
+
+		// 创建employees表（员工表）
+		createEmployeesTableSQL := `
+		CREATE TABLE IF NOT EXISTS employees (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    employee_code VARCHAR(10) NOT NULL COMMENT '员工码（5位数）',
+		    phone VARCHAR(20) NOT NULL COMMENT '手机号（登录账号）',
+		    password VARCHAR(255) NOT NULL COMMENT '密码（加密后）',
+		    name VARCHAR(50) DEFAULT NULL COMMENT '员工姓名',
+		    is_delivery TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否是配送员：0-否，1-是',
+		    is_sales TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否是销售员：0-否，1-是',
+		    status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '状态：1-启用，0-禁用',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    UNIQUE KEY uk_employee_code (employee_code),
+		    UNIQUE KEY uk_phone (phone),
+		    INDEX idx_status (status)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='员工表';
+		`
+
+		if _, err = DB.Exec(createEmployeesTableSQL); err != nil {
+			log.Printf("创建employees表失败: %v", err)
+			return
 		}
 
 		log.Println("所有表创建成功")

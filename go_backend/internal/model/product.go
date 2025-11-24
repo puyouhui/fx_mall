@@ -15,6 +15,7 @@ type Spec struct {
 	Name           string  `json:"name"`
 	WholesalePrice float64 `json:"wholesale_price"` // 批发价
 	RetailPrice    float64 `json:"retail_price"`    // 零售价
+	Cost           float64 `json:"cost"`            // 成本（用于计算利润）
 	Description    string  `json:"description"`     // 规格描述（例如：≈1.5元/瓶）
 }
 
@@ -325,10 +326,10 @@ func SearchProductSuggestions(keyword string, limit int) ([]string, error) {
 	if keyword == "" {
 		return []string{}, nil
 	}
-
+	
 	var suggestions []string
 	searchPattern := "%" + keyword + "%"
-
+	
 	// 查询商品名称，搜索范围：商品名称和描述
 	// 使用 GROUP BY 去重，按最大 ID 降序排列（最新商品优先）
 	query := "SELECT name FROM products WHERE status = 1 AND (name LIKE ? OR description LIKE ?) GROUP BY name ORDER BY MAX(id) DESC LIMIT ?"
@@ -337,7 +338,7 @@ func SearchProductSuggestions(keyword string, limit int) ([]string, error) {
 		return nil, fmt.Errorf("搜索商品建议失败: %v", err)
 	}
 	defer rows.Close()
-
+	
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
@@ -350,7 +351,7 @@ func SearchProductSuggestions(keyword string, limit int) ([]string, error) {
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("遍历搜索结果失败: %v", err)
 	}
-
+	
 	return suggestions, nil
 }
 
@@ -377,7 +378,7 @@ func SearchProductsWithPagination(keyword string, pageNum, pageSize int) ([]Prod
 
 	// 构建搜索查询（搜索商品名称和描述）
 	searchPattern := "%" + keyword + "%"
-
+	
 	// 先查询总数
 	countQuery := "SELECT COUNT(DISTINCT id) FROM products WHERE status = 1 AND (name LIKE ? OR description LIKE ?)"
 	err := database.DB.QueryRow(countQuery, searchPattern, searchPattern).Scan(&total)

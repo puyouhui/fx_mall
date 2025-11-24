@@ -2,6 +2,8 @@ package model
 
 import (
 	"database/sql"
+	"fmt"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -12,13 +14,10 @@ import (
 type MiniAppUser struct {
 	ID               int       `json:"id"`
 	UniqueID         string    `json:"unique_id"`
+	UserCode         string    `json:"user_code,omitempty"` // 用户编号（4-5位数）
+	Name             string    `json:"name,omitempty"`       // 用户姓名
 	Avatar           string    `json:"avatar,omitempty"`
-	Name             string    `json:"name,omitempty"`
-	Contact          string    `json:"contact,omitempty"`
 	Phone            string    `json:"phone,omitempty"`
-	Address          string    `json:"address,omitempty"`
-	Latitude         *float64  `json:"latitude,omitempty"`
-	Longitude        *float64  `json:"longitude,omitempty"`
 	SalesCode        string    `json:"sales_code,omitempty"`
 	StoreType        string    `json:"store_type,omitempty"`
 	UserType         string    `json:"user_type"`
@@ -30,29 +29,25 @@ type MiniAppUser struct {
 // GetMiniAppUserByUniqueID 根据唯一ID获取用户
 func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 	query := `
-		SELECT id, unique_id, avatar, name, contact, phone, address, latitude, longitude, sales_code, store_type, user_type, profile_completed, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, created_at, updated_at
 		FROM mini_app_users
 		WHERE unique_id = ?
 		LIMIT 1`
 
 	var (
 		user                          MiniAppUser
-		avatar, name, contact, phone  sql.NullString
-		address, salesCode, storeType sql.NullString
-		latitude, longitude           sql.NullFloat64
-		profileCompleted              sql.NullInt64
+		userCode, name, avatar, phone sql.NullString
+		salesCode, storeType           sql.NullString
+		profileCompleted               sql.NullInt64
 	)
 
 	err := database.DB.QueryRow(query, uniqueID).Scan(
 		&user.ID,
 		&user.UniqueID,
-		&avatar,
+		&userCode,
 		&name,
-		&contact,
+		&avatar,
 		&phone,
-		&address,
-		&latitude,
-		&longitude,
 		&salesCode,
 		&storeType,
 		&user.UserType,
@@ -68,21 +63,12 @@ func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 		return nil, err
 	}
 
-	user.Avatar = nullString(avatar)
+	user.UserCode = nullString(userCode)
 	user.Name = nullString(name)
-	user.Contact = nullString(contact)
+	user.Avatar = nullString(avatar)
 	user.Phone = nullString(phone)
-	user.Address = nullString(address)
 	user.SalesCode = nullString(salesCode)
 	user.StoreType = nullString(storeType)
-	if latitude.Valid {
-		val := latitude.Float64
-		user.Latitude = &val
-	}
-	if longitude.Valid {
-		val := longitude.Float64
-		user.Longitude = &val
-	}
 	user.ProfileCompleted = profileCompleted.Valid && profileCompleted.Int64 == 1
 
 	return &user, nil
@@ -91,29 +77,25 @@ func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 // GetMiniAppUserByID 根据ID获取用户详情（后台管理使用）
 func GetMiniAppUserByID(id int) (*MiniAppUser, error) {
 	query := `
-		SELECT id, unique_id, avatar, name, contact, phone, address, latitude, longitude, sales_code, store_type, user_type, profile_completed, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, created_at, updated_at
 		FROM mini_app_users
 		WHERE id = ?
 		LIMIT 1`
 
 	var (
 		user                          MiniAppUser
-		avatar, name, contact, phone  sql.NullString
-		address, salesCode, storeType sql.NullString
-		latitude, longitude           sql.NullFloat64
+		userCode, name, avatar, phone sql.NullString
+		salesCode, storeType          sql.NullString
 		profileCompleted              sql.NullInt64
 	)
 
 	err := database.DB.QueryRow(query, id).Scan(
 		&user.ID,
 		&user.UniqueID,
-		&avatar,
+		&userCode,
 		&name,
-		&contact,
+		&avatar,
 		&phone,
-		&address,
-		&latitude,
-		&longitude,
 		&salesCode,
 		&storeType,
 		&user.UserType,
@@ -129,33 +111,90 @@ func GetMiniAppUserByID(id int) (*MiniAppUser, error) {
 		return nil, err
 	}
 
-	user.Avatar = nullString(avatar)
+	user.UserCode = nullString(userCode)
 	user.Name = nullString(name)
-	user.Contact = nullString(contact)
+	user.Avatar = nullString(avatar)
 	user.Phone = nullString(phone)
-	user.Address = nullString(address)
 	user.SalesCode = nullString(salesCode)
 	user.StoreType = nullString(storeType)
-	if latitude.Valid {
-		val := latitude.Float64
-		user.Latitude = &val
-	}
-	if longitude.Valid {
-		val := longitude.Float64
-		user.Longitude = &val
-	}
 	user.ProfileCompleted = profileCompleted.Valid && profileCompleted.Int64 == 1
 
 	return &user, nil
 }
 
+// GenerateUserCode 生成用户编号（4-5位数，优先4位数）
+func GenerateUserCode() (string, error) {
+	// 初始化随机数种子
+	rand.Seed(time.Now().UnixNano())
+	
+	// 先尝试生成4位数（1000-9999）
+	for i := 0; i < 100; i++ {
+		code := fmt.Sprintf("%04d", 1000+rand.Intn(9000))
+		var exists int
+		err := database.DB.QueryRow(`
+			SELECT COUNT(*) FROM mini_app_users WHERE user_code = ?
+		`, code).Scan(&exists)
+		if err != nil {
+			return "", err
+		}
+		if exists == 0 {
+			return code, nil
+		}
+	}
+	
+	// 如果4位数都用完了，使用5位数（10000-99999）
+	for i := 0; i < 100; i++ {
+		code := fmt.Sprintf("%05d", 10000+rand.Intn(90000))
+		var exists int
+		err := database.DB.QueryRow(`
+			SELECT COUNT(*) FROM mini_app_users WHERE user_code = ?
+		`, code).Scan(&exists)
+		if err != nil {
+			return "", err
+		}
+		if exists == 0 {
+			return code, nil
+		}
+	}
+	
+	return "", fmt.Errorf("无法生成唯一的用户编号")
+}
+
 // CreateMiniAppUser 创建用户（仅记录唯一ID，其他信息后续完善）
 func CreateMiniAppUser(uniqueID string) (*MiniAppUser, error) {
-	_, err := database.DB.Exec(`
-		INSERT INTO mini_app_users (unique_id, user_type, profile_completed, created_at, updated_at)
-		VALUES (?, 'unknown', 0, NOW(), NOW())
-		ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
-	`, uniqueID)
+	// 检查用户是否已存在
+	existingUser, err := GetMiniAppUserByUniqueID(uniqueID)
+	if err != nil {
+		return nil, err
+	}
+	if existingUser != nil {
+		// 如果用户已存在但没有编号，生成一个
+		if existingUser.UserCode == "" {
+			userCode, err := GenerateUserCode()
+			if err != nil {
+				return nil, err
+			}
+			_, err = database.DB.Exec(`
+				UPDATE mini_app_users SET user_code = ?, updated_at = NOW() WHERE unique_id = ?
+			`, userCode, uniqueID)
+			if err != nil {
+				return nil, err
+			}
+			existingUser.UserCode = userCode
+		}
+		return existingUser, nil
+	}
+	
+	// 生成用户编号
+	userCode, err := GenerateUserCode()
+	if err != nil {
+		return nil, err
+	}
+	
+	_, err = database.DB.Exec(`
+		INSERT INTO mini_app_users (unique_id, user_code, user_type, profile_completed, created_at, updated_at)
+		VALUES (?, ?, 'unknown', 0, NOW(), NOW())
+	`, uniqueID, userCode)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +216,7 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 	where := ""
 	if keyword != "" {
 		like := "%" + keyword + "%"
-		where = "WHERE unique_id LIKE ? OR name LIKE ? OR phone LIKE ?"
+		where = "WHERE unique_id LIKE ? OR user_code LIKE ? OR phone LIKE ?"
 		args = append(args, like, like, like)
 	}
 
@@ -188,7 +227,7 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 	}
 
 	query := `
-		SELECT id, unique_id, avatar, name, contact, phone, address, latitude, longitude, sales_code, store_type, user_type, profile_completed, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, created_at, updated_at
 		FROM mini_app_users
 	`
 	if where != "" {
@@ -207,22 +246,18 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 	for rows.Next() {
 		var (
 			user                          MiniAppUser
-			avatar, name, contact, phone  sql.NullString
-			address, salesCode, storeType sql.NullString
-			latitude, longitude           sql.NullFloat64
-			profileCompleted              sql.NullInt64
+			userCode, name, avatar, phone sql.NullString
+			salesCode, storeType          sql.NullString
+			profileCompleted             sql.NullInt64
 		)
 
 		if err := rows.Scan(
 			&user.ID,
 			&user.UniqueID,
-			&avatar,
+			&userCode,
 			&name,
-			&contact,
+			&avatar,
 			&phone,
-			&address,
-			&latitude,
-			&longitude,
 			&salesCode,
 			&storeType,
 			&user.UserType,
@@ -233,21 +268,12 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 			return nil, 0, err
 		}
 
-		user.Avatar = nullString(avatar)
+		user.UserCode = nullString(userCode)
 		user.Name = nullString(name)
-		user.Contact = nullString(contact)
+		user.Avatar = nullString(avatar)
 		user.Phone = nullString(phone)
-		user.Address = nullString(address)
 		user.SalesCode = nullString(salesCode)
 		user.StoreType = nullString(storeType)
-		if latitude.Valid {
-			val := latitude.Float64
-			user.Latitude = &val
-		}
-		if longitude.Valid {
-			val := longitude.Float64
-			user.Longitude = &val
-		}
 		user.ProfileCompleted = profileCompleted.Valid && profileCompleted.Int64 == 1
 
 		users = append(users, user)
@@ -276,60 +302,32 @@ func UpdateMiniAppUserAvatar(uniqueID, avatarURL string) error {
 	return err
 }
 
-// UpdateMiniAppUserProfile 更新用户资料，提交后自动设为零售身份并标记资料已完善
-func UpdateMiniAppUserProfile(uniqueID string, profileData map[string]interface{}) error {
-	// 构建更新SQL
-	updates := []string{}
-	args := []interface{}{}
-
-	if name, ok := profileData["name"].(string); ok && name != "" {
-		updates = append(updates, "name = ?")
-		args = append(args, name)
-	}
-	if contact, ok := profileData["contact"].(string); ok && contact != "" {
-		updates = append(updates, "contact = ?")
-		args = append(args, contact)
-	}
-	if phone, ok := profileData["phone"].(string); ok && phone != "" {
-		updates = append(updates, "phone = ?")
-		args = append(args, phone)
-	}
-	if address, ok := profileData["address"].(string); ok && address != "" {
-		updates = append(updates, "address = ?")
-		args = append(args, address)
-	}
-	if storeType, ok := profileData["storeType"].(string); ok {
-		updates = append(updates, "store_type = ?")
-		args = append(args, storeType)
-	}
-	if salesCode, ok := profileData["salesCode"].(string); ok {
-		updates = append(updates, "sales_code = ?")
-		args = append(args, salesCode)
-	}
-	if latitude, ok := profileData["latitude"].(float64); ok {
-		updates = append(updates, "latitude = ?")
-		args = append(args, latitude)
-	}
-	if longitude, ok := profileData["longitude"].(float64); ok {
-		updates = append(updates, "longitude = ?")
-		args = append(args, longitude)
-	}
-
-	// 提交资料后，自动设置为零售身份，并标记资料已完善
-	updates = append(updates, "user_type = ?")
-	args = append(args, "retail")
-	updates = append(updates, "profile_completed = ?")
-	args = append(args, 1)
-	updates = append(updates, "updated_at = NOW()")
-
-	if len(updates) == 0 {
-		return nil
-	}
-
-	args = append(args, uniqueID)
-	query := "UPDATE mini_app_users SET " + strings.Join(updates, ", ") + " WHERE unique_id = ?"
-	_, err := database.DB.Exec(query, args...)
+// UpdateMiniAppUserName 更新用户姓名
+func UpdateMiniAppUserName(uniqueID, name string) error {
+	_, err := database.DB.Exec(`
+		UPDATE mini_app_users
+		SET name = ?, updated_at = NOW()
+		WHERE unique_id = ?
+	`, name, uniqueID)
 	return err
+}
+
+// UpdateMiniAppUserPhone 更新用户电话
+func UpdateMiniAppUserPhone(uniqueID, phone string) error {
+	_, err := database.DB.Exec(`
+		UPDATE mini_app_users
+		SET phone = ?, updated_at = NOW()
+		WHERE unique_id = ?
+	`, phone, uniqueID)
+	return err
+}
+
+// UpdateMiniAppUserProfile 已废弃，现在使用地址表管理地址信息
+// 此函数保留用于兼容，但不再更新用户表的地址相关字段
+func UpdateMiniAppUserProfile(uniqueID string, profileData map[string]interface{}) error {
+	// 此函数已不再使用，地址信息现在存储在地址表中
+	// 保留函数签名以避免编译错误
+	return nil
 }
 
 // UpdateMiniAppUserByAdmin 管理员更新用户信息（可修改所有字段包括用户类型）
@@ -342,17 +340,9 @@ func UpdateMiniAppUserByAdmin(id int, updateData map[string]interface{}) error {
 		updates = append(updates, "name = ?")
 		args = append(args, name)
 	}
-	if contact, ok := updateData["contact"].(string); ok {
-		updates = append(updates, "contact = ?")
-		args = append(args, contact)
-	}
 	if phone, ok := updateData["phone"].(string); ok {
 		updates = append(updates, "phone = ?")
 		args = append(args, phone)
-	}
-	if address, ok := updateData["address"].(string); ok {
-		updates = append(updates, "address = ?")
-		args = append(args, address)
 	}
 	if storeType, ok := updateData["storeType"].(string); ok {
 		updates = append(updates, "store_type = ?")
@@ -365,14 +355,6 @@ func UpdateMiniAppUserByAdmin(id int, updateData map[string]interface{}) error {
 	if avatar, ok := updateData["avatar"].(string); ok {
 		updates = append(updates, "avatar = ?")
 		args = append(args, avatar)
-	}
-	if latitude, ok := updateData["latitude"].(float64); ok {
-		updates = append(updates, "latitude = ?")
-		args = append(args, latitude)
-	}
-	if longitude, ok := updateData["longitude"].(float64); ok {
-		updates = append(updates, "longitude = ?")
-		args = append(args, longitude)
 	}
 	// 管理员可以修改用户类型
 	if userType, ok := updateData["userType"].(string); ok {

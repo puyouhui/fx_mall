@@ -57,8 +57,8 @@
           </view>
         </view>
 
-        <!-- 销售员代码 -->
-        <view class="form-item sales-code-item" v-if="showAddressFields">
+        <!-- 销售员代码 - 只在用户未绑定销售员时显示 -->
+        <view class="form-item sales-code-item" v-if="showAddressFields && !userHasSalesCode">
           <view v-if="!showSalesCodeInput" class="sales-code-link" @click="showSalesCodeInput = true">
             <text class="link-text">绑定业务员</text>
             <uni-icons type="right" size="14" color="#20CB6B" style="margin-top: 4rpx;"></uni-icons>
@@ -76,6 +76,14 @@
                 :focus="salesCodeFocusIndex === index" @input="onSalesCodeInput(index, $event)"
                 @focus="onSalesCodeFocus(index)" @blur="onSalesCodeBlur(index)" />
             </view>
+          </view>
+        </view>
+
+        <!-- 设置为默认地址 -->
+        <view class="form-item default-address-item" v-if="showAddressFields">
+          <view class="default-address-switch">
+            <text class="form-label">设置为默认地址</text>
+            <switch :checked="formData.isDefault" @change="onDefaultAddressChange" color="#20CB6B" />
           </view>
         </view>
       </view>
@@ -113,12 +121,13 @@
 </template>
 
 <script>
-import { updateMiniUserProfile, uploadMiniUserAvatar } from '../../api/index';
+import { updateMiniUserProfile, uploadAddressAvatar, getMiniUserAddresses, getMiniUserDefaultAddress, getMiniUserInfo } from '../../api/index';
 
 export default {
   data() {
     return {
       formData: {
+        addressId: null, // 地址ID，用于编辑
         name: '',
         contact: '',
         phone: '',
@@ -127,12 +136,14 @@ export default {
         salesCode: '',
         latitude: null,
         longitude: null,
-        avatar: ''
+        avatar: '',
+        isDefault: false // 是否设置为默认地址
       },
       salesCodeArray: ['', '', '', '', ''],
       submitting: false,
       userToken: '',
       userInfo: null,
+      userHasSalesCode: false, // 用户是否已绑定销售员
       showStoreTypePicker: false,
       showSalesCodeInput: false,
       salesCodeFocusIndex: -1,
@@ -163,9 +174,8 @@ export default {
       );
     }
   },
-  onLoad() {
+  onLoad(options) {
     const token = uni.getStorageSync('miniUserToken') || '';
-    const info = uni.getStorageSync('miniUserInfo') || null;
     if (!token) {
       uni.showToast({
         title: '请先完成登录',
@@ -178,48 +188,40 @@ export default {
     }
 
     this.userToken = token;
-    this.userInfo = info;
-
-      // 如果已有资料，填充表单
-      if (info) {
-        this.formData.name = info.name || '';
-        this.formData.contact = info.contact || '';
-        this.formData.phone = info.phone || '';
-        this.formData.address = info.address || '';
-        this.formData.storeType = info.store_type || info.storeType || '';
-        this.formData.salesCode = info.sales_code || info.salesCode || '';
-        this.formData.avatar = info.avatar || '';
-        if (info.latitude) {
-          this.mapLocation.latitude = info.latitude;
-          this.formData.latitude = info.latitude;
-        }
-        if (info.longitude) {
-          this.mapLocation.longitude = info.longitude;
-          this.formData.longitude = info.longitude;
-        }
-
-      // 如果已有地址，显示地址和店铺类型字段
-      if (this.formData.address || (this.formData.latitude && this.formData.longitude)) {
-        this.showAddressFields = true;
-      }
-
-      // 填充销售员代码
-      if (this.formData.salesCode) {
-        const codes = this.formData.salesCode.split('');
-        codes.forEach((code, index) => {
-          if (index < 5) {
-            this.salesCodeArray[index] = code;
-          }
-        });
-        // 如果有销售员代码，默认显示输入框
-        this.showSalesCodeInput = true;
-      }
+    
+    // 先获取用户信息，检查是否已绑定销售员
+    this.loadUserInfo();
+    
+    // 判断是新增还是编辑（通过URL参数address_id）
+    if (options.address_id) {
+      // 编辑模式：加载地址数据
+      this.formData.addressId = parseInt(options.address_id);
+      this.loadAddressData(parseInt(options.address_id));
+    } else {
+      // 新增模式：显示地址字段
+      this.showAddressFields = true;
+      // 检查用户是否已有默认地址，如果没有则默认选中"设置为默认地址"
+      this.checkDefaultAddress();
     }
 
     // 获取当前位置
     this.getCurrentLocation();
   },
   methods: {
+    // 加载用户信息，检查是否已绑定销售员
+    async loadUserInfo() {
+      try {
+        const res = await getMiniUserInfo(this.userToken);
+        if (res && res.code === 200 && res.data) {
+          this.userInfo = res.data;
+          // 检查用户是否已绑定销售员
+          this.userHasSalesCode = !!(res.data.sales_code && res.data.sales_code.trim());
+        }
+      } catch (error) {
+        console.error('获取用户信息失败:', error);
+        // 静默失败，不影响其他功能
+      }
+    },
     // 获取当前位置
     getCurrentLocation() {
       uni.getLocation({
@@ -293,7 +295,7 @@ export default {
         }
       });
     },
-    // 上传头像到服务器
+    // 上传地址照片到服务器（门头照片）
     async uploadAvatar(filePath) {
       if (!this.userToken) {
         uni.showToast({
@@ -309,16 +311,11 @@ export default {
       });
 
       try {
-        // 调用上传接口
-        const res = await uploadMiniUserAvatar(filePath, this.userToken);
+        // 调用地址头像上传接口（只上传图片，不更新用户表）
+        const res = await uploadAddressAvatar(filePath, this.userToken);
         if (res && res.code === 200 && res.data) {
-          // 更新本地头像
+          // 更新本地头像（这是地址的照片，只保存在formData中，提交时保存到地址表）
           this.formData.avatar = res.data.avatar || res.data.imageUrl || '';
-          // 更新本地存储的用户信息
-          if (this.userInfo) {
-            this.userInfo.avatar = this.formData.avatar;
-            uni.setStorageSync('miniUserInfo', this.userInfo);
-          }
           uni.showToast({
             title: '上传成功',
             icon: 'success'
@@ -327,7 +324,7 @@ export default {
           throw new Error(res?.message || '上传失败');
         }
       } catch (error) {
-        console.error('上传头像失败:', error);
+        console.error('上传地址照片失败:', error);
         uni.showToast({
           title: error?.message || '上传失败，请稍后重试',
           icon: 'none'
@@ -398,6 +395,69 @@ export default {
         });
       }
     },
+    // 加载地址数据（编辑模式）
+    async loadAddressData(addressId) {
+      try {
+        const res = await getMiniUserAddresses(this.userToken);
+        if (res && res.code === 200 && res.data) {
+          const address = res.data.find(addr => addr.id === addressId);
+          if (address) {
+            this.formData.name = address.name || '';
+            this.formData.contact = address.contact || '';
+            this.formData.phone = address.phone || '';
+            this.formData.address = address.address || '';
+            this.formData.storeType = address.store_type || '';
+            // 不再从地址中读取销售员代码，因为销售员已改为和用户绑定
+            this.formData.avatar = address.avatar || '';
+            this.formData.isDefault = address.is_default || false;
+            if (address.latitude) {
+              this.mapLocation.latitude = address.latitude;
+              this.formData.latitude = address.latitude;
+            }
+            if (address.longitude) {
+              this.mapLocation.longitude = address.longitude;
+              this.formData.longitude = address.longitude;
+            }
+            this.showAddressFields = true;
+          }
+        }
+      } catch (error) {
+        console.error('加载地址数据失败:', error);
+        uni.showToast({
+          title: '加载地址数据失败',
+          icon: 'none'
+        });
+      }
+    },
+    
+    // 检查用户是否已有默认地址
+    async checkDefaultAddress() {
+      try {
+        const res = await getMiniUserDefaultAddress(this.userToken);
+        if (res && res.code === 200) {
+          // 如果用户没有默认地址（res.data 为 null 或空），则默认选中"设置为默认地址"
+          if (!res.data) {
+            this.formData.isDefault = true;
+          } else {
+            // 如果用户已有默认地址，则默认不选中
+            this.formData.isDefault = false;
+          }
+        } else {
+          // API 调用失败，默认选中（第一次完善资料的情况）
+          this.formData.isDefault = true;
+        }
+      } catch (error) {
+        console.error('检查默认地址失败:', error);
+        // 出错时默认选中（第一次完善资料的情况）
+        this.formData.isDefault = true;
+      }
+    },
+    
+    // 默认地址开关变化
+    onDefaultAddressChange(e) {
+      this.formData.isDefault = e.detail.value;
+    },
+    
     // 导入微信收货地址
     importWeChatAddress() {
       uni.chooseAddress({
@@ -449,19 +509,34 @@ export default {
       this.submitting = true;
       try {
         const submitData = {
-          ...this.formData,
-          salesCode: this.salesCodeArray.join('')
+          address_id: this.formData.addressId || null,
+          name: this.formData.name.trim(),
+          contact: this.formData.contact.trim(),
+          phone: this.formData.phone.trim(),
+          address: this.formData.address.trim(),
+          storeType: this.formData.storeType.trim(),
+          is_default: this.formData.isDefault
         };
+        
+        // 如果用户未绑定销售员且输入了销售员代码，则绑定到用户
+        if (!this.userHasSalesCode && this.salesCodeArray.join('').trim()) {
+          submitData.salesCode = this.salesCodeArray.join('');
+        }
+        
+        if (this.formData.avatar) {
+          submitData.avatar = this.formData.avatar;
+        }
+        if (this.formData.latitude) {
+          submitData.latitude = this.formData.latitude;
+        }
+        if (this.formData.longitude) {
+          submitData.longitude = this.formData.longitude;
+        }
+        
         const res = await updateMiniUserProfile(submitData, this.userToken);
         if (res && res.code === 200 && res.data) {
-          const user = res.data;
-          // 更新本地存储的用户信息
-          uni.setStorageSync('miniUserInfo', user);
-          if (user.unique_id) {
-            uni.setStorageSync('miniUserUniqueId', user.unique_id);
-          }
           uni.showToast({
-            title: '提交成功',
+            title: this.formData.addressId ? '更新成功' : '添加成功',
             icon: 'success'
           });
           setTimeout(() => {
@@ -711,6 +786,17 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.default-address-item {
+  margin-top: 20rpx;
+}
+
+.default-address-switch {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
 }
 
 .form-footer {

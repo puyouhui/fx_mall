@@ -52,13 +52,29 @@ func main() {
 		apiGroup.POST("/auth/login", api.MiniAppLogin)            // 小程序登录
 		apiGroup.PUT("/mini-app/users/type", api.UpdateMiniAppUserType)
 		apiGroup.PUT("/mini-app/users/profile", api.UpdateMiniAppUserProfile)
-		
+
 		// 需要认证的小程序用户接口
 		miniAppProtectedGroup := apiGroup.Group("/mini-app/users")
 		miniAppProtectedGroup.Use(api.MiniAppAuthMiddleware())
 		{
-			miniAppProtectedGroup.GET("/info", api.GetMiniAppCurrentUser)      // 获取当前用户信息
-			miniAppProtectedGroup.POST("/avatar", api.UploadMiniAppUserAvatar) // 上传用户头像
+			miniAppProtectedGroup.GET("/info", api.GetMiniAppCurrentUser)            // 获取当前用户信息
+			miniAppProtectedGroup.POST("/avatar", api.UploadMiniAppUserAvatar)       // 上传用户头像
+			miniAppProtectedGroup.POST("/addresses/avatar", api.UploadAddressAvatar) // 上传地址头像（门头照片）
+			miniAppProtectedGroup.PUT("/name", api.UpdateMiniAppUserName)            // 更新用户姓名
+			miniAppProtectedGroup.PUT("/phone", api.UpdateMiniAppUserPhone)          // 更新用户电话
+
+			// 地址相关接口
+			miniAppProtectedGroup.GET("/addresses", api.GetMiniAppAddresses)                  // 获取用户的所有地址
+			miniAppProtectedGroup.GET("/addresses/default", api.GetMiniAppDefaultAddress)     // 获取用户的默认地址
+			miniAppProtectedGroup.DELETE("/addresses/:id", api.DeleteMiniAppAddress)          // 删除地址
+			miniAppProtectedGroup.PUT("/addresses/:id/default", api.SetDefaultMiniAppAddress) // 设置默认地址
+
+			// 采购单接口
+			miniAppProtectedGroup.GET("/purchase-list", api.GetPurchaseListItems)
+			miniAppProtectedGroup.POST("/purchase-list", api.AddPurchaseListItem)
+			miniAppProtectedGroup.PUT("/purchase-list/:id", api.UpdatePurchaseListItem)
+			miniAppProtectedGroup.DELETE("/purchase-list/:id", api.DeletePurchaseListItem)
+			miniAppProtectedGroup.DELETE("/purchase-list", api.ClearPurchaseList)
 		}
 
 		// 分类相关接口
@@ -68,12 +84,6 @@ func main() {
 		apiGroup.GET("/products/search/suggestions", api.SearchProductSuggestions) // 搜索商品建议
 		apiGroup.GET("/products/search", api.SearchProducts)                       // 搜索商品
 		apiGroup.GET("/products/:id", api.GetProductDetail)                        // 根据商品ID获取商品详情
-
-		// 购物车相关接口
-		apiGroup.POST("/cart", api.AddToCart)            // 添加商品到购物车
-		apiGroup.GET("/cart", api.GetCartItems)          // 获取购物车中的商品列表
-		apiGroup.DELETE("/cart/:id", api.DeleteCartItem) // 根据购物车项ID删除购物车中的商品
-		apiGroup.DELETE("/cart/clear", api.ClearCart)    // 清空购物车
 
 		// 管理员相关接口
 		adminGroup := apiGroup.Group("/admin")
@@ -126,9 +136,19 @@ func main() {
 				protectedGroup.DELETE("/suppliers/:id", api.DeleteSupplier) // 删除供应商
 
 				// 小程序用户
-				protectedGroup.GET("/mini-app/users", api.GetMiniAppUsers)          // 查看小程序用户列表
-				protectedGroup.GET("/mini-app/users/:id", api.GetMiniAppUserDetail) // 查看小程序用户详情
+				protectedGroup.GET("/mini-app/users", api.GetMiniAppUsers)              // 查看小程序用户列表
+				protectedGroup.GET("/mini-app/users/:id", api.GetMiniAppUserDetail)     // 查看小程序用户详情
 				protectedGroup.PUT("/mini-app/users/:id", api.UpdateMiniAppUserByAdmin) // 管理员更新小程序用户信息
+				protectedGroup.GET("/mini-app/addresses/:id", api.GetAdminAddressByID)  // 管理员获取地址详情
+				protectedGroup.PUT("/mini-app/addresses/:id", api.UpdateAdminAddress)   // 管理员更新地址
+
+				// 员工管理
+				protectedGroup.GET("/employees", api.GetEmployees)            // 获取员工列表
+				protectedGroup.GET("/employees/sales", api.GetSalesEmployees) // 获取销售员列表（用于下拉选择）
+				protectedGroup.GET("/employees/:id", api.GetEmployee)         // 获取员工详情
+				protectedGroup.POST("/employees", api.CreateEmployee)         // 创建员工
+				protectedGroup.PUT("/employees/:id", api.UpdateEmployee)      // 更新员工
+				protectedGroup.DELETE("/employees/:id", api.DeleteEmployee)   // 删除员工
 			}
 		}
 

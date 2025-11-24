@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"regexp"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -19,3 +21,8 @@ func CheckPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
+// IsValidPhone 验证手机号格式（中国大陆手机号）
+func IsValidPhone(phone string) bool {
+	matched, _ := regexp.MatchString(`^1[3-9]\d{9}$`, phone)
+	return matched
+}

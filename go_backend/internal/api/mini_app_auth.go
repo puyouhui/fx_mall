@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"go_backend/internal/config"
+	"go_backend/internal/database"
 	"go_backend/internal/model"
 	"go_backend/internal/utils"
 
@@ -57,6 +59,27 @@ func MiniAppLogin(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建用户失败: " + err.Error()})
 			return
 		}
+	} else {
+		// 如果用户已存在但没有编号，生成一个
+		if user.UserCode == "" {
+			userCode, genErr := model.GenerateUserCode()
+			if genErr == nil {
+				_, execErr := database.DB.Exec(`
+					UPDATE mini_app_users SET user_code = ?, updated_at = NOW() WHERE unique_id = ?
+				`, userCode, sessionInfo.OpenID)
+				if execErr == nil {
+					user.UserCode = userCode
+				}
+			}
+		}
+		
+		// 检查用户资料完善状态，如果已完善但用户类型是unknown，自动设置为retail
+		if user.ProfileCompleted && (user.UserType == "" || user.UserType == "unknown") {
+			_, _ = database.DB.Exec(`
+				UPDATE mini_app_users SET user_type = 'retail', updated_at = NOW() WHERE unique_id = ?
+			`, sessionInfo.OpenID)
+			user.UserType = "retail"
+		}
 	}
 
 	token, err := utils.GenerateMiniAppToken(user.UniqueID)
@@ -88,28 +111,62 @@ func GetMiniAppUsers(c *gin.Context) {
 		return
 	}
 
+	// 为每个用户添加销售员信息
+	usersWithSalesEmployee := make([]map[string]interface{}, 0)
+	for _, user := range users {
+		userData := map[string]interface{}{
+			"id":                user.ID,
+			"unique_id":         user.UniqueID,
+			"user_code":         user.UserCode,
+			"name":              user.Name,
+			"avatar":            user.Avatar,
+			"phone":             user.Phone,
+			"sales_code":        user.SalesCode,
+			"store_type":        user.StoreType,
+			"user_type":         user.UserType,
+			"profile_completed": user.ProfileCompleted,
+			"created_at":        user.CreatedAt,
+			"updated_at":        user.UpdatedAt,
+		}
+
+		// 如果用户绑定了销售员，获取销售员信息
+		if user.SalesCode != "" {
+			employee, err := model.GetEmployeeByEmployeeCode(user.SalesCode)
+			if err == nil && employee != nil {
+				userData["sales_employee"] = map[string]interface{}{
+					"id":            employee.ID,
+					"employee_code": employee.EmployeeCode,
+					"name":          employee.Name,
+					"phone":         employee.Phone,
+				}
+			} else {
+				userData["sales_employee"] = nil
+			}
+		} else {
+			userData["sales_employee"] = nil
+		}
+
+		usersWithSalesEmployee = append(usersWithSalesEmployee, userData)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":  200,
-		"data":  users,
+		"data":  usersWithSalesEmployee,
 		"total": total,
 	})
 }
 
 // GetMiniAppCurrentUser 获取当前登录的小程序用户信息
 func GetMiniAppCurrentUser(c *gin.Context) {
-	token := extractBearerToken(c.GetHeader("Authorization"))
-	if token == "" {
+	// 从中间件设置的上下文中获取 openID
+	openID, exists := c.Get("openID")
+	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
 		return
 	}
 
-	claims, err := utils.ParseMiniAppToken(token)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "登录状态已失效，请重新登录"})
-		return
-	}
-
-	user, err := model.GetMiniAppUserByUniqueID(claims.OpenID)
+	uniqueID := openID.(string)
+	user, err := model.GetMiniAppUserByUniqueID(uniqueID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
 		return
@@ -118,6 +175,19 @@ func GetMiniAppCurrentUser(c *gin.Context) {
 	if user == nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
 		return
+	}
+
+	// 如果用户没有编号，生成一个
+	if user.UserCode == "" {
+		userCode, genErr := model.GenerateUserCode()
+		if genErr == nil {
+			_, execErr := database.DB.Exec(`
+				UPDATE mini_app_users SET user_code = ?, updated_at = NOW() WHERE unique_id = ?
+			`, userCode, uniqueID)
+			if execErr == nil {
+				user.UserCode = userCode
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -153,23 +223,170 @@ func GetMiniAppUserDetail(c *gin.Context) {
 		return
 	}
 
+	// 获取用户的默认地址
+	defaultAddress, _ := model.GetDefaultAddressByUserID(user.ID)
+	
+	// 获取用户的所有地址
+	allAddresses, _ := model.GetAddressesByUserID(user.ID)
+
+	// 构建返回数据
+	responseData := map[string]interface{}{
+		"id":                user.ID,
+		"unique_id":         user.UniqueID,
+		"user_code":         user.UserCode,
+		"avatar":            user.Avatar,
+		"phone":             user.Phone,
+		"sales_code":        user.SalesCode,
+		"store_type":        user.StoreType,
+		"user_type":         user.UserType,
+		"profile_completed": user.ProfileCompleted,
+		"created_at":        user.CreatedAt,
+		"updated_at":        user.UpdatedAt,
+		"default_address":   defaultAddress, // 默认地址信息（保留兼容）
+		"addresses":         allAddresses,   // 所有地址列表
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "获取成功",
-		"data":    user,
+		"data":    responseData,
+	})
+}
+
+// GetAdminAddressByID 管理员获取地址详情
+func GetAdminAddressByID(c *gin.Context) {
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供地址ID"})
+		return
+	}
+
+	var id int
+	_, err := fmt.Sscanf(idStr, "%d", &id)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "地址ID格式错误"})
+		return
+	}
+
+	address, err := model.GetAddressByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取地址详情失败: " + err.Error()})
+		return
+	}
+
+	if address == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "地址不存在"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "获取成功",
+		"data":    address,
+	})
+}
+
+type updateAdminAddressRequest struct {
+	Name      string   `json:"name"`
+	Contact   string   `json:"contact"`
+	Phone     string   `json:"phone"`
+	Address   string   `json:"address"`
+	Avatar    string   `json:"avatar"`
+	StoreType string   `json:"storeType"`
+	// SalesCode 已移除，销售员绑定到用户而不是地址
+	Latitude  *float64 `json:"latitude"`
+	Longitude *float64 `json:"longitude"`
+	IsDefault bool     `json:"isDefault"`
+}
+
+// UpdateAdminAddress 管理员更新地址
+func UpdateAdminAddress(c *gin.Context) {
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供地址ID"})
+		return
+	}
+
+	var id int
+	_, err := fmt.Sscanf(idStr, "%d", &id)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "地址ID格式错误"})
+		return
+	}
+
+	// 先获取地址信息，确认地址存在并获取userID
+	address, err := model.GetAddressByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取地址信息失败: " + err.Error()})
+		return
+	}
+	if address == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "地址不存在"})
+		return
+	}
+
+	var req updateAdminAddressRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	// 构建更新数据
+	addressData := map[string]interface{}{}
+	if req.Name != "" {
+		addressData["name"] = strings.TrimSpace(req.Name)
+	}
+	if req.Contact != "" {
+		addressData["contact"] = strings.TrimSpace(req.Contact)
+	}
+	if req.Phone != "" {
+		addressData["phone"] = strings.TrimSpace(req.Phone)
+	}
+	if req.Address != "" {
+		addressData["address"] = strings.TrimSpace(req.Address)
+	}
+	if req.Avatar != "" {
+		addressData["avatar"] = strings.TrimSpace(req.Avatar)
+	}
+	if req.StoreType != "" {
+		addressData["store_type"] = strings.TrimSpace(req.StoreType)
+	}
+	// 不再处理SalesCode，销售员绑定到用户而不是地址
+	if req.Latitude != nil {
+		addressData["latitude"] = *req.Latitude
+	}
+	if req.Longitude != nil {
+		addressData["longitude"] = *req.Longitude
+	}
+	addressData["is_default"] = req.IsDefault
+
+	// 更新地址
+	err = model.UpdateAddress(id, address.UserID, addressData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新地址失败: " + err.Error()})
+		return
+	}
+
+	// 获取更新后的地址信息
+	updatedAddress, err := model.GetAddressByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取更新后的地址信息失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "更新成功",
+		"data":    updatedAddress,
 	})
 }
 
 type updateMiniAppUserByAdminRequest struct {
-	Name             string   `json:"name"`
-	Contact          string   `json:"contact"`
 	Phone            string   `json:"phone"`
-	Address          string   `json:"address"`
 	StoreType        string   `json:"storeType"`
-	SalesCode        string   `json:"salesCode"`
+	SalesCode        *string  `json:"salesCode"`        // 销售员代码（员工码），使用指针以区分是否传递
+	SalesEmployeeID *int     `json:"salesEmployeeId"`   // 销售员ID（优先使用）
 	Avatar           string   `json:"avatar"`
-	Latitude         *float64 `json:"latitude,omitempty"`
-	Longitude        *float64 `json:"longitude,omitempty"`
 	UserType         string   `json:"userType"`
 	ProfileCompleted *bool    `json:"profileCompleted,omitempty"`
 }
@@ -206,32 +423,57 @@ func UpdateMiniAppUserByAdmin(c *gin.Context) {
 
 	// 构建更新数据
 	updateData := map[string]interface{}{}
-	if req.Name != "" {
-		updateData["name"] = strings.TrimSpace(req.Name)
-	}
-	if req.Contact != "" {
-		updateData["contact"] = strings.TrimSpace(req.Contact)
-	}
 	if req.Phone != "" {
 		updateData["phone"] = strings.TrimSpace(req.Phone)
-	}
-	if req.Address != "" {
-		updateData["address"] = strings.TrimSpace(req.Address)
 	}
 	if req.StoreType != "" {
 		updateData["storeType"] = strings.TrimSpace(req.StoreType)
 	}
-	if req.SalesCode != "" {
-		updateData["salesCode"] = strings.TrimSpace(req.SalesCode)
+	
+	// 处理销售员绑定：优先使用SalesEmployeeID，如果没有则使用SalesCode
+	if req.SalesEmployeeID != nil && *req.SalesEmployeeID > 0 {
+		// 通过员工ID获取员工码
+		employee, err := model.GetEmployeeByID(*req.SalesEmployeeID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "获取销售员信息失败: " + err.Error()})
+			return
+		}
+		if employee == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "销售员不存在"})
+			return
+		}
+		if !employee.IsSales {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "该员工不是销售员"})
+			return
+		}
+		updateData["salesCode"] = employee.EmployeeCode
+	} else if req.SalesCode != nil {
+		// SalesCode 字段被传递了
+		salesCodeValue := strings.TrimSpace(*req.SalesCode)
+		if salesCodeValue != "" {
+		// 验证销售员代码是否存在且是销售员
+		employees, _ := model.GetSalesEmployees()
+		found := false
+		for _, emp := range employees {
+				if emp.EmployeeCode == salesCodeValue {
+				found = true
+				break
+			}
+		}
+		if !found {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "销售员代码不存在或不是有效的销售员"})
+			return
+		}
+			updateData["salesCode"] = salesCodeValue
+	} else {
+		// 如果传空字符串，表示清除绑定
+		updateData["salesCode"] = ""
 	}
+	}
+	// 如果 SalesCode 和 SalesEmployeeID 都没有传递，则不更新销售员绑定
+	
 	if req.Avatar != "" {
 		updateData["avatar"] = strings.TrimSpace(req.Avatar)
-	}
-	if req.Latitude != nil {
-		updateData["latitude"] = *req.Latitude
-	}
-	if req.Longitude != nil {
-		updateData["longitude"] = *req.Longitude
 	}
 	if req.UserType != "" {
 		updateData["userType"] = req.UserType
@@ -381,17 +623,20 @@ func MiniAppAuthMiddleware() gin.HandlerFunc {
 }
 
 type updateMiniUserProfileRequest struct {
+	AddressID *int    `json:"address_id,omitempty"` // 地址ID，为空表示新增，不为空表示编辑
 	Name      string  `json:"name"`
 	Contact   string  `json:"contact"`
 	Phone     string  `json:"phone"`
 	Address   string  `json:"address"`
+	Avatar    string  `json:"avatar,omitempty"` // 地址照片（门头照片）
 	StoreType string  `json:"storeType"`
 	SalesCode string  `json:"salesCode"`
 	Latitude  *float64 `json:"latitude,omitempty"`
 	Longitude *float64 `json:"longitude,omitempty"`
+	IsDefault bool    `json:"is_default"` // 是否设置为默认地址
 }
 
-// UpdateMiniAppUserProfile 更新小程序用户资料，提交后自动设为零售身份并标记资料已完善
+// UpdateMiniAppUserProfile 创建或更新地址，根据地址数量判断资料是否完善
 func UpdateMiniAppUserProfile(c *gin.Context) {
 	token := extractBearerToken(c.GetHeader("Authorization"))
 	if token == "" {
@@ -429,39 +674,117 @@ func UpdateMiniAppUserProfile(c *gin.Context) {
 		return
 	}
 
-	// 构建更新数据
-	profileData := map[string]interface{}{
-		"name":      strings.TrimSpace(req.Name),
-		"contact":   strings.TrimSpace(req.Contact),
-		"phone":     strings.TrimSpace(req.Phone),
-		"address":   strings.TrimSpace(req.Address),
-		"storeType": strings.TrimSpace(req.StoreType),
-		"salesCode": strings.TrimSpace(req.SalesCode),
-	}
-	if req.Latitude != nil {
-		profileData["latitude"] = *req.Latitude
-	}
-	if req.Longitude != nil {
-		profileData["longitude"] = *req.Longitude
-	}
-
-	// 更新用户资料（会自动设置为零售身份并标记资料已完善）
-	if err := model.UpdateMiniAppUserProfile(claims.OpenID, profileData); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新用户资料失败: " + err.Error()})
-		return
-	}
-
-	// 返回更新后的用户信息
+	// 获取用户信息
 	user, err := model.GetMiniAppUserByUniqueID(claims.OpenID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
 		return
 	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
 
+	// 构建地址数据（不再包含sales_code，销售员绑定到用户）
+	addressData := map[string]interface{}{
+		"name":       strings.TrimSpace(req.Name),
+		"contact":    strings.TrimSpace(req.Contact),
+		"phone":      strings.TrimSpace(req.Phone),
+		"address":    strings.TrimSpace(req.Address),
+		"store_type": strings.TrimSpace(req.StoreType),
+		"is_default": req.IsDefault,
+	}
+	
+	// 如果传了销售员代码，更新用户表的sales_code（而不是地址表）
+	if req.SalesCode != "" {
+		salesCode := strings.TrimSpace(req.SalesCode)
+		// 验证销售员代码是否存在且是销售员
+		employees, _ := model.GetSalesEmployees()
+		found := false
+		for _, emp := range employees {
+			if emp.EmployeeCode == salesCode {
+				found = true
+				break
+			}
+		}
+		if !found {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "销售员代码不存在或不是有效的销售员"})
+			return
+		}
+		// 更新用户表的sales_code
+		userUpdateData := map[string]interface{}{
+			"salesCode": salesCode,
+		}
+		err = model.UpdateMiniAppUserByAdmin(user.ID, userUpdateData)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新销售员绑定失败: " + err.Error()})
+			return
+		}
+	}
+	if req.Avatar != "" {
+		addressData["avatar"] = strings.TrimSpace(req.Avatar)
+	}
+	if req.Latitude != nil {
+		addressData["latitude"] = *req.Latitude
+	}
+	if req.Longitude != nil {
+		addressData["longitude"] = *req.Longitude
+	}
+
+	var address *model.Address
+	// 判断是新增还是编辑
+	if req.AddressID == nil || *req.AddressID == 0 {
+		// 新增地址
+		address, err = model.CreateAddress(user.ID, addressData)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建地址失败: " + err.Error()})
+			return
+		}
+	} else {
+		// 更新地址
+		err = model.UpdateAddress(*req.AddressID, user.ID, addressData)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新地址失败: " + err.Error()})
+			return
+		}
+		address, err = model.GetAddressByID(*req.AddressID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取地址信息失败: " + err.Error()})
+			return
+		}
+	}
+
+	// 统计地址数量，判断资料是否完善
+	addressCount, err := model.CountAddressesByUserID(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "统计地址数量失败: " + err.Error()})
+		return
+	}
+
+	// 如果地址数量>=1，标记资料已完善
+	profileCompleted := addressCount >= 1
+	
+	// 如果资料已完善，且用户类型是unknown，自动设置为retail（零售用户）
+	userType := user.UserType
+	if profileCompleted && (userType == "" || userType == "unknown") {
+		userType = "retail"
+	}
+	
+	_, err = database.DB.Exec(`
+		UPDATE mini_app_users 
+		SET profile_completed = ?, user_type = ?, updated_at = NOW()
+		WHERE id = ?
+	`, profileCompleted, userType, user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新资料完善状态失败: " + err.Error()})
+		return
+	}
+
+	// 返回地址信息
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
-		"message": "资料更新成功",
-		"data":    user,
+		"message": "地址保存成功",
+		"data":    address,
 	})
 }
 
@@ -535,6 +858,299 @@ func UploadMiniAppUserAvatar(c *gin.Context) {
 			"avatar": fileURL,
 			"user":   user,
 		},
+	})
+}
+
+// UploadAddressAvatar 上传地址头像（门头照片），只上传到MinIO并返回URL，不更新任何表
+func UploadAddressAvatar(c *gin.Context) {
+	// 从中间件获取用户信息（用于验证身份）
+	openID, exists := c.Get("openID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
+		return
+	}
+	_ = openID // 仅用于验证，不实际使用
+
+	// 检查是否有文件上传
+	file, headers, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请选择要上传的图片: " + err.Error()})
+		return
+	}
+	defer file.Close()
+	
+	if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过5MB"})
+		return
+	}
+	
+	// 检查文件类型
+	imageExtensions := map[string]bool{
+		".jpg":  true,
+		".jpeg": true,
+		".png":  true,
+		".gif":  true,
+		".bmp":  true,
+	}
+	extension := ""
+	for i := len(headers.Filename) - 1; i >= 0; i-- {
+		if headers.Filename[i] == '.' {
+			extension = headers.Filename[i:]
+			break
+		}
+	}
+	if !imageExtensions[strings.ToLower(extension)] {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请上传JPG、PNG或GIF格式的图片"})
+		return
+	}
+
+	// 上传图片到MinIO（使用不同的bucket前缀以区分地址头像）
+	fileURL, err := utils.UploadFile("mini-address-avatar", c.Request)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
+		return
+	}
+
+	// 只返回URL，不更新任何表
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "图片上传成功",
+		"data": gin.H{
+			"avatar": fileURL,
+			"imageUrl": fileURL, // 兼容前端可能使用的字段名
+		},
+	})
+}
+
+// GetMiniAppAddresses 获取用户的所有地址
+func GetMiniAppAddresses(c *gin.Context) {
+	openID, exists := c.Get("openID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
+		return
+	}
+
+	uniqueID := openID.(string)
+	user, err := model.GetMiniAppUserByUniqueID(uniqueID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	addresses, err := model.GetAddressesByUserID(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取地址列表失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "获取成功",
+		"data":    addresses,
+	})
+}
+
+// GetMiniAppDefaultAddress 获取用户的默认地址
+func GetMiniAppDefaultAddress(c *gin.Context) {
+	openID, exists := c.Get("openID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
+		return
+	}
+
+	uniqueID := openID.(string)
+	user, err := model.GetMiniAppUserByUniqueID(uniqueID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	address, err := model.GetDefaultAddressByUserID(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取默认地址失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "获取成功",
+		"data":    address,
+	})
+}
+
+// DeleteMiniAppAddress 删除地址
+func DeleteMiniAppAddress(c *gin.Context) {
+	openID, exists := c.Get("openID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
+		return
+	}
+
+	uniqueID := openID.(string)
+	user, err := model.GetMiniAppUserByUniqueID(uniqueID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	addressIDStr := c.Param("id")
+	addressID, err := strconv.Atoi(addressIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "地址ID无效"})
+		return
+	}
+
+	err = model.DeleteAddress(addressID, user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除地址失败: " + err.Error()})
+		return
+	}
+
+	// 重新统计地址数量，更新资料完善状态
+	addressCount, err := model.CountAddressesByUserID(user.ID)
+	if err == nil {
+		profileCompleted := addressCount >= 1
+		// 如果地址数量为0，且用户类型是retail，重置为unknown
+		// 如果地址数量>=1，且用户类型是unknown，设置为retail
+		userType := user.UserType
+		if !profileCompleted && userType == "retail" {
+			userType = "unknown"
+		} else if profileCompleted && (userType == "" || userType == "unknown") {
+			userType = "retail"
+		}
+		database.DB.Exec(`
+			UPDATE mini_app_users 
+			SET profile_completed = ?, user_type = ?, updated_at = NOW()
+			WHERE id = ?
+		`, profileCompleted, userType, user.ID)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "删除成功",
+	})
+}
+
+// SetDefaultMiniAppAddress 设置默认地址
+func SetDefaultMiniAppAddress(c *gin.Context) {
+	openID, exists := c.Get("openID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
+		return
+	}
+
+	uniqueID := openID.(string)
+	user, err := model.GetMiniAppUserByUniqueID(uniqueID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	addressIDStr := c.Param("id")
+	addressID, err := strconv.Atoi(addressIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "地址ID无效"})
+		return
+	}
+
+	err = model.SetDefaultAddress(addressID, user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "设置默认地址失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "设置成功",
+	})
+}
+
+// UpdateMiniAppUserName 更新用户姓名
+func UpdateMiniAppUserName(c *gin.Context) {
+	openID, exists := c.Get("openID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
+		return
+	}
+
+	uniqueID := openID.(string)
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	// 验证姓名长度
+	if len(req.Name) > 50 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "姓名长度不能超过50个字符"})
+		return
+	}
+
+	err := model.UpdateMiniAppUserName(uniqueID, req.Name)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新姓名失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "更新成功",
+	})
+}
+
+// UpdateMiniAppUserPhone 更新用户电话
+func UpdateMiniAppUserPhone(c *gin.Context) {
+	openID, exists := c.Get("openID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
+		return
+	}
+
+	uniqueID := openID.(string)
+	var req struct {
+		Phone string `json:"phone" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	// 验证电话格式（简单验证，只检查长度）
+	phone := strings.TrimSpace(req.Phone)
+	if len(phone) > 20 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "电话长度不能超过20个字符"})
+		return
+	}
+
+	err := model.UpdateMiniAppUserPhone(uniqueID, phone)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新电话失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "更新成功",
 	})
 }
 

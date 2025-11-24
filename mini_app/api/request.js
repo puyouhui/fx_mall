@@ -33,14 +33,22 @@ export const request = (options = {}) => {
           if (res.data && res.data.code === 200) {
             resolve(res.data);
           } else {
+            // 检查业务错误码，如果需要清空登录信息
+            if (res.data && shouldClearAuthInfo(res.statusCode, res.data.code)) {
+              clearLocalAuthInfo();
+            }
             // 错误提示
             uni.showToast({
-              title: res.data.msg || '请求失败',
+              title: res.data.message || res.data.msg || '请求失败',
               icon: 'none'
             });
             reject(res.data);
           }
         } else {
+          // HTTP状态码错误（401, 403, 404等）
+          if (shouldClearAuthInfo(res.statusCode, null)) {
+            clearLocalAuthInfo();
+          }
           // HTTP错误
           uni.showToast({
             title: `HTTP错误: ${res.statusCode}`,
@@ -60,6 +68,56 @@ export const request = (options = {}) => {
     });
   });
 };
+
+// 清空本地认证信息
+function clearLocalAuthInfo() {
+  try {
+    // 清空token和用户信息
+    uni.removeStorageSync('miniUserToken');
+    uni.removeStorageSync('miniUserInfo');
+    uni.removeStorageSync('miniUserUniqueId');
+    
+    // 延迟执行，避免在请求回调中直接跳转
+    setTimeout(() => {
+      // 跳转到首页（如果不在首页）
+      const pages = getCurrentPages();
+      if (pages.length > 0) {
+        const currentPage = pages[pages.length - 1];
+        const route = currentPage.route;
+        // 如果不在首页，跳转到首页
+        if (route !== 'pages/index/index') {
+          uni.reLaunch({
+            url: '/pages/index/index'
+          });
+        } else {
+          // 如果在首页，刷新页面数据
+          if (currentPage.$vm && typeof currentPage.$vm.updateUserInfo === 'function') {
+            currentPage.$vm.updateUserInfo();
+          }
+          // 触发页面刷新
+          if (currentPage.$vm && typeof currentPage.$vm.onShow === 'function') {
+            currentPage.$vm.onShow();
+          }
+        }
+      }
+    }, 100);
+  } catch (error) {
+    console.error('清空本地信息失败:', error);
+  }
+}
+
+// 检查状态码是否需要清空登录信息
+function shouldClearAuthInfo(statusCode, businessCode) {
+  // HTTP状态码：401未授权、403禁止、404未找到
+  if (statusCode === 401 || statusCode === 403 || statusCode === 404) {
+    return true;
+  }
+  // 业务错误码：401未授权、404未找到
+  if (businessCode === 401 || businessCode === 404) {
+    return true;
+  }
+  return false;
+}
 
 // 封装GET请求
 export const get = (url, data = {}, options = {}) => {

@@ -141,20 +141,33 @@
                   </el-col>
                 </el-row>
                 <el-row :gutter="12" style="margin-bottom: 10px;">
-                  <el-col :span="12">
+                  <el-col :span="8">
+                    <el-input-number 
+                      v-model="currentSpec.cost" 
+                      :min="0" 
+                      :step="0.01" 
+                      :precision="2"
+                      placeholder="成本" 
+                      style="width: 100%;"
+                    />
+                    <!-- <div style="font-size: 12px; color: #909399; margin-top: 4px;">成本（用于计算利润）</div> -->
+                  </el-col>
+                  <el-col :span="8">
                     <el-input-number 
                       v-model="currentSpec.wholesalePrice" 
                       :min="0.01" 
                       :step="0.01" 
+                      :precision="2"
                       placeholder="批发价" 
                       style="width: 100%;"
                     />
                   </el-col>
-                  <el-col :span="12">
+                  <el-col :span="8">
                     <el-input-number 
                       v-model="currentSpec.retailPrice" 
                       :min="0.01" 
                       :step="0.01" 
+                      :precision="2"
                       placeholder="零售价" 
                       style="width: 100%;"
                     />
@@ -162,14 +175,27 @@
                 </el-row>
                 <div style="text-align: center; margin-top: 10px;">
                   <el-button type="primary" @click="addSpec">添加规格</el-button>
-                  <el-tooltip effect="dark" content="请填写所有必填项后添加规格" placement="top">
+                  <!-- <el-tooltip effect="dark" content="请填写所有必填项后添加规格" placement="top">
                     <el-button type="text" size="small" style="margin-left: 10px;">添加说明</el-button>
-                  </el-tooltip>
+                  </el-tooltip> -->
                 </div>
               </div>
               <div class="specs-list" v-if="productForm.specs.length > 0">
                 <div v-for="(spec, index) in productForm.specs" :key="index" class="spec-item">
-                  <span>{{ spec.name }} ({{ spec.description || '-' }}) (批发价: ¥{{ spec.wholesale_price || spec.wholesalePrice }}, 零售价: ¥{{ spec.retail_price || spec.retailPrice }})</span>
+                  <div class="spec-info">
+                    <div class="spec-name">{{ spec.name }}</div>
+                    <div class="spec-details">
+                      <span v-if="spec.description" class="spec-desc">{{ spec.description }}</span>
+                      <span class="spec-price">
+                        成本: ¥{{ (spec.cost || spec.cost === 0) ? (spec.cost || 0).toFixed(2) : '-' }}
+                        | 批发价: ¥{{ (spec.wholesale_price || spec.wholesalePrice || 0).toFixed(2) }}
+                        | 零售价: ¥{{ (spec.retail_price || spec.retailPrice || 0).toFixed(2) }}
+                      </span>
+                      <span v-if="spec.cost && (spec.retail_price || spec.retailPrice)" class="spec-profit">
+                        (利润: ¥{{ ((spec.retail_price || spec.retailPrice) - (spec.cost || 0)).toFixed(2) }})
+                      </span>
+                    </div>
+                  </div>
                   <el-button type="text" danger @click="removeSpec(index)">删除</el-button>
                 </div>
               </div>
@@ -670,6 +696,7 @@ const handleEditProduct = (row) => {
   // 清空当前规格
   Object.assign(currentSpec, {
     name: '',
+    cost: null,
     wholesalePrice: null,
     retailPrice: null,
     description: ''
@@ -755,6 +782,7 @@ const addSpec = () => {
   // 添加规格，使用正确的字段名
   productForm.specs.push({
     name: currentSpec.name,
+    cost: currentSpec.cost || 0, // 成本，默认为0
     wholesale_price: currentSpec.wholesalePrice,
     retail_price: currentSpec.retailPrice,
     description: currentSpec.description || ''
@@ -763,6 +791,7 @@ const addSpec = () => {
   // 清空当前输入
   Object.assign(currentSpec, {
     name: '',
+    cost: null,
     wholesalePrice: null,
     retailPrice: null,
     description: ''
@@ -792,6 +821,10 @@ const handleSubmit = async () => {
       if (!spec.name || !wholesalePrice || wholesalePrice <= 0 || !retailPrice || retailPrice <= 0) {
         ElMessage.warning('所有规格都必须有名称、批发价和零售价')
         return
+      }
+      // 确保成本字段存在（如果没有则设为0）
+      if (spec.cost === undefined || spec.cost === null) {
+        spec.cost = 0
       }
     }
 
@@ -1066,6 +1099,38 @@ onMounted(() => {
   flex: 1;
   font-size: 14px;
   line-height: 1.5;
+}
+
+.spec-info {
+  flex: 1;
+}
+
+.spec-name {
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.spec-details {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.6;
+}
+
+.spec-desc {
+  color: #909399;
+  margin-right: 8px;
+}
+
+.spec-price {
+  color: #606266;
+}
+
+.spec-profit {
+  color: #67c23a;
+  font-weight: 500;
+  margin-left: 8px;
 }
 
 /* 价格输入框样式优化 */

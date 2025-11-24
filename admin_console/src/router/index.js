@@ -70,6 +70,14 @@ const routes = [
         meta: {
           title: '小程序用户'
         }
+      },
+      {
+        path: 'employees',
+        name: 'Employees',
+        component: () => import('../views/Employees.vue'),
+        meta: {
+          title: '员工管理'
+        }
       }
     ]
   },

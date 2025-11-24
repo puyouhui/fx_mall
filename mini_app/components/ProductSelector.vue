@@ -104,6 +104,7 @@
 import { ref, computed } from 'vue'
 import { getProductDetail } from '../api/products'
 import { miniLogin } from '../api/index'
+import { addItemToPurchaseList } from '../utils/purchaseList'
 
 const PROFILE_FORM_PAGE = '/pages/profile/form'
 
@@ -470,72 +471,48 @@ const addToCart = async () => {
     return
   }
 
-  const cart = uni.getStorageSync('cart') || []
+  const token = userState.value.token || uni.getStorageSync('miniUserToken')
+  if (!token) {
+    uni.showToast({ title: '请先登录', icon: 'none' })
+    return
+  }
 
+  try {
+    loading.value = true
   if (selectedProduct.value.specs && selectedProduct.value.specs.length > 0) {
     const selectedSpecs = selectedProduct.value.specs.filter(spec => getSpecQuantity(spec) > 0)
     if (!selectedSpecs.length) {
       uni.showToast({ title: '请选择至少一个规格数量', icon: 'none' })
       return
     }
-
-    selectedSpecs.forEach(spec => {
-      // 根据用户类型选择价格
-      let price = 0
-      if (isWholesaleUser.value) {
-        // 批发用户使用批发价
-        price = spec.wholesale_price || spec.wholesalePrice || spec.price || selectedProduct.value.price || 0
-      } else {
-        // 零售用户或未登录用户使用零售价
-        price = spec.retail_price || spec.retailPrice || spec.price || selectedProduct.value.price || 0
-      }
-      
-      const cartItem = {
+      for (const spec of selectedSpecs) {
+        await addItemToPurchaseList({
+          token,
         productId: selectedProduct.value.id,
-        productName: selectedProduct.value.name,
-        productImage: selectedProduct.value.images?.[0] || '',
-        specKey: spec.name + (spec.description ? ':' + spec.description : ''),
-        specName: spec.name,
-        specDescription: spec.description,
-        price: price,
+          specName: spec.name || '默认规格',
         quantity: getSpecQuantity(spec)
+        })
       }
-
-      const existingIndex = cart.findIndex(item => item.productId === cartItem.productId && item.specKey === cartItem.specKey)
-      if (existingIndex >= 0) {
-        cart[existingIndex].quantity += cartItem.quantity
-      } else {
-        cart.push(cartItem)
-      }
-    })
   } else {
     if (singleQuantity.value <= 0) {
       uni.showToast({ title: '请选择数量', icon: 'none' })
       return
     }
-
-    const cartItem = {
+      await addItemToPurchaseList({
+        token,
       productId: selectedProduct.value.id,
-      productName: selectedProduct.value.name,
-      productImage: selectedProduct.value.images?.[0] || '',
-      specKey: '默认',
-      specName: '默认',
-      specDescription: '',
-      price: selectedProduct.value.price || 0,
+        specName: '默认规格',
       quantity: singleQuantity.value
+      })
     }
-
-    const existingIndex = cart.findIndex(item => item.productId === cartItem.productId && item.specKey === cartItem.specKey)
-    if (existingIndex >= 0) {
-      cart[existingIndex].quantity += cartItem.quantity
-    } else {
-      cart.push(cartItem)
-    }
-  }
-
-  uni.setStorageSync('cart', cart)
   uni.showToast({ title: '已添加到采购单', icon: 'success' })
   closeModal()
+  } catch (error) {
+    console.error('添加采购单失败:', error)
+    uni.showToast({ title: '添加失败，请稍后再试', icon: 'none' })
+  } finally {
+    loading.value = false
+  }
 }
 
 const closeModal = () => {

@@ -15,7 +15,7 @@
 		{
 			"path": "pages/cart/cart",
 			"style": {
-				"navigationBarTitleText": "采购单"
+				"navigationStyle": "custom"
 			}
 		},
 		{
@@ -57,10 +57,34 @@
 			}
 		},
 		{
+			"path": "pages/profile/profile",
+			"style": {
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path" : "pages/my/my",
 			"style" : 
 			{
 				"navigationBarTitleText" : "我的"
+			}
+		},
+		{
+			"path": "pages/customer-service/customer-service",
+			"style": {
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/settings/settings",
+			"style": {
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/address/address",
+			"style": {
+				"navigationStyle": "custom"
 			}
 		}
 	],

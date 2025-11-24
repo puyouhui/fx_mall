@@ -23,3 +23,25 @@ export function updateMiniUser(id, data) {
   })
 }
 
+export function getAdminAddressDetail(id) {
+  return request({
+    url: `/admin/mini-app/addresses/${id}`,
+    method: 'get'
+  })
+}
+
+export function updateAdminAddress(id, data) {
+  return request({
+    url: `/admin/mini-app/addresses/${id}`,
+    method: 'put',
+    data
+  })
+}
+
+export function getSalesEmployees() {
+  return request({
+    url: '/admin/employees/sales',
+    method: 'get'
+  })
+}
+

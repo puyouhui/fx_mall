@@ -5,10 +5,6 @@
 		},
 		onLaunch: function() {
 			console.log('App Launch')
-			// 初始化本地存储中的购物车
-			if (!uni.getStorageSync('cart')) {
-				uni.setStorageSync('cart', []);
-			}
 		},
 		onShow: function() {
 			console.log('App Show')

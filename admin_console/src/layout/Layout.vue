@@ -54,6 +54,12 @@
         </el-icon>
         <span>小程序用户</span>
       </el-menu-item>
+      <el-menu-item index="/employees">
+        <el-icon>
+          <UserFilled />
+        </el-icon>
+        <span>员工管理</span>
+      </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -109,6 +115,7 @@ import {
   ShoppingCart,
   Menu,
   User,
+  UserFilled,
   SwitchFilled,
   Setting,
   Shop
