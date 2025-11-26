@@ -72,7 +72,7 @@ func MiniAppLogin(c *gin.Context) {
 				}
 			}
 		}
-		
+
 		// 检查用户资料完善状态，如果已完善但用户类型是unknown，自动设置为retail
 		if user.ProfileCompleted && (user.UserType == "" || user.UserType == "unknown") {
 			_, _ = database.DB.Exec(`
@@ -111,7 +111,7 @@ func GetMiniAppUsers(c *gin.Context) {
 		return
 	}
 
-	// 为每个用户添加销售员信息
+	// 为每个用户添加销售员信息和优惠券数量
 	usersWithSalesEmployee := make([]map[string]interface{}, 0)
 	for _, user := range users {
 		userData := map[string]interface{}{
@@ -144,6 +144,29 @@ func GetMiniAppUsers(c *gin.Context) {
 			}
 		} else {
 			userData["sales_employee"] = nil
+		}
+
+		// 统计用户优惠券数量（未使用的）
+		var couponCount int
+		err := database.DB.QueryRow("SELECT COUNT(*) FROM user_coupons WHERE user_id = ? AND status = 'unused'", user.ID).Scan(&couponCount)
+		if err == nil {
+			userData["coupon_count"] = couponCount
+		} else {
+			userData["coupon_count"] = 0
+		}
+
+		// 获取用户的默认地址
+		defaultAddress, _ := model.GetDefaultAddressByUserID(user.ID)
+		if defaultAddress != nil {
+			userData["default_address"] = map[string]interface{}{
+				"id":      defaultAddress.ID,
+				"name":    defaultAddress.Name,
+				"contact": defaultAddress.Contact,
+				"phone":   defaultAddress.Phone,
+				"address": defaultAddress.Address,
+			}
+		} else {
+			userData["default_address"] = nil
 		}
 
 		usersWithSalesEmployee = append(usersWithSalesEmployee, userData)
@@ -225,7 +248,7 @@ func GetMiniAppUserDetail(c *gin.Context) {
 
 	// 获取用户的默认地址
 	defaultAddress, _ := model.GetDefaultAddressByUserID(user.ID)
-	
+
 	// 获取用户的所有地址
 	allAddresses, _ := model.GetAddressesByUserID(user.ID)
 
@@ -234,6 +257,7 @@ func GetMiniAppUserDetail(c *gin.Context) {
 		"id":                user.ID,
 		"unique_id":         user.UniqueID,
 		"user_code":         user.UserCode,
+		"name":              user.Name,
 		"avatar":            user.Avatar,
 		"phone":             user.Phone,
 		"sales_code":        user.SalesCode,
@@ -287,12 +311,12 @@ func GetAdminAddressByID(c *gin.Context) {
 }
 
 type updateAdminAddressRequest struct {
-	Name      string   `json:"name"`
-	Contact   string   `json:"contact"`
-	Phone     string   `json:"phone"`
-	Address   string   `json:"address"`
-	Avatar    string   `json:"avatar"`
-	StoreType string   `json:"storeType"`
+	Name      string `json:"name"`
+	Contact   string `json:"contact"`
+	Phone     string `json:"phone"`
+	Address   string `json:"address"`
+	Avatar    string `json:"avatar"`
+	StoreType string `json:"storeType"`
 	// SalesCode 已移除，销售员绑定到用户而不是地址
 	Latitude  *float64 `json:"latitude"`
 	Longitude *float64 `json:"longitude"`
@@ -382,13 +406,14 @@ func UpdateAdminAddress(c *gin.Context) {
 }
 
 type updateMiniAppUserByAdminRequest struct {
-	Phone            string   `json:"phone"`
-	StoreType        string   `json:"storeType"`
-	SalesCode        *string  `json:"salesCode"`        // 销售员代码（员工码），使用指针以区分是否传递
-	SalesEmployeeID *int     `json:"salesEmployeeId"`   // 销售员ID（优先使用）
-	Avatar           string   `json:"avatar"`
-	UserType         string   `json:"userType"`
-	ProfileCompleted *bool    `json:"profileCompleted,omitempty"`
+	Name             string  `json:"name"`
+	Phone            string  `json:"phone"`
+	StoreType        string  `json:"storeType"`
+	SalesCode        *string `json:"salesCode"`       // 销售员代码（员工码），使用指针以区分是否传递
+	SalesEmployeeID  *int    `json:"salesEmployeeId"` // 销售员ID（优先使用）
+	Avatar           string  `json:"avatar"`
+	UserType         string  `json:"userType"`
+	ProfileCompleted *bool   `json:"profileCompleted,omitempty"`
 }
 
 // UpdateMiniAppUserByAdmin 管理员更新小程序用户信息（可修改所有字段包括用户类型）
@@ -423,13 +448,16 @@ func UpdateMiniAppUserByAdmin(c *gin.Context) {
 
 	// 构建更新数据
 	updateData := map[string]interface{}{}
+	if req.Name != "" {
+		updateData["name"] = strings.TrimSpace(req.Name)
+	}
 	if req.Phone != "" {
 		updateData["phone"] = strings.TrimSpace(req.Phone)
 	}
 	if req.StoreType != "" {
 		updateData["storeType"] = strings.TrimSpace(req.StoreType)
 	}
-	
+
 	// 处理销售员绑定：优先使用SalesEmployeeID，如果没有则使用SalesCode
 	if req.SalesEmployeeID != nil && *req.SalesEmployeeID > 0 {
 		// 通过员工ID获取员工码
@@ -451,27 +479,27 @@ func UpdateMiniAppUserByAdmin(c *gin.Context) {
 		// SalesCode 字段被传递了
 		salesCodeValue := strings.TrimSpace(*req.SalesCode)
 		if salesCodeValue != "" {
-		// 验证销售员代码是否存在且是销售员
-		employees, _ := model.GetSalesEmployees()
-		found := false
-		for _, emp := range employees {
+			// 验证销售员代码是否存在且是销售员
+			employees, _ := model.GetSalesEmployees()
+			found := false
+			for _, emp := range employees {
 				if emp.EmployeeCode == salesCodeValue {
-				found = true
-				break
+					found = true
+					break
+				}
 			}
-		}
-		if !found {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "销售员代码不存在或不是有效的销售员"})
-			return
-		}
+			if !found {
+				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "销售员代码不存在或不是有效的销售员"})
+				return
+			}
 			updateData["salesCode"] = salesCodeValue
-	} else {
-		// 如果传空字符串，表示清除绑定
-		updateData["salesCode"] = ""
-	}
+		} else {
+			// 如果传空字符串，表示清除绑定
+			updateData["salesCode"] = ""
+		}
 	}
 	// 如果 SalesCode 和 SalesEmployeeID 都没有传递，则不更新销售员绑定
-	
+
 	if req.Avatar != "" {
 		updateData["avatar"] = strings.TrimSpace(req.Avatar)
 	}
@@ -623,17 +651,17 @@ func MiniAppAuthMiddleware() gin.HandlerFunc {
 }
 
 type updateMiniUserProfileRequest struct {
-	AddressID *int    `json:"address_id,omitempty"` // 地址ID，为空表示新增，不为空表示编辑
-	Name      string  `json:"name"`
-	Contact   string  `json:"contact"`
-	Phone     string  `json:"phone"`
-	Address   string  `json:"address"`
-	Avatar    string  `json:"avatar,omitempty"` // 地址照片（门头照片）
-	StoreType string  `json:"storeType"`
-	SalesCode string  `json:"salesCode"`
+	AddressID *int     `json:"address_id,omitempty"` // 地址ID，为空表示新增，不为空表示编辑
+	Name      string   `json:"name"`
+	Contact   string   `json:"contact"`
+	Phone     string   `json:"phone"`
+	Address   string   `json:"address"`
+	Avatar    string   `json:"avatar,omitempty"` // 地址照片（门头照片）
+	StoreType string   `json:"storeType"`
+	SalesCode string   `json:"salesCode"`
 	Latitude  *float64 `json:"latitude,omitempty"`
 	Longitude *float64 `json:"longitude,omitempty"`
-	IsDefault bool    `json:"is_default"` // 是否设置为默认地址
+	IsDefault bool     `json:"is_default"` // 是否设置为默认地址
 }
 
 // UpdateMiniAppUserProfile 创建或更新地址，根据地址数量判断资料是否完善
@@ -694,7 +722,7 @@ func UpdateMiniAppUserProfile(c *gin.Context) {
 		"store_type": strings.TrimSpace(req.StoreType),
 		"is_default": req.IsDefault,
 	}
-	
+
 	// 如果传了销售员代码，更新用户表的sales_code（而不是地址表）
 	if req.SalesCode != "" {
 		salesCode := strings.TrimSpace(req.SalesCode)
@@ -763,13 +791,13 @@ func UpdateMiniAppUserProfile(c *gin.Context) {
 
 	// 如果地址数量>=1，标记资料已完善
 	profileCompleted := addressCount >= 1
-	
+
 	// 如果资料已完善，且用户类型是unknown，自动设置为retail（零售用户）
 	userType := user.UserType
 	if profileCompleted && (userType == "" || userType == "unknown") {
 		userType = "retail"
 	}
-	
+
 	_, err = database.DB.Exec(`
 		UPDATE mini_app_users 
 		SET profile_completed = ?, user_type = ?, updated_at = NOW()
@@ -804,12 +832,12 @@ func UploadMiniAppUserAvatar(c *gin.Context) {
 		return
 	}
 	defer file.Close()
-	
+
 	if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过5MB"})
 		return
 	}
-	
+
 	// 检查文件类型
 	imageExtensions := map[string]bool{
 		".jpg":  true,
@@ -861,6 +889,87 @@ func UploadMiniAppUserAvatar(c *gin.Context) {
 	})
 }
 
+// UploadMiniAppUserAvatarByAdmin 管理员上传小程序用户头像
+func UploadMiniAppUserAvatarByAdmin(c *gin.Context) {
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供用户ID"})
+		return
+	}
+
+	var id int
+	_, err := fmt.Sscanf(idStr, "%d", &id)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "用户ID格式错误"})
+		return
+	}
+
+	// 检查用户是否存在
+	user, err := model.GetMiniAppUserByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	// 检查是否有文件上传
+	file, headers, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请选择要上传的图片: " + err.Error()})
+		return
+	}
+	defer file.Close()
+
+	if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过5MB"})
+		return
+	}
+
+	// 检查文件类型
+	imageExtensions := map[string]bool{
+		".jpg":  true,
+		".jpeg": true,
+		".png":  true,
+		".gif":  true,
+		".bmp":  true,
+	}
+	extension := ""
+	for i := len(headers.Filename) - 1; i >= 0; i-- {
+		if headers.Filename[i] == '.' {
+			extension = headers.Filename[i:]
+			break
+		}
+	}
+	if !imageExtensions[strings.ToLower(extension)] {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请上传JPG、PNG或GIF格式的图片"})
+		return
+	}
+
+	// 上传图片到MinIO
+	fileURL, err := utils.UploadFile("mini-user-avatar", c.Request)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
+		return
+	}
+
+	// 更新用户头像
+	if err := model.UpdateMiniAppUserAvatar(user.UniqueID, fileURL); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新用户头像失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "头像上传成功",
+		"data": gin.H{
+			"avatar": fileURL,
+		},
+	})
+}
+
 // UploadAddressAvatar 上传地址头像（门头照片），只上传到MinIO并返回URL，不更新任何表
 func UploadAddressAvatar(c *gin.Context) {
 	// 从中间件获取用户信息（用于验证身份）
@@ -878,12 +987,12 @@ func UploadAddressAvatar(c *gin.Context) {
 		return
 	}
 	defer file.Close()
-	
+
 	if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过5MB"})
 		return
 	}
-	
+
 	// 检查文件类型
 	imageExtensions := map[string]bool{
 		".jpg":  true,
@@ -916,7 +1025,7 @@ func UploadAddressAvatar(c *gin.Context) {
 		"code":    200,
 		"message": "图片上传成功",
 		"data": gin.H{
-			"avatar": fileURL,
+			"avatar":   fileURL,
 			"imageUrl": fileURL, // 兼容前端可能使用的字段名
 		},
 	})
@@ -1153,4 +1262,3 @@ func UpdateMiniAppUserPhone(c *gin.Context) {
 		"message": "更新成功",
 	})
 }
-

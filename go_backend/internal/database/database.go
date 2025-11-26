@@ -282,6 +282,42 @@ func InitDB() error {
 			return
 		}
 
+		// 创建配送费基础设置表
+		createDeliveryFeeSettingsTableSQL := `
+		CREATE TABLE IF NOT EXISTS delivery_fee_settings (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    base_fee DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '基础配送费',
+		    free_shipping_threshold DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '免配送费金额阈值',
+		    description VARCHAR(255) DEFAULT '' COMMENT '备注',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='配送费用设置';
+		`
+
+		if _, err = DB.Exec(createDeliveryFeeSettingsTableSQL); err != nil {
+			log.Printf("创建delivery_fee_settings表失败: %v", err)
+			return
+		}
+
+		// 创建配送费排除项表
+		createDeliveryFeeExclusionsTableSQL := `
+		CREATE TABLE IF NOT EXISTS delivery_fee_exclusions (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    item_type ENUM('category','product') NOT NULL COMMENT '排除类型：分类或商品',
+		    target_id INT NOT NULL COMMENT '目标ID（分类或商品）',
+		    min_quantity_for_free INT DEFAULT NULL COMMENT '单品免配送费所需数量，仅针对商品',
+		    remark VARCHAR(255) DEFAULT '' COMMENT '备注说明',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    UNIQUE KEY uk_item_scope (item_type, target_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='配送费用排除项';
+		`
+
+		if _, err = DB.Exec(createDeliveryFeeExclusionsTableSQL); err != nil {
+			log.Printf("创建delivery_fee_exclusions表失败: %v", err)
+			return
+		}
+
 		// 创建采购单表（类似购物车）
 		createPurchaseListTableSQL := `
 		CREATE TABLE IF NOT EXISTS purchase_list_items (
@@ -569,6 +605,154 @@ func InitDB() error {
 		if _, err = DB.Exec(createEmployeesTableSQL); err != nil {
 			log.Printf("创建employees表失败: %v", err)
 			return
+		}
+
+		// 创建优惠券表
+		createCouponsTableSQL := `
+		CREATE TABLE IF NOT EXISTS coupons (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    name VARCHAR(100) NOT NULL COMMENT '优惠券名称',
+		    type ENUM('delivery_fee','amount') NOT NULL COMMENT '类型：delivery_fee-配送费券，amount-金额券',
+		    discount_value DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '优惠值：配送费券为0（全免），金额券为具体金额',
+		    min_amount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '最低使用金额，0表示无门槛',
+		    category_ids TEXT DEFAULT NULL COMMENT '适用分类ID（JSON数组），空表示全品类',
+		    total_count INT NOT NULL DEFAULT 0 COMMENT '发放总数，0表示不限制',
+		    used_count INT NOT NULL DEFAULT 0 COMMENT '已使用数量',
+		    status TINYINT DEFAULT 1 COMMENT '状态：1-启用，0-禁用',
+		    valid_from DATETIME NOT NULL COMMENT '有效期开始时间',
+		    valid_to DATETIME NOT NULL COMMENT '有效期结束时间',
+		    description VARCHAR(500) DEFAULT '' COMMENT '优惠券说明',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    KEY idx_status (status),
+		    KEY idx_valid_time (valid_from, valid_to)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='优惠券表';
+		`
+
+		if _, err = DB.Exec(createCouponsTableSQL); err != nil {
+			log.Printf("创建coupons表失败: %v", err)
+			return
+		}
+
+		// 创建用户优惠券关联表
+		createUserCouponsTableSQL := `
+		CREATE TABLE IF NOT EXISTS user_coupons (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    user_id INT NOT NULL COMMENT '用户ID',
+		    coupon_id INT NOT NULL COMMENT '优惠券ID',
+		    status ENUM('unused','used','expired') DEFAULT 'unused' COMMENT '状态：unused-未使用，used-已使用，expired-已过期',
+		    used_at DATETIME DEFAULT NULL COMMENT '使用时间',
+		    order_id INT DEFAULT NULL COMMENT '订单ID（使用时的订单）',
+		    expires_at DATETIME DEFAULT NULL COMMENT '有效期（发放时设置，过期后无法使用）',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    KEY idx_user_id (user_id),
+		    KEY idx_coupon_id (coupon_id),
+		    KEY idx_status (status),
+		    KEY idx_expires_at (expires_at)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户优惠券关联表';
+		`
+
+		if _, err = DB.Exec(createUserCouponsTableSQL); err != nil {
+			log.Printf("创建user_coupons表失败: %v", err)
+			return
+		}
+
+		// 创建订单主表
+		createOrdersTableSQL := `
+		CREATE TABLE IF NOT EXISTS orders (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    user_id INT NOT NULL COMMENT '用户ID',
+		    address_id INT NOT NULL COMMENT '地址ID',
+		    status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '订单状态',
+		    goods_amount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '商品总金额',
+		    delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '配送费',
+		    points_discount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '积分抵扣金额',
+		    coupon_discount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '优惠券抵扣金额',
+		    total_amount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '实际应付金额',
+		    remark VARCHAR(500) DEFAULT '' COMMENT '备注',
+		    out_of_stock_strategy VARCHAR(20) NOT NULL DEFAULT 'contact_me' COMMENT '缺货处理策略',
+		    trust_receipt TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否信任签收',
+		    hide_price TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否隐藏价格',
+		    require_phone_contact TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否要求配送时电话联系',
+		    expected_delivery_at DATETIME DEFAULT NULL COMMENT '预计送达时间',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    KEY idx_user_id (user_id),
+		    KEY idx_status (status)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单主表';
+		`
+
+		if _, err = DB.Exec(createOrdersTableSQL); err != nil {
+			log.Printf("创建orders表失败: %v", err)
+			return
+		}
+
+		// 创建订单明细表
+		createOrderItemsTableSQL := `
+		CREATE TABLE IF NOT EXISTS order_items (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    order_id INT NOT NULL COMMENT '订单ID',
+		    product_id INT NOT NULL COMMENT '商品ID',
+		    product_name VARCHAR(200) NOT NULL COMMENT '商品名称',
+		    spec_name VARCHAR(100) DEFAULT '' COMMENT '规格名称',
+		    quantity INT NOT NULL COMMENT '数量',
+		    unit_price DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '成交单价',
+		    subtotal DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '小计',
+		    image VARCHAR(255) DEFAULT '' COMMENT '商品图片',
+		    KEY idx_order_id (order_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单明细表';
+		`
+
+		if _, err = DB.Exec(createOrderItemsTableSQL); err != nil {
+			log.Printf("创建order_items表失败: %v", err)
+			return
+		}
+
+		// 检查并添加 expires_at 字段（如果表已存在但字段不存在）
+		// MySQL 不支持 IF NOT EXISTS 在 ADD COLUMN，需要先检查
+		var columnExists int
+		checkColumnSQL := `
+		SELECT COUNT(*) FROM information_schema.COLUMNS 
+		WHERE TABLE_SCHEMA = DATABASE() 
+		AND TABLE_NAME = 'user_coupons' 
+		AND COLUMN_NAME = 'expires_at'
+		`
+		err = DB.QueryRow(checkColumnSQL).Scan(&columnExists)
+		if err == nil && columnExists == 0 {
+			// 字段不存在，添加字段
+			alterSQL := `ALTER TABLE user_coupons ADD COLUMN expires_at DATETIME DEFAULT NULL COMMENT '有效期（发放时设置，过期后无法使用）' AFTER order_id`
+			if _, err = DB.Exec(alterSQL); err != nil {
+				log.Printf("添加expires_at字段失败: %v", err)
+			} else {
+				log.Println("成功添加expires_at字段")
+			}
+			// 添加索引
+			alterIndexSQL := `ALTER TABLE user_coupons ADD INDEX idx_expires_at (expires_at)`
+			if _, err = DB.Exec(alterIndexSQL); err != nil {
+				// 索引可能已存在，忽略错误
+				log.Printf("添加expires_at索引失败（可能已存在）: %v", err)
+			}
+		}
+
+		// 检查并删除唯一键约束 uk_user_coupon（因为现在支持一个用户拥有多张相同的优惠券）
+		var constraintExists int
+		checkConstraintSQL := `
+		SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS 
+		WHERE TABLE_SCHEMA = DATABASE() 
+		AND TABLE_NAME = 'user_coupons' 
+		AND CONSTRAINT_NAME = 'uk_user_coupon'
+		AND CONSTRAINT_TYPE = 'UNIQUE'
+		`
+		err = DB.QueryRow(checkConstraintSQL).Scan(&constraintExists)
+		if err == nil && constraintExists > 0 {
+			// 唯一键约束存在，删除它
+			dropConstraintSQL := `ALTER TABLE user_coupons DROP INDEX uk_user_coupon`
+			if _, err = DB.Exec(dropConstraintSQL); err != nil {
+				log.Printf("删除唯一键约束uk_user_coupon失败: %v", err)
+			} else {
+				log.Println("成功删除唯一键约束uk_user_coupon")
+			}
 		}
 
 		log.Println("所有表创建成功")

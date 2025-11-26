@@ -32,9 +32,25 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
+        <el-table-column prop="name" label="用户姓名" min-width="120">
+          <template #default="scope">
+            {{ scope.row.name || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="phone" label="手机号" min-width="130">
           <template #default="scope">
             {{ scope.row.phone || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="coupon_count" label="优惠券数量" min-width="100" align="center">
+          <template #default="scope">
+            <el-tag 
+              type="info" 
+              style="cursor: pointer;"
+              @click="handleViewUserCoupons(scope.row)"
+            >
+              {{ scope.row.coupon_count || 0 }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="user_type" label="用户类型" min-width="120">
@@ -74,8 +90,11 @@
             {{ formatDate(scope.row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="100" fixed="right">
+        <el-table-column label="操作" min-width="180" fixed="right">
           <template #default="scope">
+            <el-button type="success" link @click="handleIssueCoupon(scope.row)">
+              发放优惠券
+            </el-button>
             <el-button type="primary" link @click="handleViewDetail(scope.row.id)">
               查看详情
             </el-button>
@@ -122,6 +141,9 @@
                       <el-descriptions-item label="用户编号" label-class-name="desc-label">
                         <span v-if="userDetail.user_code" class="desc-value user-code-text">用户{{ userDetail.user_code }}</span>
                         <span v-else class="desc-value">-</span>
+                      </el-descriptions-item>
+                      <el-descriptions-item label="用户姓名" label-class-name="desc-label">
+                        <span class="desc-value">{{ userDetail.name || '-' }}</span>
                       </el-descriptions-item>
                       <el-descriptions-item label="唯一ID" label-class-name="desc-label">
                         <span class="desc-value unique-id">{{ userDetail.unique_id }}</span>
@@ -268,6 +290,9 @@
           :rules="editFormRules"
           label-width="120px"
         >
+          <el-form-item label="用户姓名" prop="name">
+            <el-input v-model="editForm.name" placeholder="请输入用户姓名" />
+          </el-form-item>
           <el-form-item label="手机号" prop="phone">
             <el-input v-model="editForm.phone" placeholder="请输入手机号" />
           </el-form-item>
@@ -293,15 +318,24 @@
               </el-option>
             </el-select>
           </el-form-item>
-          <el-form-item label="头像URL" prop="avatar">
-            <el-input v-model="editForm.avatar" placeholder="请输入头像URL" />
-            <div v-if="editForm.avatar" style="margin-top: 10px;">
+          <el-form-item label="用户头像" prop="avatar">
+            <el-upload
+              class="avatar-uploader"
+              :action="uploadAvatarUrl"
+              :show-file-list="false"
+              :on-success="handleAvatarSuccess"
+              :before-upload="beforeAvatarUpload"
+              :headers="uploadHeaders"
+            >
               <el-image
+                v-if="editForm.avatar"
                 :src="editForm.avatar"
-                style="width: 100px; height: 100px; border-radius: 8px;"
+                class="avatar"
                 fit="cover"
               />
-            </div>
+              <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
+            </el-upload>
+            <div class="upload-tip">支持 JPG、PNG 格式，大小不超过 5MB</div>
           </el-form-item>
           <el-form-item label="用户类型" prop="userType">
             <el-select v-model="editForm.userType" placeholder="请选择用户类型" style="width: 100%">
@@ -407,6 +441,175 @@
         </template>
       </el-dialog>
 
+      <!-- 发放优惠券弹窗 -->
+      <el-dialog
+        v-model="issueCouponDialogVisible"
+        title="发放优惠券"
+        width="600px"
+        destroy-on-close
+      >
+        <el-form label-width="120px">
+          <el-form-item label="用户信息">
+            <div v-if="selectedUser">
+              <div><strong>用户ID：</strong>{{ selectedUser.id }}</div>
+              <div style="margin-top: 8px;" v-if="selectedUser.name">
+                <strong>姓名：</strong>{{ selectedUser.name }}
+              </div>
+              <div style="margin-top: 8px;" v-if="selectedUser.phone">
+                <strong>手机号：</strong>{{ selectedUser.phone }}
+              </div>
+            </div>
+          </el-form-item>
+
+          <el-form-item label="选择优惠券" required>
+            <el-select
+              v-model="issueCouponForm.couponId"
+              filterable
+              placeholder="请选择优惠券"
+              style="width: 100%"
+              clearable
+            >
+              <el-option
+                v-for="coupon in availableCoupons"
+                :key="coupon.id"
+                :label="getCouponLabel(coupon)"
+                :value="coupon.id"
+              >
+                <div style="display: flex; justify-content: space-between;">
+                  <span>{{ coupon.name }}</span>
+                  <span style="color: #909399; font-size: 12px;">
+                    {{ coupon.type === 'delivery_fee' ? '配送费券' : `¥${(coupon.discount_value || 0).toFixed(2)}` }}
+                  </span>
+                </div>
+              </el-option>
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="发放数量" required>
+            <el-input-number
+              v-model="issueCouponForm.quantity"
+              :min="1"
+              :max="100"
+              :step="1"
+              controls-position="right"
+              style="width: 100%"
+            />
+            <div class="upload-tip">默认1张，最多可发放100张</div>
+          </el-form-item>
+
+          <el-form-item label="有效期设置">
+            <el-radio-group v-model="issueCouponForm.expireType" @change="handleExpireTypeChange">
+              <el-radio label="none">不限制</el-radio>
+              <el-radio label="days">N天后过期</el-radio>
+              <el-radio label="date">指定日期</el-radio>
+            </el-radio-group>
+            <div v-if="issueCouponForm.expireType === 'days'" style="margin-top: 10px;">
+              <el-input-number
+                v-model="issueCouponForm.expiresIn"
+                :min="1"
+                :max="365"
+                :step="1"
+                controls-position="right"
+                placeholder="请输入天数"
+                style="width: 100%"
+              />
+              <div class="upload-tip">从发放时开始计算，N天后过期</div>
+            </div>
+            <div v-if="issueCouponForm.expireType === 'date'" style="margin-top: 10px;">
+              <el-date-picker
+                v-model="issueCouponForm.expiresAt"
+                type="datetime"
+                placeholder="选择过期日期"
+                format="YYYY-MM-DD HH:mm:ss"
+                value-format="YYYY-MM-DD HH:mm:ss"
+                style="width: 100%"
+              />
+            </div>
+          </el-form-item>
+        </el-form>
+
+        <template #footer>
+          <el-button @click="issueCouponDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="issuingCoupon" @click="handleIssueCouponSubmit">确定发放</el-button>
+        </template>
+      </el-dialog>
+
+      <!-- 查看用户优惠券弹窗 -->
+      <el-dialog
+        v-model="userCouponsDialogVisible"
+        title="用户优惠券列表"
+        width="900px"
+        destroy-on-close
+      >
+        <div v-if="currentViewUser" style="margin-bottom: 20px; padding: 15px; background: #f5f7fa; border-radius: 4px;">
+          <div><strong>用户ID：</strong>{{ currentViewUser.id }}</div>
+          <div style="margin-top: 8px;" v-if="currentViewUser.name">
+            <strong>姓名：</strong>{{ currentViewUser.name }}
+          </div>
+          <div style="margin-top: 8px;" v-if="currentViewUser.phone">
+            <strong>手机号：</strong>{{ currentViewUser.phone }}
+          </div>
+        </div>
+
+        <el-table
+          v-loading="userCouponsLoading"
+          :data="userCoupons"
+          border
+          stripe
+          style="width: 100%"
+        >
+          <el-table-column prop="coupon.name" label="优惠券名称" min-width="150" />
+          <el-table-column label="类型" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.coupon?.type === 'delivery_fee' ? 'success' : 'warning'">
+                {{ row.coupon?.type === 'delivery_fee' ? '配送费券' : '金额券' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="优惠值" width="120" align="center">
+            <template #default="{ row }">
+              <span v-if="row.coupon?.type === 'delivery_fee'">免配送费</span>
+              <span v-else>¥{{ (row.coupon?.discount_value || 0).toFixed(2) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag 
+                :type="row.status === 'used' ? 'success' : row.status === 'expired' ? 'danger' : 'info'"
+              >
+                {{ row.status === 'used' ? '已使用' : row.status === 'expired' ? '已过期' : '未使用' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="有效期" min-width="200">
+            <template #default="{ row }">
+              <div v-if="row.expires_at">
+                {{ formatDateTime(row.expires_at) }}
+              </div>
+              <div v-else style="color: #909399;">不限制</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="优惠券有效期" min-width="200">
+            <template #default="{ row }">
+              <div v-if="row.coupon">
+                <div>{{ formatDate(row.coupon.valid_from) }}</div>
+                <div style="color: #909399; font-size: 12px;">至 {{ formatDate(row.coupon.valid_to) }}</div>
+              </div>
+              <div v-else>-</div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="created_at" label="发放时间" min-width="160">
+            <template #default="{ row }">
+              {{ formatDateTime(row.created_at) }}
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <template #footer>
+          <el-button @click="userCouponsDialogVisible = false">关闭</el-button>
+        </template>
+      </el-dialog>
+
       <div class="pagination">
         <el-pagination
           background
@@ -422,10 +625,11 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Picture } from '@element-plus/icons-vue'
-import { getMiniUsers, getMiniUserDetail, updateMiniUser, getAdminAddressDetail, updateAdminAddress, getSalesEmployees } from '../api/miniUsers'
+import { Picture, Plus } from '@element-plus/icons-vue'
+import { getMiniUsers, getMiniUserDetail, updateMiniUser, getAdminAddressDetail, updateAdminAddress, getSalesEmployees, uploadUserAvatar, getUserCoupons } from '../api/miniUsers'
+import { getCoupons, issueCouponToUser } from '../api/coupons'
 
 const loading = ref(false)
 const users = ref([])
@@ -446,6 +650,7 @@ const editDialogVisible = ref(false)
 const editSubmitting = ref(false)
 const editFormRef = ref(null)
 const editForm = reactive({
+  name: '',
   phone: '',
   storeType: '',
   salesCode: '',
@@ -454,7 +659,41 @@ const editForm = reactive({
   userType: 'unknown',
   profileCompleted: false
 })
+
+// 上传头像相关
+const uploadAvatarUrl = computed(() => {
+  if (!userDetail.value) return ''
+  // 使用完整的 API 路径（与 request.js 中的 baseURL 保持一致）
+  const baseURL = 'http://localhost:8082/api/mini'
+  return `${baseURL}/admin/mini-app/users/${userDetail.value.id}/avatar`
+})
+
+const uploadHeaders = computed(() => {
+  const token = localStorage.getItem('token')
+  return {
+    'Authorization': `Bearer ${token}`
+  }
+})
 const salesEmployees = ref([])
+
+// 发放优惠券相关
+const issueCouponDialogVisible = ref(false)
+const selectedUser = ref(null)
+const availableCoupons = ref([])
+const issuingCoupon = ref(false)
+const issueCouponForm = reactive({
+  couponId: null,
+  quantity: 1,
+  expireType: 'none', // none, days, date
+  expiresIn: 30, // 天数
+  expiresAt: null // 指定日期
+})
+
+// 查看用户优惠券相关
+const userCouponsDialogVisible = ref(false)
+const currentViewUser = ref(null)
+const userCoupons = ref([])
+const userCouponsLoading = ref(false)
 
 const editFormRules = {
   phone: [
@@ -599,6 +838,7 @@ const handleEdit = async () => {
   await loadSalesEmployees()
   
   // 填充编辑表单
+  editForm.name = userDetail.value.name || ''
   editForm.phone = userDetail.value.phone || ''
   editForm.storeType = userDetail.value.store_type || ''
   editForm.salesCode = userDetail.value.sales_code || ''
@@ -617,6 +857,32 @@ const handleEdit = async () => {
   editForm.profileCompleted = userDetail.value.profile_completed || false
   
   editDialogVisible.value = true
+}
+
+// 头像上传成功
+const handleAvatarSuccess = (response) => {
+  if (response.code === 200 && response.data && response.data.avatar) {
+    editForm.avatar = response.data.avatar
+    ElMessage.success('头像上传成功')
+  } else {
+    ElMessage.error(response.message || '头像上传失败')
+  }
+}
+
+// 上传前验证
+const beforeAvatarUpload = (file) => {
+  const isImage = file.type.startsWith('image/')
+  const isLt5M = file.size / 1024 / 1024 < 5
+
+  if (!isImage) {
+    ElMessage.error('只能上传图片文件!')
+    return false
+  }
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB!')
+    return false
+  }
+  return true
 }
 
 const handleSalesEmployeeChange = (employeeId) => {
@@ -641,6 +907,7 @@ const handleSaveEdit = async () => {
     editSubmitting.value = true
     try {
       const updateData = {
+        name: editForm.name,
         phone: editForm.phone,
         storeType: editForm.storeType,
         avatar: editForm.avatar,
@@ -731,6 +998,162 @@ const handleSaveAddressEdit = async () => {
       addressEditSubmitting.value = false
     }
   })
+}
+
+// 有效期类型改变
+const handleExpireTypeChange = () => {
+  if (issueCouponForm.expireType === 'none') {
+    issueCouponForm.expiresIn = 30
+    issueCouponForm.expiresAt = null
+  }
+}
+
+// 打开发放优惠券弹窗
+const handleIssueCoupon = async (user) => {
+  selectedUser.value = user
+  issueCouponForm.couponId = null
+  issueCouponForm.quantity = 1
+  issueCouponForm.expireType = 'none'
+  issueCouponForm.expiresIn = 30
+  issueCouponForm.expiresAt = null
+  
+  // 先打开弹窗
+  issueCouponDialogVisible.value = true
+  
+  // 加载可用优惠券列表
+  try {
+    const response = await getCoupons()
+    
+    // 如果响应直接是数组（某些情况下可能直接返回数组）
+    if (Array.isArray(response)) {
+      availableCoupons.value = response
+        .map(coupon => ({
+          ...coupon,
+          type: coupon.type || '',
+          discount_value: coupon.discount_value || 0,
+          status: coupon.status !== undefined ? coupon.status : 1
+        }))
+        .filter(coupon => coupon.status === 1)
+      return
+    }
+    
+    // 标准响应格式：{ code, data, message }
+    if (response && response.code === 200) {
+      let coupons = response.data
+      // 确保是数组
+      if (!Array.isArray(coupons)) {
+        coupons = []
+      }
+      // 只显示启用状态的优惠券
+      availableCoupons.value = coupons
+        .map(coupon => ({
+          ...coupon,
+          type: coupon.type || '',
+          discount_value: coupon.discount_value || 0,
+          status: coupon.status !== undefined ? coupon.status : 1
+        }))
+        .filter(coupon => coupon.status === 1)
+    } else {
+      availableCoupons.value = []
+    }
+  } catch (error) {
+    console.error('加载优惠券列表失败:', error)
+    ElMessage.error('加载优惠券列表失败')
+    availableCoupons.value = []
+  }
+}
+
+// 获取优惠券显示标签
+const getCouponLabel = (coupon) => {
+  let label = coupon.name
+  if (coupon.type === 'delivery_fee') {
+    label += ' (配送费券)'
+  } else {
+    label += ` (¥${(coupon.discount_value || 0).toFixed(2)})`
+  }
+  return label
+}
+
+// 提交发放优惠券
+const handleIssueCouponSubmit = async () => {
+  if (!issueCouponForm.couponId) {
+    ElMessage.warning('请选择要发放的优惠券')
+    return
+  }
+  
+  if (!selectedUser.value) {
+    ElMessage.error('用户信息错误')
+    return
+  }
+  
+  if (issueCouponForm.quantity < 1) {
+    ElMessage.warning('发放数量必须大于0')
+    return
+  }
+  
+  issuingCoupon.value = true
+  try {
+    const issueData = {
+      coupon_id: issueCouponForm.couponId,
+      user_id: selectedUser.value.id,
+      quantity: issueCouponForm.quantity
+    }
+    
+    // 添加有效期参数
+    if (issueCouponForm.expireType === 'days') {
+      issueData.expires_in = issueCouponForm.expiresIn
+    } else if (issueCouponForm.expireType === 'date' && issueCouponForm.expiresAt) {
+      issueData.expires_at = issueCouponForm.expiresAt
+    }
+    
+    await issueCouponToUser(issueData)
+    ElMessage.success(`成功发放 ${issueCouponForm.quantity} 张优惠券`)
+    issueCouponDialogVisible.value = false
+    // 刷新用户列表
+    loadUsers()
+  } catch (error) {
+    const errorMsg = error.response?.data?.message || error.message || '发放失败'
+    ElMessage.error(errorMsg)
+  } finally {
+    issuingCoupon.value = false
+  }
+}
+
+// 查看用户优惠券
+const handleViewUserCoupons = async (user) => {
+  currentViewUser.value = user
+  userCoupons.value = []
+  userCouponsLoading.value = true
+  userCouponsDialogVisible.value = true
+  
+  try {
+    const response = await getUserCoupons(user.id)
+    if (response.code === 200 && Array.isArray(response.data)) {
+      userCoupons.value = response.data
+    } else {
+      userCoupons.value = []
+    }
+  } catch (error) {
+    console.error('获取用户优惠券失败:', error)
+    ElMessage.error('获取用户优惠券失败')
+    userCoupons.value = []
+  } finally {
+    userCouponsLoading.value = false
+  }
+}
+
+// 格式化日期时间
+const formatDateTime = (dateStr) => {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return dateStr
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
 onMounted(() => {
@@ -1019,6 +1442,43 @@ onMounted(() => {
   font-weight: 500;
   padding: 4px 12px;
   border-radius: 12px;
+}
+
+/* 头像上传样式 */
+.avatar-uploader {
+  display: inline-block;
+}
+
+.avatar-uploader .avatar {
+  width: 100px;
+  height: 100px;
+  display: block;
+  border-radius: 8px;
+  border: 1px solid #dcdfe6;
+}
+
+.avatar-uploader-icon {
+  font-size: 28px;
+  color: #8c939d;
+  width: 100px;
+  height: 100px;
+  line-height: 100px;
+  text-align: center;
+  border: 1px dashed #dcdfe6;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.avatar-uploader-icon:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
+.upload-tip {
+  margin-top: 8px;
+  color: #909399;
+  font-size: 12px;
 }
 
 .user-code-text {

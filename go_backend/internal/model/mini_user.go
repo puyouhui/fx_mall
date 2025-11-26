@@ -216,8 +216,29 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 	where := ""
 	if keyword != "" {
 		like := "%" + keyword + "%"
-		where = "WHERE unique_id LIKE ? OR user_code LIKE ? OR phone LIKE ?"
-		args = append(args, like, like, like)
+		// 支持搜索：用户ID（数字匹配）、唯一ID、用户编号、姓名、电话、地址
+		// 使用 EXISTS 子查询来搜索地址信息
+		where = `WHERE (
+			id = ? OR 
+			unique_id LIKE ? OR 
+			user_code LIKE ? OR 
+			name LIKE ? OR 
+			phone LIKE ? OR
+			EXISTS (
+				SELECT 1 FROM mini_app_addresses 
+				WHERE user_id = mini_app_users.id 
+				AND (name LIKE ? OR contact LIKE ? OR phone LIKE ? OR address LIKE ?)
+			)
+		)`
+		// 尝试将关键词转换为数字（用于ID搜索）
+		var idValue int
+		if _, idErr := fmt.Sscanf(keyword, "%d", &idValue); idErr == nil {
+			args = append(args, idValue)
+		} else {
+			args = append(args, 0) // 如果不是数字，使用0（不会匹配任何ID）
+		}
+		// 添加9个LIKE参数：unique_id, user_code, name, phone, address.name, address.contact, address.phone, address.address
+		args = append(args, like, like, like, like, like, like, like, like)
 	}
 
 	countQuery := "SELECT COUNT(*) FROM mini_app_users " + where

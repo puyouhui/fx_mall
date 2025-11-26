@@ -3,7 +3,7 @@
     <!-- 侧边栏 -->
     <el-aside width="200px" class="app-sidebar">
       <div class="logo-container">
-        <h2 class="logo">云鹿进货管理后台</h2>
+        <h2 class="logo">进货管理后台</h2>
       </div>
       <el-menu :default-active="activeMenu" class="el-menu-vertical-demo" router>
         <el-menu-item index="/dashboard">
@@ -36,6 +36,12 @@
           </el-icon>
           <span>系统设置</span>
         </el-menu-item>
+        <el-menu-item index="/delivery-fee">
+          <el-icon>
+            <Money />
+          </el-icon>
+          <span>配送费设置</span>
+        </el-menu-item>
         <el-menu-item index="/suppliers">
           <el-icon>
             <Shop />
@@ -59,6 +65,12 @@
           <UserFilled />
         </el-icon>
         <span>员工管理</span>
+      </el-menu-item>
+      <el-menu-item index="/coupons">
+        <el-icon>
+          <Ticket />
+        </el-icon>
+        <span>优惠券管理</span>
       </el-menu-item>
       </el-menu>
     </el-aside>
@@ -118,7 +130,9 @@ import {
   UserFilled,
   SwitchFilled,
   Setting,
-  Shop
+  Shop,
+  Money,
+  Ticket
 } from '@element-plus/icons-vue'
 import { logout, getAdminInfo } from '../api/auth'
 import { ElMessage } from 'element-plus'

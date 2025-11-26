@@ -72,9 +72,17 @@ func main() {
 			// 采购单接口
 			miniAppProtectedGroup.GET("/purchase-list", api.GetPurchaseListItems)
 			miniAppProtectedGroup.POST("/purchase-list", api.AddPurchaseListItem)
+			miniAppProtectedGroup.GET("/purchase-list/summary", api.GetPurchaseListSummary)
 			miniAppProtectedGroup.PUT("/purchase-list/:id", api.UpdatePurchaseListItem)
 			miniAppProtectedGroup.DELETE("/purchase-list/:id", api.DeletePurchaseListItem)
 			miniAppProtectedGroup.DELETE("/purchase-list", api.ClearPurchaseList)
+
+			// 订单接口
+			miniAppProtectedGroup.POST("/orders", api.CreateOrderFromCart) // 从当前采购单创建订单
+
+			// 优惠券接口
+			miniAppProtectedGroup.GET("/coupons", api.GetUserCoupons)                // 获取用户的优惠券列表
+			miniAppProtectedGroup.GET("/coupons/available", api.GetAvailableCoupons) // 获取可用优惠券
 		}
 
 		// 分类相关接口
@@ -120,6 +128,14 @@ func main() {
 				protectedGroup.DELETE("/hot-products/:id", api.DeleteHotProduct)   // 删除热销产品关联
 				protectedGroup.PUT("/hot-products/sort", api.UpdateHotProductSort) // 批量更新热销产品排序
 
+				// 配送费设置
+				protectedGroup.GET("/delivery-fee/settings", api.GetDeliveryFeeSettings)           // 获取配送费基础设置
+				protectedGroup.PUT("/delivery-fee/settings", api.UpdateDeliveryFeeSettings)        // 更新配送费基础设置
+				protectedGroup.GET("/delivery-fee/exclusions", api.ListDeliveryFeeExclusions)      // 获取配送费排除项
+				protectedGroup.POST("/delivery-fee/exclusions", api.CreateDeliveryFeeExclusion)    // 新建配送费排除项
+				protectedGroup.PUT("/delivery-fee/exclusions/:id", api.UpdateDeliveryFeeExclusion) // 更新配送费排除项
+				protectedGroup.DELETE("/delivery-fee/exclusions/:id", api.DeleteDeliveryFeeExclusion)
+
 				// 商品管理接口
 				protectedGroup.GET("/products", api.GetAllProductsForAdmin)                 // 获取所有商品（管理后台）
 				protectedGroup.POST("/products", api.CreateProduct)                         // 创建商品
@@ -136,11 +152,13 @@ func main() {
 				protectedGroup.DELETE("/suppliers/:id", api.DeleteSupplier) // 删除供应商
 
 				// 小程序用户
-				protectedGroup.GET("/mini-app/users", api.GetMiniAppUsers)              // 查看小程序用户列表
-				protectedGroup.GET("/mini-app/users/:id", api.GetMiniAppUserDetail)     // 查看小程序用户详情
-				protectedGroup.PUT("/mini-app/users/:id", api.UpdateMiniAppUserByAdmin) // 管理员更新小程序用户信息
-				protectedGroup.GET("/mini-app/addresses/:id", api.GetAdminAddressByID)  // 管理员获取地址详情
-				protectedGroup.PUT("/mini-app/addresses/:id", api.UpdateAdminAddress)   // 管理员更新地址
+				protectedGroup.GET("/mini-app/users", api.GetMiniAppUsers)                            // 查看小程序用户列表
+				protectedGroup.GET("/mini-app/users/:id/coupons", api.GetAdminUserCoupons)            // 管理员获取用户优惠券列表（必须在 /:id 之前）
+				protectedGroup.GET("/mini-app/users/:id", api.GetMiniAppUserDetail)                   // 查看小程序用户详情
+				protectedGroup.PUT("/mini-app/users/:id", api.UpdateMiniAppUserByAdmin)               // 管理员更新小程序用户信息
+				protectedGroup.POST("/mini-app/users/:id/avatar", api.UploadMiniAppUserAvatarByAdmin) // 管理员上传用户头像
+				protectedGroup.GET("/mini-app/addresses/:id", api.GetAdminAddressByID)                // 管理员获取地址详情
+				protectedGroup.PUT("/mini-app/addresses/:id", api.UpdateAdminAddress)                 // 管理员更新地址
 
 				// 员工管理
 				protectedGroup.GET("/employees", api.GetEmployees)            // 获取员工列表
@@ -149,6 +167,14 @@ func main() {
 				protectedGroup.POST("/employees", api.CreateEmployee)         // 创建员工
 				protectedGroup.PUT("/employees/:id", api.UpdateEmployee)      // 更新员工
 				protectedGroup.DELETE("/employees/:id", api.DeleteEmployee)   // 删除员工
+
+				// 优惠券管理
+				protectedGroup.GET("/coupons", api.GetAllCoupons)            // 获取所有优惠券
+				protectedGroup.GET("/coupons/:id", api.GetCouponByID)        // 获取优惠券详情
+				protectedGroup.POST("/coupons", api.CreateCoupon)            // 创建优惠券
+				protectedGroup.PUT("/coupons/:id", api.UpdateCoupon)         // 更新优惠券
+				protectedGroup.DELETE("/coupons/:id", api.DeleteCoupon)      // 删除优惠券
+				protectedGroup.POST("/coupons/issue", api.IssueCouponToUser) // 发放优惠券给用户
 			}
 		}
 

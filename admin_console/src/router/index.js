@@ -48,6 +48,14 @@ const routes = [
         }
       },
       {
+        path: 'delivery-fee',
+        name: 'DeliveryFee',
+        component: () => import('../views/DeliveryFee.vue'),
+        meta: {
+          title: '配送费设置'
+        }
+      },
+      {
         path: 'suppliers',
         name: 'Suppliers',
         component: () => import('../views/Suppliers.vue'),
@@ -77,6 +85,14 @@ const routes = [
         component: () => import('../views/Employees.vue'),
         meta: {
           title: '员工管理'
+        }
+      },
+      {
+        path: 'coupons',
+        name: 'Coupons',
+        component: () => import('../views/Coupons.vue'),
+        meta: {
+          title: '优惠券管理'
         }
       }
     ]

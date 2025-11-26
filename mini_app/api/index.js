@@ -247,6 +247,19 @@ export const getPurchaseList = (token) => {
 };
 
 /**
+ * 获取采购单及配送费摘要
+ * @param {string} token
+ * @param {object} params - 额外查询参数，如 { item_ids: '1,2' }
+ */
+export const getPurchaseListSummary = (token, params = {}) => {
+  return get('/mini-app/users/purchase-list/summary', params, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
  * 添加商品到采购单
  */
 export const addPurchaseListItem = (data, token) => {
@@ -284,6 +297,17 @@ export const deletePurchaseListItem = (id, token) => {
  */
 export const clearPurchaseList = (token) => {
   return deleteRequest('/mini-app/users/purchase-list', {}, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
+ * 创建订单（从当前采购单）
+ */
+export const createOrder = (data, token) => {
+  return post('/mini-app/users/orders', data, {
     header: {
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     }
@@ -380,5 +404,18 @@ export const uploadAddressAvatar = (filePath, token) => {
         reject(err);
       }
     });
+  });
+};
+
+/**
+ * 获取用户的优惠券列表
+ * @param {string} token - 用户token
+ * @returns Promise
+ */
+export const getUserCoupons = (token) => {
+  return get('/mini-app/users/coupons', {}, {
+    header: {
+      'Authorization': `Bearer ${token}`
+    }
   });
 };

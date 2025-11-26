@@ -148,6 +148,144 @@ func GetPurchaseListItems(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": items, "message": "获取成功"})
 }
 
+// GetPurchaseListSummary 获取采购单及配送费摘要
+func GetPurchaseListSummary(c *gin.Context) {
+	user, ok := getMiniUserFromContext(c)
+	if !ok {
+		return
+	}
+
+	itemIDsParam := c.Query("item_ids")
+	itemIDsFilter := make(map[int]struct{})
+	deliveryCouponID := parseQueryInt(c, "delivery_coupon_id", 0)
+	amountCouponID := parseQueryInt(c, "amount_coupon_id", 0)
+	if itemIDsParam != "" {
+		for _, idStr := range strings.Split(itemIDsParam, ",") {
+			idStr = strings.TrimSpace(idStr)
+			if idStr == "" {
+				continue
+			}
+			if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
+				itemIDsFilter[id] = struct{}{}
+			}
+		}
+	}
+
+	items, err := model.GetPurchaseListItemsByUserID(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取采购单失败: " + err.Error()})
+		return
+	}
+
+	if len(itemIDsFilter) > 0 {
+		filteredItems := make([]model.PurchaseListItem, 0, len(itemIDsFilter))
+		for _, item := range items {
+			if _, ok := itemIDsFilter[item.ID]; ok {
+				filteredItems = append(filteredItems, item)
+			}
+		}
+		items = filteredItems
+	}
+
+	if len(items) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 200,
+			"data": gin.H{
+				"items":   []model.PurchaseListItem{},
+				"summary": nil,
+			},
+			"message": "获取成功",
+		})
+		return
+	}
+
+	summary, err := model.CalculateDeliveryFee(items)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "计算配送费失败: " + err.Error()})
+		return
+	}
+
+	// 计算订单金额和获取商品分类ID
+	orderAmount := 0.0
+	categoryIDSet := make(map[int]struct{})
+	productIDs := make([]int, 0)
+
+	for _, item := range items {
+		// 计算商品金额
+		price := item.SpecSnapshot.WholesalePrice
+		if price <= 0 {
+			price = item.SpecSnapshot.RetailPrice
+		}
+		if price <= 0 {
+			price = item.SpecSnapshot.Cost
+		}
+		if price < 0 {
+			price = 0
+		}
+		orderAmount += price * float64(item.Quantity)
+
+		// 收集商品ID用于查询分类
+		productIDs = append(productIDs, item.ProductID)
+	}
+
+	// 获取商品分类信息
+	categoryInfo, err := model.FetchProductCategoryInfo(productIDs)
+	if err == nil {
+		for _, info := range categoryInfo {
+			if info.CategoryID > 0 {
+				categoryIDSet[info.CategoryID] = struct{}{}
+			}
+			if info.ParentID > 0 {
+				categoryIDSet[info.ParentID] = struct{}{}
+			}
+		}
+	}
+
+	categoryIDs := make([]int, 0, len(categoryIDSet))
+	for id := range categoryIDSet {
+		categoryIDs = append(categoryIDs, id)
+	}
+
+	// 获取可用优惠券和最佳组合
+	availableCoupons, err := model.GetAvailableCouponsForPurchaseList(
+		user.ID,
+		orderAmount,
+		categoryIDs,
+		summary.DeliveryFee,
+		summary.IsFreeShipping,
+	)
+	if err != nil {
+		// 如果获取优惠券失败，不影响主流程，只记录错误
+		availableCoupons = []model.AvailableCouponInfo{}
+	}
+
+	bestCombination := model.CalculateBestCouponCombination(
+		availableCoupons,
+		orderAmount,
+		summary.DeliveryFee,
+		summary.IsFreeShipping,
+	)
+
+	appliedCombination := model.CalculateCouponCombinationWithSelection(
+		availableCoupons,
+		orderAmount,
+		summary.DeliveryFee,
+		summary.IsFreeShipping,
+		deliveryCouponID,
+		amountCouponID,
+	)
+
+	result := gin.H{
+		"items":               items,
+		"summary":             summary,
+		"available_coupons":   availableCoupons,
+		"best_combination":    bestCombination,
+		"applied_combination": appliedCombination,
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": result, "message": "获取成功"})
+}
+
 // UpdatePurchaseListItem 更新采购单项
 func UpdatePurchaseListItem(c *gin.Context) {
 	user, ok := getMiniUserFromContext(c)

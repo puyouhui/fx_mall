@@ -43,6 +43,64 @@ CREATE TABLE IF NOT EXISTS products (
     KEY idx_category_id (category_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品表';
 
+-- 配送费用基础设置
+CREATE TABLE IF NOT EXISTS delivery_fee_settings (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    base_fee DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '基础配送费',
+    free_shipping_threshold DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '免配送费金额阈值',
+    description VARCHAR(255) DEFAULT '' COMMENT '备注',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='配送费用设置';
+
+-- 配送费用排除项
+CREATE TABLE IF NOT EXISTS delivery_fee_exclusions (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    item_type ENUM('category','product') NOT NULL COMMENT '排除类型：分类或商品',
+    target_id INT NOT NULL COMMENT '目标ID（分类或商品）',
+    min_quantity_for_free INT DEFAULT NULL COMMENT '单品免配送费所需数量，仅针对商品',
+    remark VARCHAR(255) DEFAULT '' COMMENT '备注说明',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_item_scope (item_type, target_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='配送费用排除项';
+
+-- 优惠券表
+CREATE TABLE IF NOT EXISTS coupons (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL COMMENT '优惠券名称',
+    type ENUM('delivery_fee','amount') NOT NULL COMMENT '类型：delivery_fee-配送费券，amount-金额券',
+    discount_value DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '优惠值：配送费券为0（全免），金额券为具体金额',
+    min_amount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '最低使用金额，0表示无门槛',
+    category_ids TEXT DEFAULT NULL COMMENT '适用分类ID（JSON数组），空表示全品类',
+    total_count INT NOT NULL DEFAULT 0 COMMENT '发放总数，0表示不限制',
+    used_count INT NOT NULL DEFAULT 0 COMMENT '已使用数量',
+    status TINYINT DEFAULT 1 COMMENT '状态：1-启用，0-禁用',
+    valid_from DATETIME NOT NULL COMMENT '有效期开始时间',
+    valid_to DATETIME NOT NULL COMMENT '有效期结束时间',
+    description VARCHAR(500) DEFAULT '' COMMENT '优惠券说明',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_status (status),
+    KEY idx_valid_time (valid_from, valid_to)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='优惠券表';
+
+-- 用户优惠券关联表（记录用户领取的优惠券）
+CREATE TABLE IF NOT EXISTS user_coupons (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL COMMENT '用户ID',
+    coupon_id INT NOT NULL COMMENT '优惠券ID',
+    status ENUM('unused','used','expired') DEFAULT 'unused' COMMENT '状态：unused-未使用，used-已使用，expired-已过期',
+    used_at DATETIME DEFAULT NULL COMMENT '使用时间',
+    order_id INT DEFAULT NULL COMMENT '订单ID（使用时的订单）',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_user_id (user_id),
+    KEY idx_coupon_id (coupon_id),
+    KEY idx_status (status),
+    UNIQUE KEY uk_user_coupon (user_id, coupon_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户优惠券关联表';
+
 -- 创建轮播图表
 CREATE TABLE IF NOT EXISTS carousels (
     id INT PRIMARY KEY AUTO_INCREMENT,

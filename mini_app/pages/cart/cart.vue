@@ -31,6 +31,10 @@
 							<text class="item-price">¥{{ getDisplayPrice(item).toFixed(2) }}</text>
 						</view>
 						<text class="item-spec" v-if="item.spec_name">{{ item.spec_name }}</text>
+					<view class="blocked-badge" v-if="isItemBlocked(item)">
+						<text class="icon">!</text>
+						<text>该商品不参与免配送费</text>
+					</view>
 						<text class="item-tags">支持采购 · 现货供应</text>
 						<view class="item-actions">
 							<view class="qty-control">
@@ -54,27 +58,176 @@
 				<text class="empty-subtext">快去选购商品吧~</text>
 			</view>
 
-			<!-- 底部操作栏 -->
-			<view class="assistant-card" v-if="cartItems.length > 0">
-				<text class="assistant-title">凑单助手</text>
-				<text class="assistant-desc">再加 ¥20.00 可享包邮</text>
-			</view>
-
-			<view class="bottom-bar" v-if="cartItems.length > 0">
-				<view class="bottom-left">
-					<view class="select-all" @click="selectAll">
-						<view
-							:class="['select-dot', { active: selectedIds.length === cartItems.length && cartItems.length > 0 }]">
-						</view>
-						<text>全选</text>
-					</view>
-					<view class="bottom-total">
-						<text class="bottom-label">已选 {{ selectedQuantity }} 件，应付：</text>
-						<text class="bottom-amount">¥{{ selectedAmount }}</text>
-						<text class="bottom-discount">（仅供参考）</text>
+			<!-- 配送费信息 -->
+			<view class="assistant-card" v-if="cartItems.length > 0 && deliverySummary && !showFeeDetail">
+				<view class="assistant-header">
+					<text class="assistant-title">配送费</text>
+					<text class="assistant-amount" :class="{ free: actualDeliveryFee === 0 }">
+						{{ actualDeliveryFee === 0 ? '免配送费' : '¥' + deliveryFeeText }}
+					</text>
+				</view>
+				<text class="assistant-desc" v-if="deliverySummary.is_free_shipping">
+					已满足满 ¥{{ freeShippingThresholdText }} 免配送费
+				</text>
+				<text class="assistant-desc" v-else-if="selectedDeliveryFeeCoupon">
+					已使用免配送费券，当前订单免配送费
+				</text>
+				<text class="assistant-desc" v-else>
+					还差 ¥{{ shortOfAmount }} 可免配送费
+				</text>
+				<view class="assistant-tips" v-if="deliveryTips.length">
+					<view class="assistant-tip" v-for="tip in deliveryTips" :key="tipKey(tip)">
+						<text class="tip-name">{{ formatTipName(tip) }}</text>
+						<text class="tip-qty" v-if="tip.required_quantity">
+							{{ tip.current_quantity || 0 }} / {{ tip.required_quantity }} 件
+						</text>
 					</view>
 				</view>
-				<button class="checkout-btn">去下单</button>
+			</view>
+
+			<view class="bottom-bar" v-if="cartItems.length > 0" @click="openFeeDetail">
+				<view class="bottom-left">
+					<view class="select-all" @click.stop="selectAll">
+						<view class="select-main">
+							<view
+								:class="['select-dot', { active: selectedIds.length === cartItems.length && cartItems.length > 0 }]">
+							</view>
+							<text>全选</text>
+						</view>
+						<text class="selected-count">已选 {{ selectedQuantity }} 件</text>
+					</view>
+					<view class="bottom-total">
+						<text class="bottom-amount">¥{{ finalAmount }}</text>
+						<text class="bottom-discount" v-if="actualDeliveryFee > 0">（含配送费 ¥{{ actualDeliveryFee.toFixed(2) }}）</text>
+						<text class="bottom-discount" v-else-if="totalDiscount > 0">（已优惠 ¥{{ totalDiscount }}）</text>
+					</view>
+				</view>
+				<button class="checkout-btn" @click.stop="goCheckout">去下单</button>
+			</view>
+		</view>
+
+		<view v-if="showFeeDetail" class="fee-modal-container">
+			<view class="fee-modal-mask" @click="closeFeeDetail"></view>
+			<view class="fee-modal">
+				<view class="fee-modal-header">
+					<text>费用详情</text>
+					<text class="fee-modal-close" @click="closeFeeDetail">×</text>
+				</view>
+				<view class="fee-modal-body">
+					<scroll-view scroll-y style="max-height: 400rpx; margin-bottom: 20rpx;" v-if="cartItems.length">
+						<view class="fee-item" v-for="item in cartItems" :key="item.id">
+							<view class="fee-item-info">
+								<text class="fee-item-name">{{ item.product_name }}</text>
+								<text class="fee-item-spec" v-if="item.spec_name">{{ item.spec_name }}</text>
+							</view>
+							<view class="fee-item-amount">
+								<text class="fee-item-price">¥{{ getDisplayPrice(item).toFixed(2) }} × {{ item.quantity }}</text>
+								<text class="fee-item-total">¥{{ getItemTotal(item) }}</text>
+							</view>
+						</view>
+					</scroll-view>
+					<view class="fee-row" v-if="deliverySummary">
+						<text>配送费</text>
+						<text>{{ actualDeliveryFeeText }}</text>
+					</view>
+					<!-- 优惠券选择 -->
+					<view class="coupon-section" v-if="availableCoupons.length > 0">
+						<view class="coupon-row" v-if="availableDeliveryFeeCoupons.length > 0">
+							<text class="coupon-label">免配送费券</text>
+							<view class="coupon-selector" @click="showCouponSelector = true">
+								<text v-if="selectedDeliveryFeeCoupon" class="coupon-selected">
+									{{ formatCouponName(selectedDeliveryFeeCoupon) }}
+								</text>
+								<text v-else class="coupon-placeholder">选择优惠券</text>
+								<text class="coupon-change">切换</text>
+							</view>
+						</view>
+						<view class="coupon-row" v-if="availableAmountCoupons.length > 0">
+							<text class="coupon-label">金额券</text>
+							<view class="coupon-selector" @click="showCouponSelector = true">
+								<text v-if="selectedAmountCoupon" class="coupon-selected">
+									{{ formatCouponName(selectedAmountCoupon) }} (减¥{{ formatCouponDiscount(selectedAmountCoupon) }})
+								</text>
+								<text v-else class="coupon-placeholder">选择优惠券</text>
+								<text class="coupon-change">切换</text>
+							</view>
+						</view>
+					</view>
+					<view class="fee-row" v-if="totalDiscount > 0">
+						<text>优惠</text>
+						<text class="discount">- ¥{{ totalDiscount }}</text>
+					</view>
+					<view class="fee-row total">
+						<text>合计</text>
+						<text>¥{{ finalAmount }}</text>
+					</view>
+				</view>
+			</view>
+		</view>
+
+		<!-- 优惠券选择弹窗 -->
+		<view v-if="showCouponSelector" class="coupon-modal-container">
+			<view class="coupon-modal-mask" @click="showCouponSelector = false"></view>
+			<view class="coupon-modal">
+				<view class="coupon-modal-header">
+					<text>选择优惠券</text>
+					<text class="coupon-modal-close" @click="showCouponSelector = false">×</text>
+				</view>
+				<view class="coupon-modal-body">
+					<!-- 免配送费券 -->
+					<view class="coupon-type-section" v-if="availableDeliveryFeeCoupons.length > 0">
+						<text class="coupon-type-title">免配送费券</text>
+						<view class="coupon-list">
+							<view 
+								class="coupon-option" 
+								:class="{ active: !selectedDeliveryFeeCoupon }"
+								@click="selectDeliveryFeeCoupon(null)"
+							>
+								<text>不使用</text>
+							</view>
+							<view 
+								class="coupon-option" 
+								v-for="coupon in availableDeliveryFeeCoupons" 
+								:key="coupon.user_coupon_id"
+								:class="{ active: selectedDeliveryFeeCoupon?.user_coupon_id === coupon.user_coupon_id }"
+								@click="selectDeliveryFeeCoupon(coupon)"
+							>
+								<text class="coupon-option-name">{{ coupon.name }}</text>
+								<text class="coupon-option-desc" v-if="coupon.reason">{{ coupon.reason }}</text>
+							</view>
+						</view>
+					</view>
+					<!-- 金额券 -->
+					<view class="coupon-type-section" v-if="availableAmountCoupons.length > 0">
+						<text class="coupon-type-title">金额券</text>
+						<view class="coupon-list">
+							<view 
+								class="coupon-option" 
+								:class="{ active: !selectedAmountCoupon }"
+								@click="selectAmountCoupon(null)"
+							>
+								<text>不使用</text>
+							</view>
+							<view 
+								class="coupon-option" 
+								v-for="coupon in availableAmountCoupons" 
+								:key="coupon.user_coupon_id"
+								:class="{ active: selectedAmountCoupon?.user_coupon_id === coupon.user_coupon_id, disabled: !coupon.is_available }"
+								@click="coupon.is_available && selectAmountCoupon(coupon)"
+							>
+								<view class="coupon-option-content">
+									<text class="coupon-option-name">{{ coupon.name }}</text>
+									<text class="coupon-option-value">减¥{{ coupon.discount_value.toFixed(2) }}</text>
+									<text class="coupon-option-condition" v-if="coupon.min_amount > 0">
+										满¥{{ coupon.min_amount.toFixed(2) }}可用
+									</text>
+									<text class="coupon-option-condition" v-else>无门槛</text>
+								</view>
+								<text class="coupon-option-reason" v-if="coupon.reason">{{ coupon.reason }}</text>
+							</view>
+						</view>
+					</view>
+				</view>
 			</view>
 		</view>
 	</view>
@@ -87,6 +240,10 @@ export default {
 	data() {
 		return {
 			cartItems: [],
+			deliverySummary: null,
+			blockedItemIds: [],
+			showFeeDetail: false,
+			selectedDiscount: '0.00',
 			userType: 'unknown',
 			loading: false,
 			token: '',
@@ -95,7 +252,11 @@ export default {
 			navBarHeight: 44,
 			menuButtonRect: null,
 			selectedIds: [],
-			isEditing: false
+			isEditing: false,
+			availableCoupons: [],
+			selectedDeliveryFeeCoupon: null, // 选中的免配送费券
+			selectedAmountCoupon: null, // 选中的金额券
+			showCouponSelector: false // 是否显示优惠券选择器
 		};
 	},
 	onLoad() {
@@ -131,6 +292,69 @@ export default {
 				.reduce((total, item) => total + this.getDisplayPrice(item) * (item.quantity || 0), 0)
 				.toFixed(2)
 		},
+		deliveryFeeText() {
+			if (!this.deliverySummary) return '0.00'
+			const fee = Number(this.deliverySummary.delivery_fee || 0)
+			return fee.toFixed(2)
+		},
+		shortOfAmount() {
+			if (!this.deliverySummary) return '0.00'
+			const value = Number(this.deliverySummary.short_of_amount || 0)
+			if (value <= 0) return '0.00'
+			return value.toFixed(2)
+		},
+		freeShippingThresholdText() {
+			if (!this.deliverySummary) return '0.00'
+			return Number(this.deliverySummary.free_shipping_threshold || 0).toFixed(2)
+		},
+		deliveryTips() {
+			return (this.deliverySummary && Array.isArray(this.deliverySummary.tips)) ? this.deliverySummary.tips : []
+		},
+		finalAmount() {
+			const total = Number(this.selectedAmount || 0)
+			const deliveryFee = Number(this.actualDeliveryFee || 0)
+			const amountDiscount = this.amountCouponDiscountAmount
+			return (total + deliveryFee - amountDiscount).toFixed(2)
+		},
+		// 可用免配送费券列表
+		availableDeliveryFeeCoupons() {
+			return this.availableCoupons.filter(c => c.type === 'delivery_fee')
+		},
+		// 可用金额券列表
+		availableAmountCoupons() {
+			return this.availableCoupons.filter(c => c.type === 'amount')
+		},
+		// 实际配送费（考虑免配送费券）
+		actualDeliveryFee() {
+			if (!this.deliverySummary) return 0
+			const base = this.deliverySummary.is_free_shipping ? 0 : Number(this.deliverySummary.delivery_fee || 0)
+			return Math.max(base - this.deliveryFeeSavedAmount, 0)
+		},
+		actualDeliveryFeeText() {
+			if (this.deliverySummary?.is_free_shipping || this.selectedDeliveryFeeCoupon) {
+				return '免配送费'
+			}
+			return '¥' + this.deliveryFeeText
+		},
+		// 计算总优惠金额
+		deliveryFeeSavedAmount() {
+			if (!this.deliverySummary || this.deliverySummary.is_free_shipping) {
+				return 0
+			}
+			if (this.selectedDeliveryFeeCoupon) {
+				return Number(this.deliverySummary.delivery_fee || 0)
+			}
+			return 0
+		},
+		amountCouponDiscountAmount() {
+			if (this.selectedAmountCoupon) {
+				return Number(this.selectedAmountCoupon.discount_value || 0)
+			}
+			return 0
+		},
+		totalDiscount() {
+			return this.amountCouponDiscountAmount.toFixed(2)
+		},
 		menuRightPadding() {
 			if (this.menuButtonRect) {
 				const info = uni.getSystemInfoSync()
@@ -147,11 +371,34 @@ export default {
 				this.token = uni.getStorageSync('miniUserToken') || '';
 				if (!this.token) {
 					this.cartItems = [];
+					this.deliverySummary = null;
+					this.blockedItemIds = [];
 					return;
 				}
-				const list = await fetchPurchaseList(this.token);
-				this.cartItems = list;
-				this.selectedIds = list.map(item => item.id)
+				const previousSelection = new Set(this.selectedIds);
+				const { items, summary, availableCoupons, bestCombination } = await fetchPurchaseList(this.token);
+				this.cartItems = items;
+				this.deliverySummary = summary || null;
+				this.blockedItemIds = summary?.blocked_item_ids || [];
+				if (items.length === 0) {
+					this.selectedIds = [];
+				} else if (previousSelection.size > 0) {
+					const retained = items
+						.filter(item => previousSelection.has(item.id))
+						.map(item => item.id);
+					this.selectedIds = retained.length > 0 ? retained : items.map(item => item.id);
+				} else {
+					this.selectedIds = items.map(item => item.id);
+				}
+				this.availableCoupons = availableCoupons || [];
+				// 自动应用最佳优惠券组合
+				if (bestCombination) {
+					this.selectedDeliveryFeeCoupon = bestCombination.delivery_fee_coupon || null;
+					this.selectedAmountCoupon = bestCombination.amount_coupon || null;
+				} else {
+					this.selectedDeliveryFeeCoupon = null;
+					this.selectedAmountCoupon = null;
+				}
 			} catch (error) {
 				console.error('加载采购单失败:', error);
 				uni.showToast({
@@ -185,6 +432,73 @@ export default {
 			} else {
 				this.selectedIds = this.cartItems.map(item => item.id)
 			}
+		},
+		getItemTotal(item) {
+			if (!item) return '0.00'
+			const total = this.getDisplayPrice(item) * (item.quantity || 0)
+			return total.toFixed(2)
+		},
+		goCheckout() {
+			if (!this.cartItems.length) {
+				uni.showToast({ title: '采购单为空', icon: 'none' })
+				return
+			}
+			const selected = this.selectedIds && this.selectedIds.length ? this.selectedIds : []
+			if (!selected.length) {
+				uni.showToast({ title: '请选择要下单的商品', icon: 'none' })
+				return
+			}
+			const query = [`item_ids=${selected.join(',')}`]
+			if (this.selectedDeliveryFeeCoupon?.user_coupon_id) {
+				query.push(`delivery_coupon_id=${this.selectedDeliveryFeeCoupon.user_coupon_id}`)
+			}
+			if (this.selectedAmountCoupon?.user_coupon_id) {
+				query.push(`amount_coupon_id=${this.selectedAmountCoupon.user_coupon_id}`)
+			}
+			const url = `/pages/order/confirm?${query.join('&')}`
+			uni.navigateTo({ url })
+		},
+		formatCouponName(coupon) {
+			if (!coupon) return ''
+			if (typeof coupon === 'string') return coupon
+			return coupon.name || (coupon.coupon ? coupon.coupon.name : '')
+		},
+		formatCouponDiscount(coupon) {
+			if (!coupon) return '0.00'
+			const value = coupon.discount_value || (coupon.coupon ? coupon.coupon.discount_value : 0)
+			return Number(value || 0).toFixed(2)
+		},
+		openFeeDetail() {
+			if (!this.cartItems.length) return
+			this.showFeeDetail = true
+		},
+		closeFeeDetail() {
+			this.showFeeDetail = false
+		},
+		// 选择免配送费券
+		selectDeliveryFeeCoupon(coupon) {
+			this.selectedDeliveryFeeCoupon = coupon
+			this.showCouponSelector = false
+		},
+		// 选择金额券
+		selectAmountCoupon(coupon) {
+			this.selectedAmountCoupon = coupon
+			this.showCouponSelector = false
+		},
+		tipKey(tip) {
+			if (!tip) return ''
+			return `${tip.item_type || 'unknown'}-${tip.target_id || 0}`
+		},
+		isItemBlocked(item) {
+			if (!item || !Array.isArray(this.blockedItemIds)) return false
+			return this.blockedItemIds.includes(item.id)
+		},
+		formatTipName(tip) {
+			if (!tip) return '特殊商品'
+			if ((tip.item_type || '') === 'product') {
+				return tip.target_name || tip.product_name || '指定商品'
+			}
+			return tip.target_name || '指定分类'
 		},
 		toggleEdit() {
 			this.isEditing = !this.isEditing
@@ -456,6 +770,30 @@ export default {
 	margin-bottom: 8rpx;
 }
 
+.blocked-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 8rpx;
+	padding: 6rpx 14rpx;
+	border-radius: 999rpx;
+	background: rgba(255, 77, 79, 0.12);
+	color: #ff4d4f;
+	font-size: 24rpx;
+	margin-bottom: 8rpx;
+}
+
+.blocked-badge .icon {
+	width: 28rpx;
+	height: 28rpx;
+	border-radius: 50%;
+	background: rgba(255, 77, 79, 0.2);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 20rpx;
+	font-weight: 600;
+}
+
 .item-tags {
 	font-size: 24rpx;
 	color: #20cb6b;
@@ -524,22 +862,63 @@ export default {
 .assistant-card {
 	background: #fff;
 	border-radius: 24rpx;
-	padding: 20rpx 24rpx;
+	padding: 24rpx;
 	margin-bottom: 16rpx;
 	box-shadow: 0 12rpx 24rpx rgba(24,39,75,0.06);
 	display: flex;
-	justify-content: space-between;
+	flex-direction: column;
+	gap: 12rpx;
+}
+
+.assistant-header {
+	display: flex;
 	align-items: center;
-	color: #20cb6b;
-	font-size: 26rpx;
+	justify-content: space-between;
 }
 
 .assistant-title {
 	font-weight: 600;
+	font-size: 28rpx;
+	color: #303133;
+}
+
+.assistant-amount {
+	font-size: 36rpx;
+	font-weight: 600;
+	color: #ff4d4f;
+}
+
+.assistant-amount.free {
+	color: #20cb6b;
 }
 
 .assistant-desc {
-	color: #ff893a;
+	font-size: 26rpx;
+	color: #606266;
+}
+
+.assistant-tips {
+	background: #f5f7fb;
+	border-radius: 16rpx;
+	padding: 12rpx 16rpx;
+	display: flex;
+	flex-direction: column;
+	gap: 10rpx;
+}
+
+.assistant-tip {
+	display: flex;
+	justify-content: space-between;
+	font-size: 24rpx;
+	color: #606266;
+}
+
+.tip-name {
+	font-weight: 500;
+}
+
+.tip-qty {
+	color: #909399;
 }
 
 .bottom-bar {
@@ -559,14 +938,28 @@ export default {
 
 .select-all {
 	display: flex;
-	align-items: center;
-	gap: 12rpx;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 6rpx;
 	font-size: 26rpx;
 	color: #606266;
 }
 
+.select-main {
+	display: flex;
+	align-items: center;
+	gap: 8rpx;
+}
+
+.selected-count {
+	font-size: 24rpx;
+	color: #909399;
+	margin-left: 8rpx;
+}
+
 .bottom-total {
 	display: flex;
+	flex-direction: column;
 	align-items: baseline;
 	gap: 8rpx;
 }
@@ -603,5 +996,291 @@ export default {
 	border-radius: 999rpx;
 	border: none;
 	font-size: 30rpx;
+}
+
+.fee-modal-container {
+	position: fixed;
+	left: 0;
+	bottom: 0;
+	width: 100%;
+	z-index: 1000;
+	display: flex;
+	align-items: flex-end;
+	justify-content: center;
+}
+
+.fee-modal-mask {
+	position: fixed;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	background: rgba(0, 0, 0, 0.35);
+}
+
+.fee-modal {
+	width: 100%;
+	background: #fff;
+	border-top-left-radius: 32rpx;
+	border-top-right-radius: 32rpx;
+	padding: 32rpx 40rpx 60rpx;
+	box-sizing: border-box;
+	position: relative;
+}
+
+.fee-modal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-size: 32rpx;
+	font-weight: 600;
+	color: #1a1a1a;
+	margin-bottom: 24rpx;
+}
+
+.fee-modal-close {
+	font-size: 40rpx;
+	color: #909399;
+	padding: 0 10rpx;
+}
+
+.fee-modal-body {
+	display: flex;
+	flex-direction: column;
+	gap: 20rpx;
+}
+.fee-item {
+	display: flex;
+	justify-content: space-between;
+	padding: 16rpx 0;
+	border-bottom: 1px solid #f2f3f5;
+}
+
+.fee-item:last-child {
+	border-bottom: none;
+}
+
+.fee-item-info {
+	display: flex;
+	flex-direction: column;
+	gap: 4rpx;
+	color: #303133;
+	font-size: 26rpx;
+	flex: 1;
+	padding-right: 20rpx;
+}
+
+.fee-item-name {
+	font-weight: 600;
+}
+
+.fee-item-spec {
+	color: #909399;
+	font-size: 24rpx;
+}
+
+.fee-item-amount {
+	text-align: right;
+	font-size: 24rpx;
+	color: #606266;
+	display: flex;
+	flex-direction: column;
+	gap: 6rpx;
+}
+
+.fee-item-price {
+	color: #909399;
+}
+
+.fee-item-total {
+	font-size: 26rpx;
+	color: #303133;
+	font-weight: 600;
+}
+
+
+.fee-row {
+	display: flex;
+	justify-content: space-between;
+	font-size: 28rpx;
+	color: #303133;
+}
+
+.fee-row.total {
+	font-size: 34rpx;
+	font-weight: 600;
+	color: #ff4d4f;
+	margin-top: 10rpx;
+}
+
+.fee-row .discount {
+	color: #ff4d4f;
+	font-weight: 600;
+}
+
+/* 优惠券相关样式 */
+.coupon-section {
+	margin-top: 20rpx;
+	padding-top: 20rpx;
+	border-top: 1rpx solid #f2f3f5;
+}
+
+.coupon-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 16rpx;
+}
+
+.coupon-label {
+	font-size: 26rpx;
+	color: #303133;
+}
+
+.coupon-selector {
+	display: flex;
+	align-items: center;
+	gap: 12rpx;
+	padding: 8rpx 16rpx;
+	background-color: #f5f7fa;
+	border-radius: 8rpx;
+}
+
+.coupon-selected {
+	font-size: 24rpx;
+	color: #20CB6B;
+	font-weight: 500;
+}
+
+.coupon-placeholder {
+	font-size: 24rpx;
+	color: #909399;
+}
+
+.coupon-change {
+	font-size: 22rpx;
+	color: #20CB6B;
+}
+
+/* 优惠券选择弹窗 */
+.coupon-modal-container {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 1000;
+	display: flex;
+	align-items: flex-end;
+}
+
+.coupon-modal-mask {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(0, 0, 0, 0.5);
+}
+
+.coupon-modal {
+	position: relative;
+	width: 100%;
+	background-color: #fff;
+	border-radius: 32rpx 32rpx 0 0;
+	max-height: 80vh;
+	display: flex;
+	flex-direction: column;
+	z-index: 1001;
+}
+
+.coupon-modal-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 32rpx;
+	border-bottom: 1rpx solid #f2f3f5;
+}
+
+.coupon-modal-header text:first-child {
+	font-size: 32rpx;
+	font-weight: 600;
+	color: #303133;
+}
+
+.coupon-modal-close {
+	font-size: 40rpx;
+	color: #909399;
+	padding: 0 10rpx;
+}
+
+.coupon-modal-body {
+	flex: 1;
+	overflow-y: auto;
+	padding: 32rpx;
+}
+
+.coupon-type-section {
+	margin-bottom: 40rpx;
+}
+
+.coupon-type-title {
+	font-size: 28rpx;
+	font-weight: 600;
+	color: #303133;
+	margin-bottom: 20rpx;
+	display: block;
+}
+
+.coupon-list {
+	display: flex;
+	flex-direction: column;
+	gap: 16rpx;
+}
+
+.coupon-option {
+	padding: 24rpx;
+	border: 2rpx solid #e4e7ed;
+	border-radius: 16rpx;
+	background-color: #fff;
+	transition: all 0.3s;
+}
+
+.coupon-option.active {
+	border-color: #20CB6B;
+	background-color: #f0f9f4;
+}
+
+.coupon-option.disabled {
+	opacity: 0.5;
+}
+
+.coupon-option-content {
+	display: flex;
+	flex-direction: column;
+	gap: 8rpx;
+}
+
+.coupon-option-name {
+	font-size: 28rpx;
+	font-weight: 600;
+	color: #303133;
+}
+
+.coupon-option-value {
+	font-size: 32rpx;
+	font-weight: 700;
+	color: #ff4d4f;
+}
+
+.coupon-option-condition {
+	font-size: 24rpx;
+	color: #909399;
+}
+
+.coupon-option-reason {
+	font-size: 22rpx;
+	color: #f56c6c;
+	margin-top: 8rpx;
 }
 </style>

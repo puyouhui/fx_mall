@@ -1,5 +1,5 @@
 import {
-  getPurchaseList,
+  getPurchaseListSummary,
   addPurchaseListItem,
   updatePurchaseListItem,
   deletePurchaseListItem,
@@ -7,12 +7,17 @@ import {
 } from '../api/index'
 
 export const fetchPurchaseList = async (token) => {
-  if (!token) return []
-  const res = await getPurchaseList(token)
-  if (res && res.code === 200) {
-    return Array.isArray(res.data) ? res.data : []
+  if (!token) return { items: [], summary: null, availableCoupons: [], bestCombination: null }
+  const res = await getPurchaseListSummary(token)
+  if (res && res.code === 200 && res.data) {
+    return {
+      items: Array.isArray(res.data.items) ? res.data.items : [],
+      summary: res.data.summary || null,
+      availableCoupons: Array.isArray(res.data.available_coupons) ? res.data.available_coupons : [],
+      bestCombination: res.data.best_combination || null
+    }
   }
-  return []
+  return { items: [], summary: null, availableCoupons: [], bestCombination: null }
 }
 
 export const addItemToPurchaseList = async ({ token, productId, specName, quantity = 1 }) => {

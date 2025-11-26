@@ -548,8 +548,8 @@ export default {
 				return;
 			}
 			try {
-				const list = await fetchPurchaseList(token);
-				this.purchaseList = list;
+				const { items } = await fetchPurchaseList(token);
+				this.purchaseList = items;
 				this.syncSpecQuantitiesFromList();
 				this.updateCartCount();
 			} catch (error) {

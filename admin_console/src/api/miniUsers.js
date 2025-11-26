@@ -45,3 +45,25 @@ export function getSalesEmployees() {
   })
 }
 
+// 获取用户优惠券列表
+export function getUserCoupons(userId) {
+  return request({
+    url: `/admin/mini-app/users/${userId}/coupons`,
+    method: 'get'
+  })
+}
+
+// 上传用户头像
+export function uploadUserAvatar(userId, file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request({
+    url: `/admin/mini-app/users/${userId}/avatar`,
+    method: 'post',
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    },
+    data: formData
+  })
+}
+

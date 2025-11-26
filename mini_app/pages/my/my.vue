@@ -78,6 +78,16 @@
     <!-- 常用功能 -->
     <view class="functions-section">
       <view class="function-group">
+        <view class="function-item" @click="goToCoupons">
+          <view class="function-icon coupon-icon">
+            <uni-icons type="wallet" size="22" color="#20CB6B"></uni-icons>
+          </view>
+          <text class="function-text">我的优惠券</text>
+          <view class="function-right">
+            <text class="coupon-count" v-if="couponCount > 0">{{ couponCount }}</text>
+            <uni-icons type="right" size="16" color="#ddd"></uni-icons>
+          </view>
+        </view>
         <view class="function-item" @click="goToCustomerService">
           <view class="function-icon customer-service-icon">
             <uni-icons type="chatbubble" size="22" color="#20CB6B"></uni-icons>
@@ -115,7 +125,7 @@
 </template>
 
 <script>
-import { getMiniUserInfo, getMiniUserDefaultAddress } from '../../api/index.js';
+import { getMiniUserInfo, getMiniUserDefaultAddress, getUserCoupons } from '../../api/index.js';
 
 export default {
   data() {
@@ -128,7 +138,8 @@ export default {
         pending_delivery: 0,
         pending_receipt: 0,
         completed: 0
-      }
+      },
+      couponCount: 0
     };
   },
   computed: {
@@ -169,6 +180,7 @@ export default {
     this.updateUserInfo();
     this.loadDefaultAddress();
     this.loadOrderCounts();
+    this.loadCouponCount();
   },
   methods: {
     // 检查登录状态
@@ -322,6 +334,43 @@ export default {
       uni.navigateTo({
         url: '/pages/settings/settings'
       });
+    },
+    
+    // 跳转到优惠券页面
+    goToCoupons() {
+      if (!this.isLoggedIn) {
+        this.goToLogin();
+        return;
+      }
+      uni.navigateTo({
+        url: '/pages/coupons/coupons'
+      });
+    },
+    
+    // 加载优惠券数量
+    async loadCouponCount() {
+      if (!this.isLoggedIn) {
+        this.couponCount = 0;
+        return;
+      }
+      
+      try {
+        const token = uni.getStorageSync('miniUserToken');
+        if (!token) {
+          return;
+        }
+        
+        const res = await getUserCoupons(token);
+        if (res && res.code === 200 && Array.isArray(res.data)) {
+          // 统计未使用的优惠券数量
+          this.couponCount = res.data.filter(coupon => coupon.status === 'unused').length;
+        } else {
+          this.couponCount = 0;
+        }
+      } catch (error) {
+        console.error('加载优惠券数量失败:', error);
+        this.couponCount = 0;
+      }
     }
   }
 };
@@ -565,6 +614,22 @@ export default {
   flex: 1;
   font-size: 28rpx;
   color: #333;
+}
+
+.function-right {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.coupon-icon {
+  background-color: #E8F8F0;
+}
+
+.coupon-count {
+  font-size: 24rpx;
+  color: #ff4d4f;
+  font-weight: 500;
 }
 
 </style>
