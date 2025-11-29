@@ -1,8 +1,8 @@
 -- 创建数据库（如果不存在）
-CREATE DATABASE IF NOT EXISTS product_shop DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS fx_shop DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- 使用数据库
-USE product_shop;
+USE fx_shop;
 
 -- 创建管理员表
 CREATE TABLE IF NOT EXISTS admins (

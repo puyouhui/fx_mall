@@ -318,6 +318,31 @@ func InitDB() error {
 			return
 		}
 
+		// 创建mini_app_users表（必须在purchase_list_items之前创建，因为purchase_list_items有外键依赖）
+		createMiniAppUsersTableSQL := `
+		CREATE TABLE IF NOT EXISTS mini_app_users (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    unique_id VARCHAR(64) NOT NULL COMMENT '小程序用户唯一标识（OpenID）',
+		    user_code VARCHAR(10) DEFAULT NULL COMMENT '用户编号（4-5位数）',
+		    name VARCHAR(50) DEFAULT NULL COMMENT '用户姓名',
+		    avatar VARCHAR(255) DEFAULT NULL COMMENT '用户头像',
+		    phone VARCHAR(20) DEFAULT NULL COMMENT '手机号码',
+		    sales_code VARCHAR(50) DEFAULT NULL COMMENT '绑定的销售员代码',
+		    store_type VARCHAR(50) DEFAULT NULL COMMENT '店铺类型',
+		    user_type VARCHAR(20) NOT NULL DEFAULT 'unknown' COMMENT '用户类型：retail/wholesale/unknown',
+		    profile_completed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '资料是否完善：0-未完善，1-已完善',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    UNIQUE KEY uk_unique_id (unique_id),
+		    UNIQUE KEY uk_user_code (user_code)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序用户表';
+		`
+
+		if _, err = DB.Exec(createMiniAppUsersTableSQL); err != nil {
+			log.Printf("创建mini_app_users表失败: %v", err)
+			return
+		}
+
 		// 创建采购单表（类似购物车）
 		createPurchaseListTableSQL := `
 		CREATE TABLE IF NOT EXISTS purchase_list_items (
@@ -440,31 +465,6 @@ func InitDB() error {
 		_, err = DB.Exec(createHotProductsTableSQL)
 		if err != nil {
 			log.Printf("创建hot_products表失败: %v", err)
-			return
-		}
-
-		// 创建mini_app_users表
-		createMiniAppUsersTableSQL := `
-		CREATE TABLE IF NOT EXISTS mini_app_users (
-		    id INT PRIMARY KEY AUTO_INCREMENT,
-		    unique_id VARCHAR(64) NOT NULL COMMENT '小程序用户唯一标识（OpenID）',
-		    user_code VARCHAR(10) DEFAULT NULL COMMENT '用户编号（4-5位数）',
-		    name VARCHAR(50) DEFAULT NULL COMMENT '用户姓名',
-		    avatar VARCHAR(255) DEFAULT NULL COMMENT '用户头像',
-		    phone VARCHAR(20) DEFAULT NULL COMMENT '手机号码',
-		    sales_code VARCHAR(50) DEFAULT NULL COMMENT '绑定的销售员代码',
-		    store_type VARCHAR(50) DEFAULT NULL COMMENT '店铺类型',
-		    user_type VARCHAR(20) NOT NULL DEFAULT 'unknown' COMMENT '用户类型：retail/wholesale/unknown',
-		    profile_completed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '资料是否完善：0-未完善，1-已完善',
-		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-		    UNIQUE KEY uk_unique_id (unique_id),
-		    UNIQUE KEY uk_user_code (user_code)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序用户表';
-		`
-
-		if _, err = DB.Exec(createMiniAppUsersTableSQL); err != nil {
-			log.Printf("创建mini_app_users表失败: %v", err)
 			return
 		}
 
