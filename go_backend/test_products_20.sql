@@ -143,3 +143,4 @@ INSERT INTO products (name, description, price, original_price, category_id, sup
  '[{"name":"10卷装","wholesale_price":22.00,"retail_price":32.00,"cost":14.00,"description":"十卷装"},{"name":"20卷装","wholesale_price":38.00,"retail_price":58.00,"cost":25.00,"description":"二十卷装"},{"name":"6卷装","wholesale_price":15.00,"retail_price":22.00,"cost":9.50,"description":"六卷装"}]',
  1, NOW(), NOW());
 
+

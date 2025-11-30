@@ -7,9 +7,10 @@ import (
 	"net/http"
 	"time"
 
+	"go_backend/internal/config"
+
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-	"go_backend/internal/config"
 )
 
 var minioClient *minio.Client
@@ -85,7 +86,7 @@ func UploadFile(fileName string, reader *http.Request) (string, error) {
 
 	// 生成可访问的URL
 	// 注意：这里使用的是公共访问方式，如果需要私有访问，需要生成带有签名的URL
-	fileURL := fmt.Sprintf("http://%s/%s/%s", cfg.Endpoint, cfg.Bucket, objectName)
+	fileURL := fmt.Sprintf("https://www.sscchh.com/minio/%s/%s", cfg.Bucket, objectName)
 
 	log.Printf("成功上传文件: %s, 大小: %d 字节\n", uploadInfo.Key, uploadInfo.Size)
 	return fileURL, nil
