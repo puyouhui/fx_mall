@@ -8,6 +8,7 @@ import (
 
 	"go_backend/internal/database"
 	"go_backend/internal/model"
+	"go_backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -92,6 +93,396 @@ func GetSalesCustomers(c *gin.Context) {
 			"total": total,
 		},
 		"message": "获取成功",
+	})
+}
+
+// GetSalesCustomerByCode 销售员根据用户编号查询自己的客户（含资料与地址）
+func GetSalesCustomerByCode(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+
+	if !employee.IsSales {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是销售员，无权访问此功能"})
+		return
+	}
+
+	userCode := strings.TrimSpace(c.Query("userCode"))
+	if userCode == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供用户编号"})
+		return
+	}
+
+	user, err := model.GetMiniAppUserByUserCode(userCode)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "查询用户失败: " + err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	// 只能查询自己名下的客户
+	if user.SalesCode != employee.EmployeeCode {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "该客户不属于当前销售员"})
+		return
+	}
+
+	// 获取默认地址和所有地址
+	defaultAddress, _ := model.GetDefaultAddressByUserID(user.ID)
+	allAddresses, _ := model.GetAddressesByUserID(user.ID)
+
+	responseData := map[string]interface{}{
+		"id":                user.ID,
+		"unique_id":         user.UniqueID,
+		"user_code":         user.UserCode,
+		"name":              user.Name,
+		"avatar":            user.Avatar,
+		"phone":             user.Phone,
+		"sales_code":        user.SalesCode,
+		"store_type":        user.StoreType,
+		"user_type":         user.UserType,
+		"profile_completed": user.ProfileCompleted,
+		"created_at":        user.CreatedAt,
+		"updated_at":        user.UpdatedAt,
+		"default_address":   defaultAddress,
+		"addresses":         allAddresses,
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "获取成功",
+		"data":    responseData,
+	})
+}
+
+// GetMyPendingOrders 获取当前销售员名下客户的待配送订单列表（分页）
+func GetMyPendingOrders(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+
+	if !employee.IsSales {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是销售员，无权访问此功能"})
+		return
+	}
+
+	pageNum := parseQueryInt(c, "pageNum", 1)
+	pageSize := parseQueryInt(c, "pageSize", 10)
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+
+	orders, total, err := model.GetPendingOrdersBySalesCode(employee.EmployeeCode, pageNum, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取待配送订单失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"data": gin.H{
+			"list":  orders,
+			"total": total,
+		},
+		"message": "获取成功",
+	})
+}
+
+// UpdateSalesCustomerProfile 销售员更新自己名下客户的基础资料
+type updateSalesCustomerProfileRequest struct {
+	Name      string `json:"name"`
+	Phone     string `json:"phone"`
+	StoreType string `json:"storeType"`
+	UserType  string `json:"userType"`
+}
+
+func UpdateSalesCustomerProfile(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+	if !employee.IsSales {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是销售员，无权访问此功能"})
+		return
+	}
+
+	idStr := c.Param("id")
+	userID, err := strconv.Atoi(idStr)
+	if err != nil || userID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "客户ID格式错误"})
+		return
+	}
+
+	// 校验客户是否属于当前销售员
+	user, err := model.GetMiniAppUserByID(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取客户信息失败: " + err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "客户不存在"})
+		return
+	}
+	if user.SalesCode != employee.EmployeeCode {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权修改该客户资料"})
+		return
+	}
+
+	var req updateSalesCustomerProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	updateData := map[string]interface{}{}
+	if req.Name != "" {
+		updateData["name"] = strings.TrimSpace(req.Name)
+	}
+	if req.Phone != "" {
+		updateData["phone"] = strings.TrimSpace(req.Phone)
+	}
+	if req.StoreType != "" {
+		updateData["storeType"] = strings.TrimSpace(req.StoreType)
+	}
+	// 用户类型 retail / wholesale
+	if req.UserType != "" {
+		ut := strings.ToLower(strings.TrimSpace(req.UserType))
+		if ut == "retail" || ut == "wholesale" {
+			updateData["userType"] = ut
+		}
+	}
+	// 员工完善资料时，标记为已完善
+	updateData["profileCompleted"] = true
+
+	if err := model.UpdateMiniAppUserByAdmin(userID, updateData); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新客户资料失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "资料更新成功",
+	})
+}
+
+// 销售员维护客户地址
+type upsertSalesAddressRequest struct {
+	Name      string   `json:"name"`
+	Contact   string   `json:"contact"`
+	Phone     string   `json:"phone"`
+	Address   string   `json:"address"`
+	Avatar    string   `json:"avatar"`
+	StoreType string   `json:"storeType"`
+	Latitude  *float64 `json:"latitude"`
+	Longitude *float64 `json:"longitude"`
+	IsDefault bool     `json:"isDefault"`
+}
+
+// CreateSalesCustomerAddress 为客户新增地址
+func CreateSalesCustomerAddress(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+	if !employee.IsSales {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是销售员，无权访问此功能"})
+		return
+	}
+
+	idStr := c.Param("id")
+	userID, err := strconv.Atoi(idStr)
+	if err != nil || userID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "客户ID格式错误"})
+		return
+	}
+
+	// 校验客户是否属于当前销售员
+	user, err := model.GetMiniAppUserByID(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取客户信息失败: " + err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "客户不存在"})
+		return
+	}
+	if user.SalesCode != employee.EmployeeCode {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权为该客户新增地址"})
+		return
+	}
+
+	var req upsertSalesAddressRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	addressData := map[string]interface{}{
+		"name":       strings.TrimSpace(req.Name),
+		"contact":    strings.TrimSpace(req.Contact),
+		"phone":      strings.TrimSpace(req.Phone),
+		"address":    strings.TrimSpace(req.Address),
+		"avatar":     strings.TrimSpace(req.Avatar),
+		"store_type": strings.TrimSpace(req.StoreType),
+		"is_default": req.IsDefault,
+	}
+	if req.Latitude != nil {
+		addressData["latitude"] = *req.Latitude
+	}
+	if req.Longitude != nil {
+		addressData["longitude"] = *req.Longitude
+	}
+
+	newAddr, err := model.CreateAddress(userID, addressData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "新增地址失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "地址新增成功",
+		"data":    newAddr,
+	})
+}
+
+// UpdateSalesCustomerAddress 更新客户地址
+func UpdateSalesCustomerAddress(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+	if !employee.IsSales {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是销售员，无权访问此功能"})
+		return
+	}
+
+	idStr := c.Param("id")
+	addrID, err := strconv.Atoi(idStr)
+	if err != nil || addrID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "地址ID格式错误"})
+		return
+	}
+
+	// 先查地址，拿到 userID 并校验客户归属
+	addr, err := model.GetAddressByID(addrID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取地址信息失败: " + err.Error()})
+		return
+	}
+	if addr == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "地址不存在"})
+		return
+	}
+
+	user, err := model.GetMiniAppUserByID(addr.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取客户信息失败: " + err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "客户不存在"})
+		return
+	}
+	if user.SalesCode != employee.EmployeeCode {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权修改该客户地址"})
+		return
+	}
+
+	var req upsertSalesAddressRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	addressData := map[string]interface{}{}
+	if req.Name != "" {
+		addressData["name"] = strings.TrimSpace(req.Name)
+	}
+	if req.Contact != "" {
+		addressData["contact"] = strings.TrimSpace(req.Contact)
+	}
+	if req.Phone != "" {
+		addressData["phone"] = strings.TrimSpace(req.Phone)
+	}
+	if req.Address != "" {
+		addressData["address"] = strings.TrimSpace(req.Address)
+	}
+	if req.Avatar != "" {
+		addressData["avatar"] = strings.TrimSpace(req.Avatar)
+	}
+	if req.StoreType != "" {
+		addressData["store_type"] = strings.TrimSpace(req.StoreType)
+	}
+	if req.Latitude != nil {
+		addressData["latitude"] = *req.Latitude
+	}
+	if req.Longitude != nil {
+		addressData["longitude"] = *req.Longitude
+	}
+	addressData["is_default"] = req.IsDefault
+
+	if err := model.UpdateAddress(addrID, addr.UserID, addressData); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新地址失败: " + err.Error()})
+		return
+	}
+
+	updatedAddr, err := model.GetAddressByID(addrID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取更新后的地址失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "地址更新成功",
+		"data":    updatedAddr,
+	})
+}
+
+// UploadAddressAvatarByEmployee 员工端上传门头照片，返回图片 URL
+func UploadAddressAvatarByEmployee(c *gin.Context) {
+	// 通过中间件校验员工身份
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+	_ = employee // 目前不需要具体信息，只要通过鉴权即可
+
+	// 检查是否有文件上传
+	file, headers, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请选择要上传的图片: " + err.Error()})
+		return
+	}
+	defer file.Close()
+
+	if headers.Size > 15*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过15MB"})
+		return
+	}
+
+	// 上传到 MinIO（与小程序地址头像共用 bucket 前缀）
+	fileURL, err := utils.UploadFile("mini-address-avatar", c.Request)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "图片上传成功",
+		"data": gin.H{
+			"avatar":   fileURL,
+			"imageUrl": fileURL,
+		},
 	})
 }
 
@@ -334,7 +725,7 @@ func GetSalesCustomerPurchaseList(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,
 		"data": gin.H{
-			"items":  items,
+			"items":   items,
 			"summary": summary,
 		},
 		"message": "获取成功",
@@ -354,9 +745,9 @@ func CreateOrderForCustomer(c *gin.Context) {
 	}
 
 	var req struct {
-		UserID    int   `json:"user_id" binding:"required"`
-		AddressID int   `json:"address_id" binding:"required"`
-		ItemIDs   []int `json:"item_ids"` // 采购单项ID列表，为空则使用全部
+		UserID    int    `json:"user_id" binding:"required"`
+		AddressID int    `json:"address_id" binding:"required"`
+		ItemIDs   []int  `json:"item_ids"` // 采购单项ID列表，为空则使用全部
 		Remark    string `json:"remark"`
 	}
 
@@ -483,4 +874,3 @@ func GetSalesProducts(c *gin.Context) {
 func contains(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
-

@@ -221,7 +221,7 @@ func GetPurchaseListSummary(c *gin.Context) {
 		var price float64
 		if userType == "wholesale" {
 			price = item.SpecSnapshot.WholesalePrice
-			if price <= 0 {
+		if price <= 0 {
 				price = item.SpecSnapshot.RetailPrice
 			}
 		} else {

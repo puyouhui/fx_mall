@@ -209,22 +209,29 @@ func main() {
 			employeeProtectedGroup := employeeGroup.Group("")
 			employeeProtectedGroup.Use(api.EmployeeAuthMiddleware())
 			{
-				employeeProtectedGroup.GET("/info", api.GetEmployeeInfo) // 获取当前员工信息
+				employeeProtectedGroup.GET("/info", api.GetEmployeeInfo)           // 获取当前员工信息
+				employeeProtectedGroup.GET("/dashboard", api.GetEmployeeDashboard) // 员工首页概览
 
 				// 配送员相关接口
-				employeeProtectedGroup.GET("/delivery/orders", api.GetDeliveryOrders)                    // 获取待配送订单列表
-				employeeProtectedGroup.GET("/delivery/orders/:id", api.GetDeliveryOrderDetail)          // 获取订单详情
-				employeeProtectedGroup.PUT("/delivery/orders/:id/accept", api.AcceptDeliveryOrder)      // 接单
-				employeeProtectedGroup.PUT("/delivery/orders/:id/complete", api.CompleteDeliveryOrder)   // 完成配送
-				employeeProtectedGroup.GET("/delivery/my-orders", api.GetDeliveryOrders)                // 获取我的配送订单（通过status参数筛选）
+				employeeProtectedGroup.GET("/delivery/orders", api.GetDeliveryOrders)                  // 获取待配送订单列表
+				employeeProtectedGroup.GET("/delivery/orders/:id", api.GetDeliveryOrderDetail)         // 获取订单详情
+				employeeProtectedGroup.PUT("/delivery/orders/:id/accept", api.AcceptDeliveryOrder)     // 接单
+				employeeProtectedGroup.PUT("/delivery/orders/:id/complete", api.CompleteDeliveryOrder) // 完成配送
+				employeeProtectedGroup.GET("/delivery/my-orders", api.GetDeliveryOrders)               // 获取我的配送订单（通过status参数筛选）
 
 				// 销售员相关接口
-				employeeProtectedGroup.GET("/sales/customers", api.GetSalesCustomers)                           // 获取我的客户列表
-				employeeProtectedGroup.GET("/sales/customers/:id", api.GetSalesCustomerDetail)                 // 获取客户详情
-				employeeProtectedGroup.GET("/sales/customers/:id/orders", api.GetSalesCustomerOrders)          // 获取客户的订单列表
+				employeeProtectedGroup.GET("/sales/customers", api.GetSalesCustomers)                              // 获取我的客户列表
+				employeeProtectedGroup.GET("/sales/customer-by-code", api.GetSalesCustomerByCode)                  // 通过编号查客户
+				employeeProtectedGroup.GET("/sales/customers/:id", api.GetSalesCustomerDetail)                     // 获取客户详情
+				employeeProtectedGroup.GET("/sales/customers/:id/orders", api.GetSalesCustomerOrders)              // 获取客户的订单列表
 				employeeProtectedGroup.GET("/sales/customers/:id/purchase-list", api.GetSalesCustomerPurchaseList) // 获取客户的采购单
-				employeeProtectedGroup.POST("/sales/orders", api.CreateOrderForCustomer)                        // 为客户创建订单
-				employeeProtectedGroup.GET("/sales/products", api.GetSalesProducts)                             // 获取商品列表
+				employeeProtectedGroup.PUT("/sales/customers/:id/profile", api.UpdateSalesCustomerProfile)         // 更新客户基础资料
+				employeeProtectedGroup.POST("/sales/customers/:id/addresses", api.CreateSalesCustomerAddress)      // 为客户新增地址
+				employeeProtectedGroup.PUT("/sales/addresses/:id", api.UpdateSalesCustomerAddress)                 // 更新客户地址
+				employeeProtectedGroup.POST("/upload/address-avatar", api.UploadAddressAvatarByEmployee)           // 上传门头照
+				employeeProtectedGroup.POST("/sales/orders", api.CreateOrderForCustomer)                           // 为客户创建订单
+				employeeProtectedGroup.GET("/sales/products", api.GetSalesProducts)                                // 获取商品列表
+				employeeProtectedGroup.GET("/sales/pending-orders", api.GetMyPendingOrders)                        // 获取待配送订单列表
 			}
 		}
 	}

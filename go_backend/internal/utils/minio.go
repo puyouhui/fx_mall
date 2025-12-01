@@ -1,10 +1,14 @@
 package utils
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"go_backend/internal/config"
@@ -68,17 +72,45 @@ func UploadFile(fileName string, reader *http.Request) (string, error) {
 
 	cfg := config.Config.MinIO
 
+	// 限制单个文件最大 15MB
+	const maxSize = 15 * 1024 * 1024
+	if header.Size > maxSize {
+		return "", fmt.Errorf("文件大小不能超过 15MB")
+	}
+
 	// 生成唯一的对象名称
 	objectName := fmt.Sprintf("%s_%d%s", fileName, time.Now().Unix(), getFileExtension(header.Filename))
+
+	// 读取到内存以便压缩 / 处理
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(file); err != nil {
+		return "", fmt.Errorf("读取文件失败: %v", err)
+	}
+
+	contentType := header.Header.Get("Content-Type")
+	readerToUpload := bytes.NewReader(buf.Bytes())
+	sizeToUpload := int64(buf.Len())
+
+	// 如果是图片，则尝试压缩为 JPEG（质量 80）
+	if strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		if img, _, err := image.Decode(bytes.NewReader(buf.Bytes())); err == nil {
+			var compressed bytes.Buffer
+			if err := jpeg.Encode(&compressed, img, &jpeg.Options{Quality: 80}); err == nil {
+				readerToUpload = bytes.NewReader(compressed.Bytes())
+				sizeToUpload = int64(compressed.Len())
+				contentType = "image/jpeg"
+			}
+		}
+	}
 
 	// 上传文件
 	uploadInfo, err := minioClient.PutObject(
 		context.Background(),
-		cfg.Bucket,  // 存储桶名称
-		objectName,  // 对象名称
-		file,        // 文件内容
-		header.Size, // 文件大小
-		minio.PutObjectOptions{ContentType: header.Header.Get("Content-Type")},
+		cfg.Bucket,     // 存储桶名称
+		objectName,     // 对象名称
+		readerToUpload, // 文件内容
+		sizeToUpload,   // 文件大小
+		minio.PutObjectOptions{ContentType: contentType},
 	)
 	if err != nil {
 		return "", fmt.Errorf("上传文件失败: %v", err)

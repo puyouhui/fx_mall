@@ -415,15 +415,15 @@ export default {
 						.map(item => item.id);
 					
 					if (previousSelection.size > 0) {
-						const retained = items
-							.filter(item => previousSelection.has(item.id))
-							.map(item => item.id);
+					const retained = items
+						.filter(item => previousSelection.has(item.id))
+						.map(item => item.id);
 						// 保留之前的选中状态，并自动选中新加入的商品
 						this.selectedIds = [...retained, ...newItemIds];
-					} else {
+				} else {
 						// 首次加载或没有之前的选中状态，自动选中所有商品
-						this.selectedIds = items.map(item => item.id);
-					}
+					this.selectedIds = items.map(item => item.id);
+				}
 					
 					// 根据选中的商品重新获取配送费摘要（包括优惠券信息）
 					if (this.selectedIds.length > 0) {

@@ -15,7 +15,7 @@ type MiniAppUser struct {
 	ID               int       `json:"id"`
 	UniqueID         string    `json:"unique_id"`
 	UserCode         string    `json:"user_code,omitempty"` // 用户编号（4-5位数）
-	Name             string    `json:"name,omitempty"`       // 用户姓名
+	Name             string    `json:"name,omitempty"`      // 用户姓名
 	Avatar           string    `json:"avatar,omitempty"`
 	Phone            string    `json:"phone,omitempty"`
 	SalesCode        string    `json:"sales_code,omitempty"`
@@ -37,8 +37,8 @@ func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 	var (
 		user                          MiniAppUser
 		userCode, name, avatar, phone sql.NullString
-		salesCode, storeType           sql.NullString
-		profileCompleted               sql.NullInt64
+		salesCode, storeType          sql.NullString
+		profileCompleted              sql.NullInt64
 	)
 
 	err := database.DB.QueryRow(query, uniqueID).Scan(
@@ -64,6 +64,55 @@ func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 	}
 
 	user.UserCode = nullString(userCode)
+	user.Name = nullString(name)
+	user.Avatar = nullString(avatar)
+	user.Phone = nullString(phone)
+	user.SalesCode = nullString(salesCode)
+	user.StoreType = nullString(storeType)
+	user.ProfileCompleted = profileCompleted.Valid && profileCompleted.Int64 == 1
+
+	return &user, nil
+}
+
+// GetMiniAppUserByUserCode 根据用户编号获取用户
+func GetMiniAppUserByUserCode(userCode string) (*MiniAppUser, error) {
+	var user MiniAppUser
+
+	query := `
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, created_at, updated_at
+		FROM mini_app_users
+		WHERE user_code = ?
+		LIMIT 1
+	`
+
+	var (
+		code, name, avatar, phone sql.NullString
+		salesCode, storeType      sql.NullString
+		profileCompleted          sql.NullInt64
+	)
+
+	err := database.DB.QueryRow(query, userCode).Scan(
+		&user.ID,
+		&user.UniqueID,
+		&code,
+		&name,
+		&avatar,
+		&phone,
+		&salesCode,
+		&storeType,
+		&user.UserType,
+		&profileCompleted,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	user.UserCode = nullString(code)
 	user.Name = nullString(name)
 	user.Avatar = nullString(avatar)
 	user.Phone = nullString(phone)
@@ -126,7 +175,7 @@ func GetMiniAppUserByID(id int) (*MiniAppUser, error) {
 func GenerateUserCode() (string, error) {
 	// 初始化随机数种子
 	rand.Seed(time.Now().UnixNano())
-	
+
 	// 先尝试生成4位数（1000-9999）
 	for i := 0; i < 100; i++ {
 		code := fmt.Sprintf("%04d", 1000+rand.Intn(9000))
@@ -141,7 +190,7 @@ func GenerateUserCode() (string, error) {
 			return code, nil
 		}
 	}
-	
+
 	// 如果4位数都用完了，使用5位数（10000-99999）
 	for i := 0; i < 100; i++ {
 		code := fmt.Sprintf("%05d", 10000+rand.Intn(90000))
@@ -156,7 +205,7 @@ func GenerateUserCode() (string, error) {
 			return code, nil
 		}
 	}
-	
+
 	return "", fmt.Errorf("无法生成唯一的用户编号")
 }
 
@@ -184,13 +233,13 @@ func CreateMiniAppUser(uniqueID string) (*MiniAppUser, error) {
 		}
 		return existingUser, nil
 	}
-	
+
 	// 生成用户编号
 	userCode, err := GenerateUserCode()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	_, err = database.DB.Exec(`
 		INSERT INTO mini_app_users (unique_id, user_code, user_type, profile_completed, created_at, updated_at)
 		VALUES (?, ?, 'unknown', 0, NOW(), NOW())
@@ -269,7 +318,7 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 			user                          MiniAppUser
 			userCode, name, avatar, phone sql.NullString
 			salesCode, storeType          sql.NullString
-			profileCompleted             sql.NullInt64
+			profileCompleted              sql.NullInt64
 		)
 
 		if err := rows.Scan(

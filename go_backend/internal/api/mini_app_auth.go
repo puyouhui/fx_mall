@@ -833,8 +833,8 @@ func UploadMiniAppUserAvatar(c *gin.Context) {
 	}
 	defer file.Close()
 
-	if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过5MB"})
+	if headers.Size > 15*1024*1024 { // 限制文件大小为15MB
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过15MB"})
 		return
 	}
 
@@ -923,8 +923,8 @@ func UploadMiniAppUserAvatarByAdmin(c *gin.Context) {
 	}
 	defer file.Close()
 
-	if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过5MB"})
+	if headers.Size > 15*1024*1024 { // 限制文件大小为15MB
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过15MB"})
 		return
 	}
 
@@ -988,8 +988,8 @@ func UploadAddressAvatar(c *gin.Context) {
 	}
 	defer file.Close()
 
-	if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过5MB"})
+	if headers.Size > 15*1024*1024 { // 限制文件大小为15MB
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过15MB"})
 		return
 	}
 

@@ -421,6 +421,108 @@ func GetOrderItemsByOrderID(orderID int) ([]OrderItem, error) {
 	return items, nil
 }
 
+// CountOrdersBySalesCode 统计某个销售员名下客户的订单总数、待配送数量、今日新增订单数量
+func CountOrdersBySalesCode(employeeCode string) (total int, pendingDelivery int, todayTotal int, err error) {
+	query := `
+		SELECT 
+			COUNT(*) AS total,
+			SUM(CASE WHEN o.status IN ('pending_delivery', 'pending') THEN 1 ELSE 0 END) AS pending_delivery,
+			SUM(CASE WHEN DATE(o.created_at) = CURRENT_DATE THEN 1 ELSE 0 END) AS today_total
+		FROM orders o
+		JOIN mini_app_users u ON o.user_id = u.id
+		WHERE u.sales_code = ?
+	`
+
+	err = database.DB.QueryRow(query, employeeCode).Scan(&total, &pendingDelivery, &todayTotal)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return total, pendingDelivery, todayTotal, nil
+}
+
+// GetPendingOrdersBySalesCode 获取销售员名下客户的待配送订单列表（分页）
+func GetPendingOrdersBySalesCode(employeeCode string, pageNum, pageSize int) ([]map[string]interface{}, int, error) {
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+
+	offset := (pageNum - 1) * pageSize
+
+	// 统计总数
+	var total int
+	countQuery := `
+		SELECT COUNT(*)
+		FROM orders o
+		JOIN mini_app_users u ON o.user_id = u.id
+		WHERE u.sales_code = ? AND o.status IN ('pending_delivery', 'pending')
+	`
+	if err := database.DB.QueryRow(countQuery, employeeCode).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	// 查询分页数据
+	query := `
+		SELECT
+			o.id,
+			o.order_number,
+			o.status,
+			o.total_amount,
+			o.created_at,
+			a.name AS store_name,
+			a.address,
+			a.phone AS contact_phone
+		FROM orders o
+		JOIN mini_app_users u ON o.user_id = u.id
+		LEFT JOIN mini_app_addresses a ON o.address_id = a.id
+		WHERE u.sales_code = ? AND o.status IN ('pending_delivery', 'pending')
+		ORDER BY o.created_at DESC
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := database.DB.Query(query, employeeCode, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	orders := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var id int
+		var orderNumber string
+		var status string
+		var totalAmount float64
+		var createdAt time.Time
+		var storeName sql.NullString
+		var address sql.NullString
+		var contactPhone sql.NullString
+
+		if err := rows.Scan(&id, &orderNumber, &status, &totalAmount, &createdAt, &storeName, &address, &contactPhone); err != nil {
+			return nil, 0, err
+		}
+
+		itemCount, _ := GetOrderItemCountByOrderID(id)
+
+		order := map[string]interface{}{
+			"id":            id,
+			"order_number":  orderNumber,
+			"status":        status,
+			"total_amount":  totalAmount,
+			"created_at":    createdAt,
+			"store_name":    getStringValue(storeName),
+			"address":       getStringValue(address),
+			"contact_phone": getStringValue(contactPhone),
+			"item_count":    itemCount,
+		}
+
+		orders = append(orders, order)
+	}
+
+	return orders, total, nil
+}
+
 // GetOrderItemCountByOrderID 根据订单ID获取订单商品数量
 func GetOrderItemCountByOrderID(orderID int) (int, error) {
 	var count int

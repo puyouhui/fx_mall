@@ -549,7 +549,7 @@ func calculateItemAmount(item PurchaseListItem, userType string) float64 {
 	// 批发客户优先使用批发价，零售客户优先使用零售价
 	if userType == "wholesale" {
 		price = item.SpecSnapshot.WholesalePrice
-		if price <= 0 {
+	if price <= 0 {
 			price = item.SpecSnapshot.RetailPrice
 		}
 	} else {
