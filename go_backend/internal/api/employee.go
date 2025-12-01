@@ -181,8 +181,34 @@ func UpdateEmployee(c *gin.Context) {
 		return
 	}
 
+	// 获取当前员工信息，用于判断是否是销售员
+	currentEmployee, err := model.GetEmployeeByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取员工信息失败: " + err.Error()})
+		return
+	}
+	if currentEmployee == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "员工不存在"})
+		return
+	}
+
+	// 判断是否是销售员（考虑更新后的状态）
+	isSales := currentEmployee.IsSales
+	if req.IsSales != nil {
+		isSales = *req.IsSales
+	}
+
 	// 构建更新数据
 	updateData := make(map[string]interface{})
+
+	// 如果是销售员，手机号必须填写
+	if isSales && req.Phone == "" {
+		// 检查当前员工是否有手机号
+		if currentEmployee.Phone == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "销售员的联系方式（手机号）为必填项"})
+			return
+		}
+	}
 
 	if req.Phone != "" {
 		if !utils.IsValidPhone(req.Phone) {
@@ -190,6 +216,10 @@ func UpdateEmployee(c *gin.Context) {
 			return
 		}
 		updateData["phone"] = req.Phone
+	} else if isSales && currentEmployee.Phone == "" {
+		// 如果更新为销售员但没有提供手机号，且当前也没有手机号，则报错
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "销售员的联系方式（手机号）为必填项"})
+		return
 	}
 
 	if req.Password != "" {
@@ -293,4 +323,3 @@ func DeleteEmployee(c *gin.Context) {
 		"message": "删除成功",
 	})
 }
-

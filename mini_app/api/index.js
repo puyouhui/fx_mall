@@ -306,6 +306,35 @@ export const clearPurchaseList = (token) => {
 /**
  * 创建订单（从当前采购单）
  */
+/**
+ * 获取用户订单列表
+ * @param {string} token - 用户token
+ * @param {object} params - 查询参数 { pageNum, pageSize, status }
+ */
+export const getUserOrders = (token, params = {}) => {
+  return get('/mini-app/users/orders', params, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
+ * 获取订单详情
+ * @param {string} token - 用户token
+ * @param {number} orderId - 订单ID
+ */
+export const getOrderDetail = (token, orderId) => {
+  return get(`/mini-app/users/orders/${orderId}`, {}, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
+ * 创建订单
+ */
 export const createOrder = (data, token) => {
   return post('/mini-app/users/orders', data, {
     header: {

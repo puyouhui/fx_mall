@@ -199,7 +199,13 @@ func GetPurchaseListSummary(c *gin.Context) {
 		return
 	}
 
-	summary, err := model.CalculateDeliveryFee(items)
+	// 获取用户类型，默认为零售
+	userType := user.UserType
+	if userType == "" || userType == "unknown" {
+		userType = "retail"
+	}
+
+	summary, err := model.CalculateDeliveryFee(items, userType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "计算配送费失败: " + err.Error()})
 		return
@@ -211,10 +217,18 @@ func GetPurchaseListSummary(c *gin.Context) {
 	productIDs := make([]int, 0)
 
 	for _, item := range items {
-		// 计算商品金额
-		price := item.SpecSnapshot.WholesalePrice
-		if price <= 0 {
+		// 根据用户类型计算商品金额
+		var price float64
+		if userType == "wholesale" {
+			price = item.SpecSnapshot.WholesalePrice
+			if price <= 0 {
+				price = item.SpecSnapshot.RetailPrice
+			}
+		} else {
 			price = item.SpecSnapshot.RetailPrice
+			if price <= 0 {
+				price = item.SpecSnapshot.WholesalePrice
+			}
 		}
 		if price <= 0 {
 			price = item.SpecSnapshot.Cost

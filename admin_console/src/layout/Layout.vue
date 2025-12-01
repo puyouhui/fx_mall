@@ -72,6 +72,12 @@
         </el-icon>
         <span>优惠券管理</span>
       </el-menu-item>
+      <el-menu-item index="/orders">
+        <el-icon>
+          <Document />
+        </el-icon>
+        <span>订单管理</span>
+      </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -132,7 +138,8 @@ import {
   Setting,
   Shop,
   Money,
-  Ticket
+  Ticket,
+  Document
 } from '@element-plus/icons-vue'
 import { logout, getAdminInfo } from '../api/auth'
 import { ElMessage } from 'element-plus'

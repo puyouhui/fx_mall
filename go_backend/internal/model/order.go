@@ -3,6 +3,7 @@ package model
 import (
 	"database/sql"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"go_backend/internal/database"
@@ -12,9 +13,10 @@ import (
 // 目前先用于创建订单，后续可扩展状态流转、支付等逻辑
 type Order struct {
 	ID                  int        `json:"id"`
+	OrderNumber         string     `json:"order_number"` // 订单编号
 	UserID              int        `json:"user_id"`
 	AddressID           int        `json:"address_id"`
-	Status              string     `json:"status"`                // pending/paid/shipped/completed/cancelled
+	Status              string     `json:"status"`                // pending_delivery/delivering/delivered/paid/cancelled
 	GoodsAmount         float64    `json:"goods_amount"`          // 商品总金额
 	DeliveryFee         float64    `json:"delivery_fee"`          // 配送费
 	PointsDiscount      float64    `json:"points_discount"`       // 积分抵扣金额
@@ -54,8 +56,50 @@ type OrderCreationOptions struct {
 	CouponDiscount      float64
 }
 
+// GenerateOrderNumber 生成订单编号
+// 格式：YYYYMMDDHHmmss + 用户ID后3位（不足补0） + 随机数3位
+// 例如：20240101120000123456（20位）
+func GenerateOrderNumber(userID int) string {
+	now := time.Now()
+	// 日期时间部分：YYYYMMDDHHmmss (14位)
+	timePart := now.Format("20060102150405")
+
+	// 用户ID后3位（不足补0）
+	userIDPart := fmt.Sprintf("%03d", userID%1000)
+
+	// 随机数3位
+	rand.Seed(time.Now().UnixNano())
+	randomPart := fmt.Sprintf("%03d", rand.Intn(1000))
+
+	return timePart + userIDPart + randomPart
+}
+
+// generateUniqueOrderNumber 生成唯一的订单编号（如果重复则重试）
+func generateUniqueOrderNumber(userID int, maxRetries int) (string, error) {
+	for i := 0; i < maxRetries; i++ {
+		orderNumber := GenerateOrderNumber(userID)
+
+		// 检查订单编号是否已存在
+		var exists int
+		err := database.DB.QueryRow("SELECT COUNT(*) FROM orders WHERE order_number = ?", orderNumber).Scan(&exists)
+		if err != nil {
+			return "", fmt.Errorf("检查订单编号失败: %v", err)
+		}
+
+		if exists == 0 {
+			return orderNumber, nil
+		}
+
+		// 如果重复，等待一小段时间后重试
+		time.Sleep(time.Millisecond * 10)
+	}
+
+	return "", fmt.Errorf("生成唯一订单编号失败，已重试 %d 次", maxRetries)
+}
+
 // CreateOrderFromPurchaseList 从采购单创建订单（包含事务和明细落库）
-func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem, summary *DeliveryFeeSummary, opts OrderCreationOptions) (*Order, []OrderItem, error) {
+// userType: "wholesale" 表示批发客户，使用批发价；"retail" 或其他值表示零售客户，使用零售价
+func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem, summary *DeliveryFeeSummary, opts OrderCreationOptions, userType string) (*Order, []OrderItem, error) {
 	if len(items) == 0 {
 		return nil, nil, fmt.Errorf("采购单为空")
 	}
@@ -91,6 +135,12 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 		totalAmount = 0
 	}
 
+	// 生成唯一的订单编号
+	orderNumber, err := generateUniqueOrderNumber(userID, 5)
+	if err != nil {
+		return nil, nil, fmt.Errorf("生成订单编号失败: %v", err)
+	}
+
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return nil, nil, err
@@ -105,12 +155,12 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	// 插入订单主表
 	res, err := tx.Exec(`
 		INSERT INTO orders (
-			user_id, address_id, status, goods_amount, delivery_fee, points_discount, coupon_discount, total_amount,
+			order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount, coupon_discount, total_amount,
 			remark, out_of_stock_strategy, trust_receipt, hide_price, require_phone_contact, expected_delivery_at,
 			created_at, updated_at
-		) VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
+		) VALUES (?, ?, ?, 'pending_delivery', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
 	`,
-		userID, addressID,
+		orderNumber, userID, addressID,
 		goodsAmount, deliveryFee, pointsDiscount, couponDiscount, totalAmount,
 		opts.Remark, outOfStockStrategy, boolToTinyInt(trustReceipt), boolToTinyInt(hidePrice), boolToTinyInt(requirePhoneContact),
 	)
@@ -139,10 +189,18 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	}()
 
 	for _, it := range items {
-		// 使用与配送/购物车一致的价格逻辑
-		price := it.SpecSnapshot.WholesalePrice
-		if price <= 0 {
+		// 根据用户类型计算价格，与配送费计算保持一致
+		var price float64
+		if userType == "wholesale" {
+			price = it.SpecSnapshot.WholesalePrice
+			if price <= 0 {
+				price = it.SpecSnapshot.RetailPrice
+			}
+		} else {
 			price = it.SpecSnapshot.RetailPrice
+			if price <= 0 {
+				price = it.SpecSnapshot.WholesalePrice
+			}
 		}
 		if price <= 0 {
 			price = it.SpecSnapshot.Cost
@@ -190,12 +248,12 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	var order Order
 	var expectedDelivery sql.NullTime
 	err = database.DB.QueryRow(`
-		SELECT id, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
+		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, total_amount, remark, out_of_stock_strategy, trust_receipt,
 		       hide_price, require_phone_contact, expected_delivery_at, created_at, updated_at
 		FROM orders WHERE id = ?
 	`, orderID).Scan(
-		&order.ID, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
+		&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
 		&order.PointsDiscount, &order.CouponDiscount, &order.TotalAmount, &order.Remark,
 		&order.OutOfStockStrategy, &order.TrustReceipt, &order.HidePrice, &order.RequirePhoneContact,
 		&expectedDelivery, &order.CreatedAt, &order.UpdatedAt,
@@ -218,5 +276,165 @@ func boolToTinyInt(v bool) int {
 	return 0
 }
 
+// GetOrdersWithPagination 获取订单列表（支持分页和搜索）
+func GetOrdersWithPagination(pageNum, pageSize int, keyword string, status string) ([]Order, int, error) {
+	var orders []Order
+	var total int
 
+	// 计算偏移量
+	offset := (pageNum - 1) * pageSize
+	if offset < 0 {
+		offset = 0
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
 
+	// 构建查询条件
+	where := "1=1"
+	args := []interface{}{}
+
+	// 关键词搜索：订单ID、订单编号、用户ID
+	if keyword != "" {
+		where += " AND (id = ? OR order_number LIKE ? OR user_id = ?)"
+		// 尝试将关键词转换为数字
+		var idValue int
+		keywordPattern := "%" + keyword + "%"
+		if _, err := fmt.Sscanf(keyword, "%d", &idValue); err == nil {
+			args = append(args, idValue, keywordPattern, idValue)
+		} else {
+			// 如果不是数字，使用0（不会匹配任何ID）
+			args = append(args, 0, keywordPattern, 0)
+		}
+	}
+
+	// 状态筛选
+	if status != "" {
+		where += " AND status = ?"
+		args = append(args, status)
+	}
+
+	// 获取总数量
+	countQuery := "SELECT COUNT(*) FROM orders WHERE " + where
+	err := database.DB.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 获取分页数据
+	query := `
+		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
+		       coupon_discount, total_amount, remark, out_of_stock_strategy, trust_receipt,
+		       hide_price, require_phone_contact, expected_delivery_at, created_at, updated_at
+		FROM orders WHERE ` + where + ` ORDER BY id DESC LIMIT ? OFFSET ?`
+	args = append(args, pageSize, offset)
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var order Order
+		var expectedDelivery sql.NullTime
+
+		err := rows.Scan(
+			&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
+			&order.PointsDiscount, &order.CouponDiscount, &order.TotalAmount, &order.Remark,
+			&order.OutOfStockStrategy, &order.TrustReceipt, &order.HidePrice, &order.RequirePhoneContact,
+			&expectedDelivery, &order.CreatedAt, &order.UpdatedAt,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		if expectedDelivery.Valid {
+			t := expectedDelivery.Time
+			order.ExpectedDeliveryAt = &t
+		}
+
+		orders = append(orders, order)
+	}
+
+	return orders, total, nil
+}
+
+// GetOrderByID 根据ID获取订单详情
+func GetOrderByID(id int) (*Order, error) {
+	var order Order
+	var expectedDelivery sql.NullTime
+
+	query := `
+		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
+		       coupon_discount, total_amount, remark, out_of_stock_strategy, trust_receipt,
+		       hide_price, require_phone_contact, expected_delivery_at, created_at, updated_at
+		FROM orders WHERE id = ?
+	`
+	err := database.DB.QueryRow(query, id).Scan(
+		&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
+		&order.PointsDiscount, &order.CouponDiscount, &order.TotalAmount, &order.Remark,
+		&order.OutOfStockStrategy, &order.TrustReceipt, &order.HidePrice, &order.RequirePhoneContact,
+		&expectedDelivery, &order.CreatedAt, &order.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if expectedDelivery.Valid {
+		t := expectedDelivery.Time
+		order.ExpectedDeliveryAt = &t
+	}
+
+	return &order, nil
+}
+
+// GetOrderItemsByOrderID 根据订单ID获取订单明细
+func GetOrderItemsByOrderID(orderID int) ([]OrderItem, error) {
+	var items []OrderItem
+
+	query := `
+		SELECT id, order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image
+		FROM order_items WHERE order_id = ? ORDER BY id
+	`
+	rows, err := database.DB.Query(query, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var item OrderItem
+		err := rows.Scan(
+			&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.SpecName,
+			&item.Quantity, &item.UnitPrice, &item.Subtotal, &item.Image,
+		)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
+// GetOrderItemCountByOrderID 根据订单ID获取订单商品数量
+func GetOrderItemCountByOrderID(orderID int) (int, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM order_items WHERE order_id = ?`
+	err := database.DB.QueryRow(query, orderID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// UpdateOrderStatus 更新订单状态
+func UpdateOrderStatus(orderID int, newStatus string) error {
+	query := "UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?"
+	_, err := database.DB.Exec(query, newStatus, orderID)
+	return err
+}

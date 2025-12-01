@@ -144,3 +144,5 @@ INSERT INTO products (name, description, price, original_price, category_id, sup
  1, NOW(), NOW());
 
 
+
+

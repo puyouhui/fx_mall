@@ -272,6 +272,25 @@ export default {
 		this.userType = uni.getStorageSync('miniUserInfo')?.user_type || 'unknown';
 		this.loadCart();
 	},
+	watch: {
+		// 监听选中商品变化，重新计算配送费
+		selectedIds: {
+			handler(newIds, oldIds) {
+				// 避免初始化时触发
+				if (oldIds && oldIds.length === 0 && newIds.length > 0) {
+					return
+				}
+				// 如果选中商品发生变化，重新获取配送费摘要
+				if (newIds && newIds.length > 0 && this.cartItems.length > 0) {
+					this.updateDeliveryFeeForSelected()
+				} else if (newIds.length === 0) {
+					// 如果没有选中商品，清空配送费摘要
+					this.deliverySummary = null
+				}
+			},
+			immediate: false
+		}
+	},
 	computed: {
 		totalQuantity() {
 			return this.cartItems.reduce((total, item) => total + (item.quantity || 0), 0);
@@ -376,28 +395,40 @@ export default {
 					return;
 				}
 				const previousSelection = new Set(this.selectedIds);
-				const { items, summary, availableCoupons, bestCombination } = await fetchPurchaseList(this.token);
+				// 先获取所有商品列表（不传item_ids，获取全部）
+				const { items } = await fetchPurchaseList(this.token);
 				this.cartItems = items;
-				this.deliverySummary = summary || null;
-				this.blockedItemIds = summary?.blocked_item_ids || [];
+				this.blockedItemIds = [];
 				if (items.length === 0) {
 					this.selectedIds = [];
-				} else if (previousSelection.size > 0) {
-					const retained = items
-						.filter(item => previousSelection.has(item.id))
-						.map(item => item.id);
-					this.selectedIds = retained.length > 0 ? retained : items.map(item => item.id);
-				} else {
-					this.selectedIds = items.map(item => item.id);
-				}
-				this.availableCoupons = availableCoupons || [];
-				// 自动应用最佳优惠券组合
-				if (bestCombination) {
-					this.selectedDeliveryFeeCoupon = bestCombination.delivery_fee_coupon || null;
-					this.selectedAmountCoupon = bestCombination.amount_coupon || null;
-				} else {
+					this.deliverySummary = null;
+					this.availableCoupons = [];
 					this.selectedDeliveryFeeCoupon = null;
 					this.selectedAmountCoupon = null;
+				} else {
+					// 新加入的商品自动选中
+					// 获取当前商品ID集合
+					const currentItemIds = new Set(items.map(item => item.id));
+					// 找出新加入的商品（在当前列表中但不在之前选中列表中的）
+					const newItemIds = items
+						.filter(item => !previousSelection.has(item.id))
+						.map(item => item.id);
+					
+					if (previousSelection.size > 0) {
+						const retained = items
+							.filter(item => previousSelection.has(item.id))
+							.map(item => item.id);
+						// 保留之前的选中状态，并自动选中新加入的商品
+						this.selectedIds = [...retained, ...newItemIds];
+					} else {
+						// 首次加载或没有之前的选中状态，自动选中所有商品
+						this.selectedIds = items.map(item => item.id);
+					}
+					
+					// 根据选中的商品重新获取配送费摘要（包括优惠券信息）
+					if (this.selectedIds.length > 0) {
+						await this.updateDeliveryFeeForSelected();
+					}
 				}
 			} catch (error) {
 				console.error('加载采购单失败:', error);
@@ -586,6 +617,32 @@ export default {
 					}
 				}
 			});
+		},
+		// 根据选中的商品更新配送费摘要
+		async updateDeliveryFeeForSelected() {
+			if (!this.token || !this.selectedIds || this.selectedIds.length === 0) {
+				this.deliverySummary = null;
+				return;
+			}
+			try {
+				const { summary, availableCoupons, bestCombination } = await fetchPurchaseList(this.token, this.selectedIds);
+				this.deliverySummary = summary || null;
+				this.blockedItemIds = summary?.blocked_item_ids || [];
+				// 更新可用优惠券（基于选中商品）
+				this.availableCoupons = availableCoupons || [];
+				// 自动应用最佳优惠券组合
+				if (bestCombination) {
+					this.selectedDeliveryFeeCoupon = bestCombination.delivery_fee_coupon || null;
+					this.selectedAmountCoupon = bestCombination.amount_coupon || null;
+				} else {
+					// 如果最佳组合不适用，清空选中的优惠券
+					this.selectedDeliveryFeeCoupon = null;
+					this.selectedAmountCoupon = null;
+				}
+			} catch (error) {
+				console.error('更新配送费失败:', error);
+				// 失败时不更新，保持原有状态
+			}
 		}
 	}
 };

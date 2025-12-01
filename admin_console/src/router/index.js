@@ -94,6 +94,14 @@ const routes = [
         meta: {
           title: '优惠券管理'
         }
+      },
+      {
+        path: 'orders',
+        name: 'Orders',
+        component: () => import('../views/Orders.vue'),
+        meta: {
+          title: '订单管理'
+        }
       }
     ]
   },

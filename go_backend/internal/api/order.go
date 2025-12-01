@@ -1,8 +1,11 @@
 package api
 
 import (
+	"database/sql"
 	"net/http"
+	"strconv"
 
+	"go_backend/internal/database"
 	"go_backend/internal/model"
 
 	"github.com/gin-gonic/gin"
@@ -87,8 +90,14 @@ func CreateOrderFromCart(c *gin.Context) {
 		return
 	}
 
+	// 获取用户类型，默认为零售
+	userType := user.UserType
+	if userType == "" || userType == "unknown" {
+		userType = "retail"
+	}
+
 	// 计算配送费和金额汇总
-	summary, err := model.CalculateDeliveryFee(items)
+	summary, err := model.CalculateDeliveryFee(items, userType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "计算配送费失败: " + err.Error()})
 		return
@@ -99,9 +108,18 @@ func CreateOrderFromCart(c *gin.Context) {
 	categoryIDSet := make(map[int]struct{})
 	productIDs := make([]int, 0, len(items))
 	for _, item := range items {
-		price := item.SpecSnapshot.WholesalePrice
-		if price <= 0 {
+		// 根据用户类型计算商品金额
+		var price float64
+		if userType == "wholesale" {
+			price = item.SpecSnapshot.WholesalePrice
+			if price <= 0 {
+				price = item.SpecSnapshot.RetailPrice
+			}
+		} else {
 			price = item.SpecSnapshot.RetailPrice
+			if price <= 0 {
+				price = item.SpecSnapshot.WholesalePrice
+			}
 		}
 		if price <= 0 {
 			price = item.SpecSnapshot.Cost
@@ -160,7 +178,7 @@ func CreateOrderFromCart(c *gin.Context) {
 		CouponDiscount:      appliedCombination.TotalDiscount,
 	}
 
-	order, orderItems, err := model.CreateOrderFromPurchaseList(user.ID, req.AddressID, items, summary, options)
+	order, orderItems, err := model.CreateOrderFromPurchaseList(user.ID, req.AddressID, items, summary, options, userType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建订单失败: " + err.Error()})
 		return
@@ -174,5 +192,210 @@ func CreateOrderFromCart(c *gin.Context) {
 			"order_items": orderItems,
 		},
 		"message": "创建订单成功",
+	})
+}
+
+// GetUserOrders 获取当前用户的订单列表（小程序）
+func GetUserOrders(c *gin.Context) {
+	user, ok := getMiniUserFromContext(c)
+	if !ok {
+		return
+	}
+
+	pageNum := parseQueryInt(c, "pageNum", 1)
+	pageSize := parseQueryInt(c, "pageSize", 10)
+	status := c.Query("status") // 可选的状态筛选
+
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+
+	// 构建查询条件，只查询当前用户的订单
+	where := "user_id = ?"
+	args := []interface{}{user.ID}
+
+	// 状态筛选（兼容旧状态）
+	if status != "" {
+		// 兼容旧状态：pending_delivery 也包含 pending
+		if status == "pending_delivery" {
+			where += " AND (status = ? OR status = 'pending')"
+			args = append(args, status)
+		} else if status == "delivered" {
+			// 兼容旧状态：delivered 也包含 shipped
+			where += " AND (status = ? OR status = 'shipped')"
+			args = append(args, status)
+		} else if status == "paid" {
+			// 兼容旧状态：paid 也包含 completed
+			where += " AND (status = ? OR status = 'completed')"
+			args = append(args, status)
+		} else {
+			where += " AND status = ?"
+			args = append(args, status)
+		}
+	}
+
+	// 获取总数量
+	var total int
+	countQuery := "SELECT COUNT(*) FROM orders WHERE " + where
+	err := database.DB.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单数量失败: " + err.Error()})
+		return
+	}
+
+	// 计算偏移量
+	offset := (pageNum - 1) * pageSize
+	if offset < 0 {
+		offset = 0
+	}
+
+	// 获取分页数据
+	query := `
+		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
+		       coupon_discount, total_amount, remark, out_of_stock_strategy, trust_receipt,
+		       hide_price, require_phone_contact, expected_delivery_at, created_at, updated_at
+		FROM orders WHERE ` + where + ` ORDER BY id DESC LIMIT ? OFFSET ?`
+	args = append(args, pageSize, offset)
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单列表失败: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	orders := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var order model.Order
+		var expectedDelivery sql.NullTime
+
+		err := rows.Scan(
+			&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
+			&order.PointsDiscount, &order.CouponDiscount, &order.TotalAmount, &order.Remark,
+			&order.OutOfStockStrategy, &order.TrustReceipt, &order.HidePrice, &order.RequirePhoneContact,
+			&expectedDelivery, &order.CreatedAt, &order.UpdatedAt,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "解析订单数据失败: " + err.Error()})
+			return
+		}
+
+		if expectedDelivery.Valid {
+			t := expectedDelivery.Time
+			order.ExpectedDeliveryAt = &t
+		}
+
+		// 获取订单商品数量
+		itemCount, _ := model.GetOrderItemCountByOrderID(order.ID)
+
+		orderData := map[string]interface{}{
+			"id":              order.ID,
+			"order_number":    order.OrderNumber,
+			"status":          order.Status,
+			"goods_amount":    order.GoodsAmount,
+			"delivery_fee":    order.DeliveryFee,
+			"points_discount": order.PointsDiscount,
+			"coupon_discount": order.CouponDiscount,
+			"total_amount":    order.TotalAmount,
+			"item_count":      itemCount,
+			"created_at":      order.CreatedAt,
+			"updated_at":      order.UpdatedAt,
+		}
+
+		orders = append(orders, orderData)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"data": gin.H{
+			"list":  orders,
+			"total": total,
+		},
+		"message": "获取成功",
+	})
+}
+
+// GetUserOrderDetail 获取订单详情（小程序）
+func GetUserOrderDetail(c *gin.Context) {
+	user, ok := getMiniUserFromContext(c)
+	if !ok {
+		return
+	}
+
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供订单ID"})
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
+		return
+	}
+
+	// 获取订单
+	order, err := model.GetOrderByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单失败: " + err.Error()})
+		return
+	}
+	if order == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
+		return
+	}
+
+	// 验证订单归属
+	if order.UserID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权访问此订单"})
+		return
+	}
+
+	// 获取订单明细
+	items, err := model.GetOrderItemsByOrderID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单明细失败: " + err.Error()})
+		return
+	}
+
+	// 获取地址信息
+	address, _ := model.GetAddressByID(order.AddressID)
+	addressData := map[string]interface{}{}
+	if address != nil {
+		addressData = map[string]interface{}{
+			"id":      address.ID,
+			"name":    address.Name,
+			"contact": address.Contact,
+			"phone":   address.Phone,
+			"address": address.Address,
+		}
+	}
+
+	// 获取销售员信息
+	salesEmployeeData := map[string]interface{}{}
+	if user.SalesCode != "" {
+		employee, err := model.GetEmployeeByEmployeeCode(user.SalesCode)
+		if err == nil && employee != nil {
+			salesEmployeeData = map[string]interface{}{
+				"id":            employee.ID,
+				"employee_code": employee.EmployeeCode,
+				"name":          employee.Name,
+				"phone":         employee.Phone,
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"data": gin.H{
+			"order":          order,
+			"order_items":    items,
+			"address":        addressData,
+			"sales_employee": salesEmployeeData,
+		},
+		"message": "获取成功",
 	})
 }

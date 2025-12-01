@@ -252,7 +252,8 @@ func DeleteDeliveryFeeExclusion(id int) error {
 }
 
 // CalculateDeliveryFee 根据采购单计算配送费用
-func CalculateDeliveryFee(items []PurchaseListItem) (*DeliveryFeeSummary, error) {
+// userType: "wholesale" 表示批发客户，使用批发价；"retail" 或其他值表示零售客户，使用零售价
+func CalculateDeliveryFee(items []PurchaseListItem, userType string) (*DeliveryFeeSummary, error) {
 	summary := &DeliveryFeeSummary{
 		Tips:           []DeliveryFeeBlockingItem{},
 		BlockedItemIDs: []int{},
@@ -305,7 +306,7 @@ func CalculateDeliveryFee(items []PurchaseListItem) (*DeliveryFeeSummary, error)
 	for _, item := range items {
 		info := categoryInfo[item.ProductID]
 		summary.TotalQuantity += item.Quantity
-		amount := calculateItemAmount(item)
+		amount := calculateItemAmount(item, userType)
 		summary.TotalAmount += amount
 
 		rule := pickDeliveryRule(item.ProductID, info, productRules, categoryRules)
@@ -351,12 +352,13 @@ func CalculateDeliveryFee(items []PurchaseListItem) (*DeliveryFeeSummary, error)
 }
 
 // CalculateDeliveryFeeByUser 根据用户ID计算配送费
-func CalculateDeliveryFeeByUser(userID int) (*DeliveryFeeSummary, error) {
+// userType: "wholesale" 表示批发客户，使用批发价；"retail" 或其他值表示零售客户，使用零售价
+func CalculateDeliveryFeeByUser(userID int, userType string) (*DeliveryFeeSummary, error) {
 	items, err := GetPurchaseListItemsByUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	return CalculateDeliveryFee(items)
+	return CalculateDeliveryFee(items, userType)
 }
 
 func fetchCategoryNames(categoryIDs map[int]struct{}) (map[int]string, map[int]string, error) {
@@ -540,11 +542,24 @@ func aggregateCategoryQuantities(items []PurchaseListItem, infoMap map[int]produ
 	return result
 }
 
-func calculateItemAmount(item PurchaseListItem) float64 {
-	price := item.SpecSnapshot.WholesalePrice
-	if price <= 0 {
+// calculateItemAmount 根据用户类型计算商品金额
+// userType: "wholesale" 表示批发客户，使用批发价；"retail" 或其他值表示零售客户，使用零售价
+func calculateItemAmount(item PurchaseListItem, userType string) float64 {
+	var price float64
+	// 批发客户优先使用批发价，零售客户优先使用零售价
+	if userType == "wholesale" {
+		price = item.SpecSnapshot.WholesalePrice
+		if price <= 0 {
+			price = item.SpecSnapshot.RetailPrice
+		}
+	} else {
+		// 零售客户或其他类型，优先使用零售价
 		price = item.SpecSnapshot.RetailPrice
+		if price <= 0 {
+			price = item.SpecSnapshot.WholesalePrice
+		}
 	}
+	// 如果都没有，使用成本价
 	if price <= 0 {
 		price = item.SpecSnapshot.Cost
 	}

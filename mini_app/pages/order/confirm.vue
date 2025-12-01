@@ -54,7 +54,7 @@
         <text>配送费</text>
         <view class="amount-right">
           <text>{{ deliveryFeeText }}</text>
-          <text class="delivery-note" v-if="deliveryFeeNote">{{ deliveryFeeNote }}</text>
+          <!-- <text class="delivery-note" v-if="deliveryFeeNote">{{ deliveryFeeNote }}</text> -->
         </view>
       </view>
       <view class="amount-row">
@@ -354,11 +354,17 @@ export default {
         }
         const res = await createOrder(payload, this.token)
         if (res && res.code === 200) {
-          uni.showToast({ title: '下单成功', icon: 'success' })
+          const orderNumber = res.data?.order?.order_number || ''
+          const successMsg = orderNumber ? `下单成功！订单编号：${orderNumber}` : '下单成功'
+          uni.showToast({ 
+            title: successMsg, 
+            icon: 'success',
+            duration: orderNumber ? 3000 : 2000
+          })
           // 下单成功后返回采购单页面或跳转到订单详情（预留）
           setTimeout(() => {
             uni.switchTab({ url: '/pages/cart/cart' })
-          }, 800)
+          }, orderNumber ? 3000 : 800)
         } else {
           uni.showToast({ title: res.message || '下单失败', icon: 'none' })
         }

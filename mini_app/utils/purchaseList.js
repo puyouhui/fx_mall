@@ -6,9 +6,13 @@ import {
   clearPurchaseList
 } from '../api/index'
 
-export const fetchPurchaseList = async (token) => {
+export const fetchPurchaseList = async (token, itemIds = null) => {
   if (!token) return { items: [], summary: null, availableCoupons: [], bestCombination: null }
-  const res = await getPurchaseListSummary(token)
+  const params = {}
+  if (itemIds && Array.isArray(itemIds) && itemIds.length > 0) {
+    params.item_ids = itemIds.join(',')
+  }
+  const res = await getPurchaseListSummary(token, params)
   if (res && res.code === 200 && res.data) {
     return {
       items: Array.isArray(res.data.items) ? res.data.items : [],

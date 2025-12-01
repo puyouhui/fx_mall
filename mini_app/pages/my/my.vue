@@ -45,32 +45,32 @@
         </view>
       </view>
       <view class="order-tabs">
-        <view class="order-tab" @click="goToOrderList('pending_payment')">
-          <view class="tab-icon-wrapper">
-            <uni-icons type="wallet" size="24" color="#20CB6B"></uni-icons>
-            <view class="badge" v-if="orderCounts.pending_payment > 0">{{ orderCounts.pending_payment > 99 ? '99+' : orderCounts.pending_payment }}</view>
-          </view>
-          <text class="tab-text">待付款</text>
-        </view>
         <view class="order-tab" @click="goToOrderList('pending_delivery')">
           <view class="tab-icon-wrapper">
             <uni-icons type="shop" size="24" color="#20CB6B"></uni-icons>
             <view class="badge" v-if="orderCounts.pending_delivery > 0">{{ orderCounts.pending_delivery > 99 ? '99+' : orderCounts.pending_delivery }}</view>
           </view>
-          <text class="tab-text">待发货</text>
+          <text class="tab-text">待配送</text>
         </view>
-        <view class="order-tab" @click="goToOrderList('pending_receipt')">
+        <view class="order-tab" @click="goToOrderList('delivering')">
           <view class="tab-icon-wrapper">
             <uni-icons type="car" size="24" color="#20CB6B"></uni-icons>
-            <view class="badge" v-if="orderCounts.pending_receipt > 0">{{ orderCounts.pending_receipt > 99 ? '99+' : orderCounts.pending_receipt }}</view>
+            <view class="badge" v-if="orderCounts.delivering > 0">{{ orderCounts.delivering > 99 ? '99+' : orderCounts.delivering }}</view>
           </view>
-          <text class="tab-text">待收货</text>
+          <text class="tab-text">配送中</text>
         </view>
-        <view class="order-tab" @click="goToOrderList('completed')">
+        <view class="order-tab" @click="goToOrderList('delivered')">
           <view class="tab-icon-wrapper">
             <uni-icons type="checkmarkempty" size="24" color="#20CB6B"></uni-icons>
+            <view class="badge" v-if="orderCounts.delivered > 0">{{ orderCounts.delivered > 99 ? '99+' : orderCounts.delivered }}</view>
           </view>
-          <text class="tab-text">已完成</text>
+          <text class="tab-text">已送达</text>
+        </view>
+        <view class="order-tab" @click="goToOrderList('paid')">
+          <view class="tab-icon-wrapper">
+            <uni-icons type="wallet" size="24" color="#20CB6B"></uni-icons>
+          </view>
+          <text class="tab-text">已收款</text>
         </view>
       </view>
     </view>
@@ -125,7 +125,7 @@
 </template>
 
 <script>
-import { getMiniUserInfo, getMiniUserDefaultAddress, getUserCoupons } from '../../api/index.js';
+import { getMiniUserInfo, getMiniUserDefaultAddress, getUserCoupons, getUserOrders } from '../../api/index.js';
 
 export default {
   data() {
@@ -134,10 +134,10 @@ export default {
       isLoggedIn: false,
       defaultAddress: null, // 默认地址
       orderCounts: {
-        pending_payment: 0,
         pending_delivery: 0,
-        pending_receipt: 0,
-        completed: 0
+        delivering: 0,
+        delivered: 0,
+        paid: 0
       },
       couponCount: 0
     };
@@ -256,24 +256,50 @@ export default {
       }
     },
     
-    // 加载订单数量（模拟数据）
-    loadOrderCounts() {
-      // TODO: 调用真实API获取订单数量
-      // 这里使用模拟数据
-      if (this.isLoggedIn) {
-        // 模拟订单数量
+    // 加载订单数量
+    async loadOrderCounts() {
+      if (!this.isLoggedIn) {
         this.orderCounts = {
-          pending_payment: 2,
-          pending_delivery: 1,
-          pending_receipt: 3,
-          completed: 10
-        };
-      } else {
-        this.orderCounts = {
-          pending_payment: 0,
           pending_delivery: 0,
-          pending_receipt: 0,
-          completed: 0
+          delivering: 0,
+          delivered: 0,
+          paid: 0
+        };
+        return;
+      }
+      
+      try {
+        const token = uni.getStorageSync('miniUserToken');
+        if (!token) {
+          return;
+        }
+        
+        // 获取各状态的订单数量
+        const statuses = ['pending_delivery', 'delivering', 'delivered', 'paid'];
+        const counts = {};
+        
+        for (const status of statuses) {
+          try {
+            const res = await getUserOrders(token, { pageNum: 1, pageSize: 1, status });
+            if (res && res.code === 200 && res.data) {
+              counts[status] = res.data.total || 0;
+            } else {
+              counts[status] = 0;
+            }
+          } catch (error) {
+            console.error(`获取${status}订单数量失败:`, error);
+            counts[status] = 0;
+          }
+        }
+        
+        this.orderCounts = counts;
+      } catch (error) {
+        console.error('加载订单数量失败:', error);
+        this.orderCounts = {
+          pending_delivery: 0,
+          delivering: 0,
+          delivered: 0,
+          paid: 0
         };
       }
     },
@@ -304,10 +330,9 @@ export default {
         this.goToLogin();
         return;
       }
-      // TODO: 跳转到订单列表页面
-      uni.showToast({
-        title: '订单功能开发中',
-        icon: 'none'
+      const statusParam = status ? `?status=${status}` : '';
+      uni.navigateTo({
+        url: `/pages/order/list${statusParam}`
       });
     },
     

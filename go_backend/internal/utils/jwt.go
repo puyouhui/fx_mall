@@ -128,3 +128,45 @@ func ParseMiniAppToken(token string) (*MiniAppClaims, error) {
 
 	return nil, err
 }
+
+// EmployeeClaims 定义员工的JWT payload
+type EmployeeClaims struct {
+	EmployeeID int    `json:"employee_id"`
+	Phone      string `json:"phone"`
+	jwt.StandardClaims
+}
+
+// GenerateEmployeeToken 生成员工token
+func GenerateEmployeeToken(employeeID int, phone string) (string, error) {
+	nowTime := time.Now()
+	expireTime := nowTime.Add(7 * 24 * time.Hour) // 员工token有效期7天
+
+	claims := EmployeeClaims{
+		EmployeeID: employeeID,
+		Phone:      phone,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expireTime.Unix(),
+			IssuedAt:  nowTime.Unix(),
+			Issuer:    "employee_app",
+		},
+	}
+
+	tokenClaims := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	token, err := tokenClaims.SignedString(jwtSecret)
+	return token, err
+}
+
+// ParseEmployeeToken 解析员工token
+func ParseEmployeeToken(token string) (*EmployeeClaims, error) {
+	tokenClaims, err := jwt.ParseWithClaims(token, &EmployeeClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+
+	if tokenClaims != nil {
+		if claims, ok := tokenClaims.Claims.(*EmployeeClaims); ok && tokenClaims.Valid {
+			return claims, nil
+		}
+	}
+
+	return nil, err
+}

@@ -662,9 +662,10 @@ func InitDB() error {
 		createOrdersTableSQL := `
 		CREATE TABLE IF NOT EXISTS orders (
 		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    order_number VARCHAR(32) UNIQUE COMMENT '订单编号',
 		    user_id INT NOT NULL COMMENT '用户ID',
 		    address_id INT NOT NULL COMMENT '地址ID',
-		    status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '订单状态',
+		    status VARCHAR(20) NOT NULL DEFAULT 'pending_delivery' COMMENT '订单状态',
 		    goods_amount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '商品总金额',
 		    delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '配送费',
 		    points_discount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '积分抵扣金额',
@@ -679,7 +680,8 @@ func InitDB() error {
 		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 		    KEY idx_user_id (user_id),
-		    KEY idx_status (status)
+		    KEY idx_status (status),
+		    KEY idx_order_number (order_number)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单主表';
 		`
 
@@ -687,6 +689,9 @@ func InitDB() error {
 			log.Printf("创建orders表失败: %v", err)
 			return
 		}
+
+		// 注意：如果 orders 表已存在但没有 order_number 字段，需要手动执行迁移脚本
+		// 迁移脚本位置：go_backend/migration_add_order_number.sql
 
 		// 创建订单明细表
 		createOrderItemsTableSQL := `

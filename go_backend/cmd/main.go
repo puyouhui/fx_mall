@@ -78,7 +78,9 @@ func main() {
 			miniAppProtectedGroup.DELETE("/purchase-list", api.ClearPurchaseList)
 
 			// 订单接口
-			miniAppProtectedGroup.POST("/orders", api.CreateOrderFromCart) // 从当前采购单创建订单
+			miniAppProtectedGroup.POST("/orders", api.CreateOrderFromCart)   // 从当前采购单创建订单
+			miniAppProtectedGroup.GET("/orders", api.GetUserOrders)          // 获取用户订单列表
+			miniAppProtectedGroup.GET("/orders/:id", api.GetUserOrderDetail) // 获取订单详情
 
 			// 优惠券接口
 			miniAppProtectedGroup.GET("/coupons", api.GetUserCoupons)                // 获取用户的优惠券列表
@@ -175,6 +177,11 @@ func main() {
 				protectedGroup.PUT("/coupons/:id", api.UpdateCoupon)         // 更新优惠券
 				protectedGroup.DELETE("/coupons/:id", api.DeleteCoupon)      // 删除优惠券
 				protectedGroup.POST("/coupons/issue", api.IssueCouponToUser) // 发放优惠券给用户
+
+				// 订单管理
+				protectedGroup.GET("/orders", api.GetAllOrdersForAdmin)         // 获取所有订单（后台管理）
+				protectedGroup.GET("/orders/:id", api.GetOrderByIDForAdmin)     // 获取订单详情（后台管理）
+				protectedGroup.PUT("/orders/:id/status", api.UpdateOrderStatus) // 更新订单状态（后台管理）
 			}
 		}
 
@@ -189,6 +196,35 @@ func main() {
 			supplierProtectedGroup.Use(api.SupplierAuthMiddleware())
 			{
 				supplierProtectedGroup.GET("/products", api.GetSupplierProducts) // 供应商查看自己的商品
+			}
+		}
+
+		// 员工相关接口
+		employeeGroup := apiGroup.Group("/employee")
+		{
+			// 不需要认证的接口
+			employeeGroup.POST("/login", api.EmployeeLogin) // 员工登录
+
+			// 需要认证的接口
+			employeeProtectedGroup := employeeGroup.Group("")
+			employeeProtectedGroup.Use(api.EmployeeAuthMiddleware())
+			{
+				employeeProtectedGroup.GET("/info", api.GetEmployeeInfo) // 获取当前员工信息
+
+				// 配送员相关接口
+				employeeProtectedGroup.GET("/delivery/orders", api.GetDeliveryOrders)                    // 获取待配送订单列表
+				employeeProtectedGroup.GET("/delivery/orders/:id", api.GetDeliveryOrderDetail)          // 获取订单详情
+				employeeProtectedGroup.PUT("/delivery/orders/:id/accept", api.AcceptDeliveryOrder)      // 接单
+				employeeProtectedGroup.PUT("/delivery/orders/:id/complete", api.CompleteDeliveryOrder)   // 完成配送
+				employeeProtectedGroup.GET("/delivery/my-orders", api.GetDeliveryOrders)                // 获取我的配送订单（通过status参数筛选）
+
+				// 销售员相关接口
+				employeeProtectedGroup.GET("/sales/customers", api.GetSalesCustomers)                           // 获取我的客户列表
+				employeeProtectedGroup.GET("/sales/customers/:id", api.GetSalesCustomerDetail)                 // 获取客户详情
+				employeeProtectedGroup.GET("/sales/customers/:id/orders", api.GetSalesCustomerOrders)          // 获取客户的订单列表
+				employeeProtectedGroup.GET("/sales/customers/:id/purchase-list", api.GetSalesCustomerPurchaseList) // 获取客户的采购单
+				employeeProtectedGroup.POST("/sales/orders", api.CreateOrderForCustomer)                        // 为客户创建订单
+				employeeProtectedGroup.GET("/sales/products", api.GetSalesProducts)                             // 获取商品列表
 			}
 		}
 	}
