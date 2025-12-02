@@ -333,21 +333,29 @@ func GetCustomersByEmployeeCode(employeeCode string) ([]map[string]interface{}, 
 			"phone":      getStringValue(phone),
 			"created_at": createdAt,
 		}
-		
+
 		// 获取用户的默认地址信息
 		defaultAddress, err := GetDefaultAddressByUserID(id)
 		if err == nil && defaultAddress != nil {
 			customer["default_address"] = map[string]interface{}{
-				"name":      defaultAddress.Name,
-				"contact":   defaultAddress.Contact,
-				"phone":     defaultAddress.Phone,
-				"address":   defaultAddress.Address,
+				"name":       defaultAddress.Name,
+				"contact":    defaultAddress.Contact,
+				"phone":      defaultAddress.Phone,
+				"address":    defaultAddress.Address,
 				"store_type": defaultAddress.StoreType,
 			}
 		} else {
 			customer["default_address"] = nil
 		}
-		
+
+		// 补充统计信息：地址数量、下单次数
+		if addrCount, err := CountAddressesByUserID(id); err == nil {
+			customer["address_count"] = addrCount
+		}
+		if orderCount, err := CountOrdersByUserID(id); err == nil {
+			customer["order_count"] = orderCount
+		}
+
 		customers = append(customers, customer)
 	}
 

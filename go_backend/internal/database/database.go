@@ -658,6 +658,31 @@ func InitDB() error {
 			return
 		}
 
+		// 创建优惠券发放记录表
+		createCouponIssueLogsTableSQL := `
+		CREATE TABLE IF NOT EXISTS coupon_issue_logs (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    user_id INT NOT NULL COMMENT '客户ID',
+		    coupon_id INT NOT NULL COMMENT '优惠券ID',
+		    coupon_name VARCHAR(255) NOT NULL COMMENT '优惠券名称快照',
+		    quantity INT NOT NULL DEFAULT 1 COMMENT '发放数量',
+		    reason VARCHAR(255) NOT NULL COMMENT '发放原因',
+		    operator_type VARCHAR(20) NOT NULL COMMENT '操作人类型：admin/employee',
+		    operator_id INT NOT NULL COMMENT '操作人ID',
+		    operator_name VARCHAR(100) NOT NULL COMMENT '操作人名称',
+		    expires_at DATETIME DEFAULT NULL COMMENT '到期时间',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '发放时间',
+		    KEY idx_user_id (user_id),
+		    KEY idx_coupon_id (coupon_id),
+		    KEY idx_created_at (created_at)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='优惠券发放记录表';
+		`
+
+		if _, err = DB.Exec(createCouponIssueLogsTableSQL); err != nil {
+			log.Printf("创建coupon_issue_logs表失败: %v", err)
+			return
+		}
+
 		// 创建订单主表
 		createOrdersTableSQL := `
 		CREATE TABLE IF NOT EXISTS orders (
@@ -688,6 +713,11 @@ func InitDB() error {
 		if _, err = DB.Exec(createOrdersTableSQL); err != nil {
 			log.Printf("创建orders表失败: %v", err)
 			return
+		}
+
+		// 统一历史状态：将旧状态 pending 归一为 pending_delivery
+		if _, err = DB.Exec(`UPDATE orders SET status = 'pending_delivery' WHERE status = 'pending'`); err != nil {
+			log.Printf("归一化订单状态(pending -> pending_delivery)失败: %v", err)
 		}
 
 		// 注意：如果 orders 表已存在但没有 order_number 字段，需要手动执行迁移脚本

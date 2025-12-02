@@ -15,79 +15,147 @@
         </div>
       </div>
 
-      <!-- 优惠券列表 -->
-      <el-card class="coupons-card">
-        <el-table :data="coupons" stripe v-loading="loading">
-          <el-table-column prop="id" label="ID" align="center" width="80" />
-          <el-table-column prop="name" label="优惠券名称" min-width="150" />
-          <el-table-column label="类型" align="center" width="120">
-            <template #default="{ row }">
-              <el-tag :type="row.type === 'delivery_fee' ? 'success' : 'warning'">
-                {{ row.type === 'delivery_fee' ? '配送费券' : '金额券' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="优惠值" align="center" width="120">
-            <template #default="{ row }">
-              <span v-if="row.type === 'delivery_fee'">免配送费</span>
-              <span v-else>¥{{ (row.discount_value || 0).toFixed(2) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="使用条件" align="center" min-width="150">
-            <template #default="{ row }">
-              <div v-if="(row.min_amount || 0) > 0">满¥{{ (row.min_amount || 0).toFixed(2) }}可用</div>
-              <div v-else>无门槛</div>
-              <div v-if="row.category_ids && row.category_ids.length > 0" style="color: #909399; font-size: 12px;">
-                指定分类
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="已发放/已使用" align="center" width="140">
-            <template #default="{ row }">
-              <div>{{ row.issued_count || 0 }}/{{ row.used_count || 0 }}</div>
-              <div v-if="row.total_count > 0" style="color: #909399; font-size: 12px;">
-                总量: {{ row.total_count }}
-              </div>
-            </template>
-          </el-table-column>
+      <!-- 列表 Tab：优惠券列表 / 发放记录 -->
+      <el-tabs v-model="activeTab" class="coupons-tabs">
+        <el-tab-pane label="优惠券列表" name="coupons">
+          <el-card class="coupons-card">
+            <el-table :data="coupons" stripe v-loading="loading">
+              <el-table-column prop="id" label="ID" align="center" width="80" />
+              <el-table-column prop="name" label="优惠券名称" min-width="150" />
+              <el-table-column label="类型" align="center" width="120">
+                <template #default="{ row }">
+                  <el-tag :type="row.type === 'delivery_fee' ? 'success' : 'warning'">
+                    {{ row.type === 'delivery_fee' ? '配送费券' : '金额券' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="优惠值" align="center" width="120">
+                <template #default="{ row }">
+                  <span v-if="row.type === 'delivery_fee'">免配送费</span>
+                  <span v-else>¥{{ (row.discount_value || 0).toFixed(2) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="使用条件" align="center" min-width="150">
+                <template #default="{ row }">
+                  <div v-if="(row.min_amount || 0) > 0">满¥{{ (row.min_amount || 0).toFixed(2) }}可用</div>
+                  <div v-else>无门槛</div>
+                  <div v-if="row.category_ids && row.category_ids.length > 0" style="color: #909399; font-size: 12px;">
+                    指定分类
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="已发放/已使用" align="center" width="140">
+                <template #default="{ row }">
+                  <div>{{ row.issued_count || 0 }}/{{ row.used_count || 0 }}</div>
+                  <div v-if="row.total_count > 0" style="color: #909399; font-size: 12px;">
+                    总量: {{ row.total_count }}
+                  </div>
+                </template>
+              </el-table-column>
 
-          <el-table-column label="数量限制" align="center" width="140">
-            <template #default="{ row }">
-              <div v-if="row.total_count > 0">限制数量: {{ row.total_count }}</div>
-              <div v-else>不限制</div>
-              <div v-if="row.total_count > 0" style="color: #909399; font-size: 12px;">
-                总量: {{ row.total_count }}
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="有效期" align="center" min-width="200">
-            <template #default="{ row }">
-              <div>{{ row.valid_from ? formatDate(row.valid_from) : '-' }}</div>
-              <div style="color: #909399; font-size: 12px;">至 {{ row.valid_to ? formatDate(row.valid_to) : '-' }}</div>
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" align="center" width="100">
-            <template #default="{ row }">
-              <el-tag :type="row.status === 1 ? 'success' : 'info'">
-                {{ row.status === 1 ? '启用' : '禁用' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" fixed="right" align="center" width="250">
-            <template #default="{ row }">
-              <el-button type="success" size="small" @click="handleIssueCoupon(row)">
-                发放
-              </el-button>
-              <el-button type="primary" size="small" @click="handleEditCoupon(row)">
-                编辑
-              </el-button>
-              <el-button type="danger" size="small" @click="handleDeleteCoupon(row.id)">
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
+              <el-table-column label="数量限制" align="center" width="140">
+                <template #default="{ row }">
+                  <div v-if="row.total_count > 0">限制数量: {{ row.total_count }}</div>
+                  <div v-else>不限制</div>
+                  <div v-if="row.total_count > 0" style="color: #909399; font-size: 12px;">
+                    总量: {{ row.total_count }}
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="有效期" align="center" min-width="200">
+                <template #default="{ row }">
+                  <div>{{ row.valid_from ? formatDate(row.valid_from) : '-' }}</div>
+                  <div style="color: #909399; font-size: 12px;">至 {{ row.valid_to ? formatDate(row.valid_to) : '-' }}</div>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" align="center" width="100">
+                <template #default="{ row }">
+                  <el-tag :type="row.status === 1 ? 'success' : 'info'">
+                    {{ row.status === 1 ? '启用' : '禁用' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" fixed="right" align="center" width="250">
+                <template #default="{ row }">
+                  <el-button type="success" size="small" @click="handleIssueCoupon(row)">
+                    发放
+                  </el-button>
+                  <el-button type="primary" size="small" @click="handleEditCoupon(row)">
+                    编辑
+                  </el-button>
+                  <el-button type="danger" size="small" @click="handleDeleteCoupon(row.id)">
+                    删除
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
+        </el-tab-pane>
+
+        <el-tab-pane label="发放记录" name="issues">
+          <div class="toolbar" style="margin-bottom: 12px;">
+            <el-input
+              v-model="issueKeyword"
+              placeholder="按优惠券名称 / 发放人 / 原因搜索"
+              clearable
+              style="width: 260px; margin-right: 10px;"
+              @keyup.enter="loadCouponIssues"
+            />
+            <el-button type="primary" @click="loadCouponIssues">搜索</el-button>
+          </div>
+          <el-card class="coupons-card">
+            <el-table :data="couponIssues" stripe v-loading="issuesLoading">
+              <el-table-column prop="id" label="ID" align="center" width="80" />
+              <el-table-column prop="coupon_name" label="优惠券名称" min-width="160" />
+              <el-table-column label="用户" min-width="200">
+                <template #default="{ row }">
+                  <div>
+                    <span>{{ row.user_name || '-' }}</span>
+                    <span v-if="row.user_code" style="margin-left: 8px; color: #909399; font-size: 12px;">
+                      (编号 {{ row.user_code }})
+                    </span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="quantity" label="数量" align="center" width="80" />
+              <el-table-column prop="reason" label="发放原因" min-width="160" />
+              <el-table-column label="发放人" min-width="160">
+                <template #default="{ row }">
+                  <span>{{ row.operator_name || '-' }}</span>
+                  <el-tag
+                    v-if="row.operator_type"
+                    size="small"
+                    style="margin-left: 6px;"
+                  >
+                    {{ row.operator_type === 'employee' ? '员工' : '管理员' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="到期时间" min-width="180">
+                <template #default="{ row }">
+                  <span v-if="row.expires_at">{{ formatDate(row.expires_at) }}</span>
+                  <span v-else>--</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="发放时间" min-width="180">
+                <template #default="{ row }">
+                  <span>{{ formatDate(row.created_at) }}</span>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div style="margin-top: 12px; text-align: right;" v-if="issuesTotal > 0">
+              <el-pagination
+                v-model:current-page="issuesPageNum"
+                v-model:page-size="issuesPageSize"
+                :total="issuesTotal"
+                layout="prev, pager, next, jumper"
+                @current-change="loadCouponIssues"
+                @size-change="loadCouponIssues"
+              />
+            </div>
+          </el-card>
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
 
     <!-- 新增/编辑优惠券弹窗 -->
@@ -297,6 +365,16 @@
           <div style="margin-top: 8px; color: #909399; font-size: 12px;">默认1张，最多可发放100张</div>
         </el-form-item>
 
+        <el-form-item label="发放原因" required>
+          <el-radio-group v-model="issueReason">
+            <el-radio-button label="潜在客户" />
+            <el-radio-button label="优质客户" />
+            <el-radio-button label="老客户关怀" />
+            <el-radio-button label="活动赠送" />
+            <el-radio-button label="售后补偿" />
+          </el-radio-group>
+        </el-form-item>
+
         <el-form-item label="有效期设置">
           <el-radio-group v-model="issueExpireType" @change="handleIssueExpireTypeChange">
             <el-radio label="none">不限制</el-radio>
@@ -340,7 +418,7 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { getCoupons, createCoupon, updateCoupon, deleteCoupon, issueCouponToUser } from '../api/coupons'
+import { getCoupons, createCoupon, updateCoupon, deleteCoupon, issueCouponToUser, getCouponIssues } from '../api/coupons'
 import { getCategoryList } from '../api/category'
 import { getMiniUsers } from '../api/miniUsers'
 import { formatDate } from '../utils/time-format'
@@ -368,6 +446,16 @@ const issueExpiresAt = ref(null) // 指定日期
 const userOptions = ref([])
 const userSearchLoading = ref(false)
 const issuing = ref(false)
+const issueReason = ref('潜在客户')
+
+// 发放记录相关
+const activeTab = ref('coupons')
+const couponIssues = ref([])
+const issuesLoading = ref(false)
+const issuesPageNum = ref(1)
+const issuesPageSize = ref(20)
+const issuesTotal = ref(0)
+const issueKeyword = ref('')
 
 const couponForm = reactive({
   id: null,
@@ -685,6 +773,7 @@ const handleIssueCoupon = (coupon) => {
   issueExpiresIn.value = 30
   issueExpiresAt.value = null
   userOptions.value = []
+  issueReason.value = '潜在客户'
   issueDialogVisible.value = true
 }
 
@@ -748,13 +837,19 @@ const handleIssueSubmit = async () => {
     ElMessage.warning('发放数量必须大于0')
     return
   }
+
+  if (!issueReason.value) {
+    ElMessage.warning('请选择发放原因')
+    return
+  }
   
   issuing.value = true
   try {
     const issueData = {
       coupon_id: currentCoupon.value.id,
       user_id: selectedUserId.value,
-      quantity: issueQuantity.value
+      quantity: issueQuantity.value,
+      reason: issueReason.value
     }
     
     // 添加有效期参数
@@ -777,9 +872,47 @@ const handleIssueSubmit = async () => {
   }
 }
 
+// 加载优惠券发放记录
+const loadCouponIssues = async () => {
+  issuesLoading.value = true
+  try {
+    const params = {
+      pageNum: issuesPageNum.value,
+      pageSize: issuesPageSize.value
+    }
+    if (issueKeyword.value && issueKeyword.value.trim() !== '') {
+      params.keyword = issueKeyword.value.trim()
+    }
+
+    const response = await getCouponIssues(params)
+    console.log(response)
+    if (response && response.code === 200 && response.data) {
+      const { list, total, pageNum, pageSize } = response.data
+      couponIssues.value = Array.isArray(list) ? list : []
+      issuesTotal.value = total || 0
+      issuesPageNum.value = pageNum || 1
+      issuesPageSize.value = pageSize || 20
+    } else if (Array.isArray(response)) {
+      // 兼容直接返回数组的情况
+      couponIssues.value = response
+      issuesTotal.value = response.length
+    } else {
+      couponIssues.value = []
+      issuesTotal.value = 0
+    }
+  } catch (error) {
+    console.error('获取优惠券发放记录失败:', error)
+    couponIssues.value = []
+    issuesTotal.value = 0
+  } finally {
+    issuesLoading.value = false
+  }
+}
+
 onMounted(() => {
   loadCategories()
   loadCoupons()
+  loadCouponIssues()
 })
 </script>
 

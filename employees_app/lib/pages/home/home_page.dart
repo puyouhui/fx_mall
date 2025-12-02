@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:employees_app/api/auth_api.dart';
 import 'package:employees_app/utils/request.dart';
 import 'package:employees_app/pages/customer/customer_profile_page.dart';
+import 'package:employees_app/pages/customer/customer_list_page.dart';
+import 'package:employees_app/pages/coupon/coupon_send_page.dart';
+import 'package:employees_app/pages/product/product_search_page.dart';
+import 'package:employees_app/pages/order/order_list_page.dart';
 
 /// 员工端首页（总览 + 配送）
 class HomePage extends StatefulWidget {
@@ -57,121 +61,89 @@ class _HomePageState extends State<HomePage> {
     final name = (_dashboard?['name'] as String?) ?? '员工';
     final employeeCode = (_dashboard?['employee_code'] as String?) ?? '';
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF20CB6B), Color(0xFFEFF7F2)],
-            ),
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF20CB6B), Color(0xFFEFF7F2)],
           ),
-          child: SafeArea(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                : _errorMessage != null
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          color: Colors.white,
-                          size: 40,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _errorMessage!,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 12),
-                        ElevatedButton(
-                          onPressed: _loadDashboard,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: const Color(0xFF20CB6B),
-                          ),
-                          child: const Text('重试'),
-                        ),
-                      ],
-                    ),
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+        child: SafeArea(
+          child: _isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : _errorMessage != null
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // 顶部问候
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '$name，${_getGreeting()}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              employeeCode.isNotEmpty ? '工号：$employeeCode' : '',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
+                      const Icon(
+                        Icons.error_outline,
+                        color: Colors.white,
+                        size: 40,
                       ),
-
-                      // Tab 内容
-                      Expanded(
-                        child: TabBarView(
-                          children: [
-                            OverviewTab(dashboard: _dashboard),
-                            DeliveryTab(dashboard: _dashboard),
-                          ],
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorMessage!,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
                         ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        onPressed: _loadDashboard,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF20CB6B),
+                        ),
+                        child: const Text('重试'),
                       ),
                     ],
                   ),
-          ),
-        ),
-        bottomNavigationBar: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            // 明确去掉顶部这条细线
-            border: Border(
-              top: BorderSide(color: Colors.transparent, width: 0),
-            ),
-          ),
-          child: SafeArea(
-            top: false,
-            child: TabBar(
-              indicatorColor: const Color(0xFF20CB6B), // 保留选中下划线
-              indicatorWeight: 3,
-              labelColor: const Color(0xFF20CB6B),
-              unselectedLabelColor: const Color(0xFF8C92A4),
-              tabs: const [
-                Tab(icon: Icon(Icons.dashboard_outlined), text: '总览'),
-                Tab(icon: Icon(Icons.local_shipping_outlined), text: '配送'),
-              ],
-            ),
-          ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 顶部问候
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$name，${_getGreeting()}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            employeeCode.isNotEmpty ? '工号：$employeeCode' : '',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // 内容区域
+                    Expanded(child: OverviewTab(dashboard: _dashboard)),
+                  ],
+                ),
         ),
       ),
     );
@@ -381,37 +353,118 @@ class _OverviewTabState extends State<OverviewTab> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Row(
+                  Column(
                     children: [
-                      const QuickActionItem(
-                        icon: Icons.search,
-                        iconColor: Color(0xFF20CB6B),
-                        label: '产品查询',
+                      // 第一行：4个按钮（1. 新客资料 2. 产品查询 3. 销售开单 4. 修改订单）
+                      Row(
+                        children: [
+                          // 1. 新客资料
+                          QuickActionItem(
+                            icon: Icons.person_add_alt_1_outlined,
+                            iconColor: const Color(0xFFFFA940),
+                            label: '新客资料',
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const CustomerProfilePage(),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          // 2. 产品查询
+                          QuickActionItem(
+                            icon: Icons.search,
+                            iconColor: const Color(0xFF20CB6B),
+                            label: '产品查询',
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ProductSearchPage(),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          // 3. 销售开单
+                          QuickActionItem(
+                            icon: Icons.receipt_long_outlined,
+                            iconColor: const Color(0xFF4C8DF6),
+                            label: '销售开单',
+                            onTap: () {
+                              // 先进入我的客户列表，选择客户后在客户详情里点击“创建新订单”完成代客下单
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const CustomerListPage(),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          // 4. 修改订单
+                          const QuickActionItem(
+                            icon: Icons.edit_note_outlined,
+                            iconColor: Color(0xFF7C4DFF),
+                            label: '修改订单',
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      const QuickActionItem(
-                        icon: Icons.receipt_long_outlined,
-                        iconColor: Color(0xFF4C8DF6),
-                        label: '销售开单',
-                      ),
-                      const SizedBox(width: 8),
-                      const QuickActionItem(
-                        icon: Icons.edit_note_outlined,
-                        iconColor: Color(0xFF7C4DFF),
-                        label: '修改订单',
-                      ),
-                      const SizedBox(width: 8),
-                      QuickActionItem(
-                        icon: Icons.person_add_alt_1_outlined,
-                        iconColor: const Color(0xFFFFA940),
-                        label: '新客资料',
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const CustomerProfilePage(),
-                            ),
-                          );
-                        },
+                      const SizedBox(height: 12),
+                      // 第二行：我的客户 + 送优惠券 + 订单查询 + 收益查询
+                      Row(
+                        children: [
+                          QuickActionItem(
+                            icon: Icons.people_alt_outlined,
+                            iconColor: const Color(0xFF20CB6B),
+                            label: '我的客户',
+                            onTap: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('正在进入我的客户列表...'),
+                                  duration: Duration(milliseconds: 800),
+                                ),
+                              );
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const CustomerListPage(),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          QuickActionItem(
+                            icon: Icons.card_giftcard,
+                            iconColor: const Color(0xFFFF5A5F),
+                            label: '送优惠券',
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const CouponSendPage(),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          QuickActionItem(
+                            icon: Icons.receipt_long,
+                            iconColor: const Color(0xFF4C8DF6),
+                            label: '订单查询',
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const OrderListPage(),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          const QuickActionItem(
+                            icon: Icons.trending_up,
+                            iconColor: Color(0xFFFFA940),
+                            label: '收益查询',
+                            // TODO: 接收益查询页面
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -498,86 +551,6 @@ class _OverviewTabState extends State<OverviewTab> {
   }
 }
 
-/// 配送 Tab
-class DeliveryTab extends StatelessWidget {
-  final Map<String, dynamic>? dashboard;
-
-  const DeliveryTab({super.key, required this.dashboard});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDelivery = dashboard?['is_delivery'] == true;
-    final deliveryPendingTotal =
-        (dashboard?['delivery_pending_total'] as int?) ?? 0;
-
-    if (!isDelivery) {
-      return Center(
-        child: Text(
-          '当前账号不是配送员',
-          style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14),
-        ),
-      );
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '当前待配送总数',
-                      style: TextStyle(fontSize: 14, color: Color(0xFF8C92A4)),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      deliveryPendingTotal.toString(),
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF20CB6B),
-                      ),
-                    ),
-                  ],
-                ),
-                const Icon(
-                  Icons.local_shipping_outlined,
-                  color: Color(0xFF20CB6B),
-                  size: 32,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            '后续可以在这里接入「待配送订单列表」等功能。',
-            style: TextStyle(fontSize: 13, color: Colors.white70),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// 待配送订单列表中的一行
 class OrderPreviewRow extends StatelessWidget {
   final Map<String, dynamic> order;
@@ -587,7 +560,6 @@ class OrderPreviewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final storeName = order['store_name'] as String? ?? '未知门店';
-    final orderNumber = order['order_number'] as String? ?? '';
     final totalAmountDynamic = order['total_amount'];
     final itemCount = order['item_count'] as int? ?? 0;
     final address = order['address'] as String? ?? '';
@@ -758,23 +730,28 @@ class QuickActionItem extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 56,
+                height: 56,
                 decoration: BoxDecoration(
                   color: iconColor.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(28),
                 ),
-                child: Icon(icon, color: iconColor, size: 22),
+                child: Icon(icon, color: iconColor, size: 28),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               Text(
                 label,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF40475C)),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF40475C),
+                ),
+                textAlign: TextAlign.center,
               ),
             ],
           ),

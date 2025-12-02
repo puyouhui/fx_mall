@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"go_backend/internal/database"
@@ -440,6 +441,132 @@ func CountOrdersBySalesCode(employeeCode string) (total int, pendingDelivery int
 	return total, pendingDelivery, todayTotal, nil
 }
 
+// GetOrdersBySalesCode 获取销售员名下客户的订单列表（分页，支持状态 & 关键字搜索）
+func GetOrdersBySalesCode(employeeCode string, pageNum, pageSize int, status, keyword string) ([]map[string]interface{}, int, error) {
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+
+	offset := (pageNum - 1) * pageSize
+
+	where := "u.sales_code = ?"
+	args := []interface{}{employeeCode}
+
+	if status != "" {
+		// 状态筛选逻辑与客户订单接口保持一致
+		if status == "pending_delivery" || status == "pending" {
+			where += " AND (o.status = ? OR o.status = 'pending')"
+			args = append(args, "pending_delivery")
+		} else if status == "delivered" || status == "shipped" {
+			where += " AND (o.status = ? OR o.status = 'shipped')"
+			args = append(args, "delivered")
+		} else {
+			where += " AND o.status = ?"
+			args = append(args, status)
+		}
+	}
+
+	if keyword != "" {
+		kw := "%" + strings.TrimSpace(keyword) + "%"
+		where += " AND (o.order_number LIKE ? OR u.name LIKE ? OR u.user_code LIKE ? OR a.name LIKE ?)"
+		args = append(args, kw, kw, kw, kw)
+	}
+
+	// 统计总数
+	var total int
+	countQuery := `
+		SELECT COUNT(*)
+		FROM orders o
+		JOIN mini_app_users u ON o.user_id = u.id
+		LEFT JOIN mini_app_addresses a ON o.address_id = a.id
+		WHERE ` + where
+	if err := database.DB.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	// 查询分页数据
+	query := `
+		SELECT
+			o.id,
+			o.order_number,
+			o.status,
+			o.total_amount,
+			o.created_at,
+			u.name AS user_name,
+			u.user_code,
+			a.name AS store_name,
+			a.address,
+			a.phone AS contact_phone
+		FROM orders o
+		JOIN mini_app_users u ON o.user_id = u.id
+		LEFT JOIN mini_app_addresses a ON o.address_id = a.id
+		WHERE ` + where + `
+		ORDER BY o.id DESC
+		LIMIT ? OFFSET ?
+	`
+	args = append(args, pageSize, offset)
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	orders := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var (
+			id           int
+			orderNumber  string
+			statusVal    string
+			totalAmount  float64
+			createdAt    time.Time
+			userName     sql.NullString
+			userCode     sql.NullString
+			storeName    sql.NullString
+			address      sql.NullString
+			contactPhone sql.NullString
+		)
+
+		if err := rows.Scan(
+			&id,
+			&orderNumber,
+			&statusVal,
+			&totalAmount,
+			&createdAt,
+			&userName,
+			&userCode,
+			&storeName,
+			&address,
+			&contactPhone,
+		); err != nil {
+			return nil, 0, err
+		}
+
+		itemCount, _ := GetOrderItemCountByOrderID(id)
+
+		order := map[string]interface{}{
+			"id":            id,
+			"order_number":  orderNumber,
+			"status":        statusVal,
+			"total_amount":  totalAmount,
+			"created_at":    createdAt,
+			"user_name":     getStringValue(userName),
+			"user_code":     getStringValue(userCode),
+			"store_name":    getStringValue(storeName),
+			"address":       getStringValue(address),
+			"contact_phone": getStringValue(contactPhone),
+			"item_count":    itemCount,
+		}
+
+		orders = append(orders, order)
+	}
+
+	return orders, total, nil
+}
+
 // GetPendingOrdersBySalesCode 获取销售员名下客户的待配送订单列表（分页）
 func GetPendingOrdersBySalesCode(employeeCode string, pageNum, pageSize int) ([]map[string]interface{}, int, error) {
 	if pageNum < 1 {
@@ -532,6 +659,82 @@ func GetOrderItemCountByOrderID(orderID int) (int, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+// CountOrdersByUserID 统计指定用户的订单数量
+func CountOrdersByUserID(userID int) (int, error) {
+	var count int
+	err := database.DB.QueryRow(`
+		SELECT COUNT(*)
+		FROM orders
+		WHERE user_id = ?
+	`, userID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// GetOrderSummaryByUserID 获取用户历史订单汇总（总金额 & 订单数量）
+func GetOrderSummaryByUserID(userID int) (float64, int, error) {
+	var totalAmount float64
+	var orderCount int
+	err := database.DB.QueryRow(`
+		SELECT COALESCE(SUM(total_amount), 0), COUNT(*)
+		FROM orders
+		WHERE user_id = ?
+	`, userID).Scan(&totalAmount, &orderCount)
+	if err != nil {
+		return 0, 0, err
+	}
+	return totalAmount, orderCount, nil
+}
+
+// GetRecentOrdersByUserID 获取用户最近的订单列表（按创建时间倒序）
+func GetRecentOrdersByUserID(userID int, limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 {
+		limit = 3
+	}
+
+	query := `
+		SELECT id, order_number, total_amount, status, created_at
+		FROM orders
+		WHERE user_id = ?
+		ORDER BY created_at DESC, id DESC
+		LIMIT ?
+	`
+
+	rows, err := database.DB.Query(query, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	orders := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var (
+			id          int
+			orderNumber string
+			totalAmount float64
+			status      string
+			createdAt   time.Time
+		)
+
+		if err := rows.Scan(&id, &orderNumber, &totalAmount, &status, &createdAt); err != nil {
+			return nil, err
+		}
+
+		order := map[string]interface{}{
+			"id":           id,
+			"order_number": orderNumber,
+			"total_amount": totalAmount,
+			"status":       status,
+			"created_at":   createdAt,
+		}
+		orders = append(orders, order)
+	}
+
+	return orders, nil
 }
 
 // UpdateOrderStatus 更新订单状态

@@ -397,6 +397,7 @@ func IssueCouponToUser(c *gin.Context) {
 		Quantity  int    `json:"quantity"`   // 发放数量，默认为1
 		ExpiresIn int    `json:"expires_in"` // 有效期天数，0表示不限制
 		ExpiresAt string `json:"expires_at"` // 有效期截止时间（可选，优先级高于expires_in）
+		Reason    string `json:"reason"`     // 发放原因（潜在客户、优质客户等），目前仅用于记录，不参与计算
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -457,5 +458,57 @@ func IssueCouponToUser(c *gin.Context) {
 		return
 	}
 
+	// 记录发放日志（区分管理员 / 员工）
+	operatorType := "admin"
+	operatorID := 0
+	operatorName := ""
+
+	// 如果是员工端调用，该中间件已经把 employee 放到 context 里
+	if emp, ok := getEmployeeFromContext(c); ok {
+		operatorType = "employee"
+		operatorID = emp.ID
+		operatorName = emp.Name
+	}
+
+	log := &model.CouponIssueLog{
+		UserID:       user.ID,
+		CouponID:     coupon.ID,
+		CouponName:   coupon.Name,
+		Quantity:     req.Quantity,
+		Reason:       req.Reason,
+		OperatorType: operatorType,
+		OperatorID:   operatorID,
+		OperatorName: operatorName,
+		ExpiresAt:    expiresAt,
+	}
+	_ = model.CreateCouponIssueLog(log)
+
 	successResponse(c, nil, fmt.Sprintf("成功发放 %d 张优惠券", req.Quantity))
+}
+
+// GetCouponIssueLogs 获取优惠券发放记录列表（后台管理）
+func GetCouponIssueLogs(c *gin.Context) {
+	pageNum := parseQueryInt(c, "pageNum", 1)
+	pageSize := parseQueryInt(c, "pageSize", 20)
+	keyword := strings.TrimSpace(c.Query("keyword"))
+	couponID := parseQueryInt(c, "couponId", 0)
+
+	logs, total, err := model.GetCouponIssueLogs(pageNum, pageSize, keyword, couponID)
+	if err != nil {
+		internalErrorResponse(c, "获取优惠券发放记录失败: "+err.Error())
+		return
+	}
+
+	if logs == nil {
+		logs = []model.CouponIssueLog{}
+	}
+
+	data := gin.H{
+		"list":     logs,
+		"total":    total,
+		"pageNum":  pageNum,
+		"pageSize": pageSize,
+	}
+
+	successResponse(c, data, "")
 }

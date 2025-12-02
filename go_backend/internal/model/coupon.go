@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go_backend/internal/database"
@@ -57,20 +58,20 @@ func FromTime(t time.Time) LocalTime {
 
 // Coupon 优惠券模型
 type Coupon struct {
-	ID           int       `json:"id"`
-	Name         string    `json:"name"`
-	Type         string    `json:"type"` // delivery_fee 或 amount
-	DiscountValue float64  `json:"discount_value"`
-	MinAmount    float64   `json:"min_amount"`
-	CategoryIDs  []int     `json:"category_ids"`
-	TotalCount   int       `json:"total_count"`
-	UsedCount    int       `json:"used_count"`
-	Status       int       `json:"status"`
-	ValidFrom    LocalTime `json:"valid_from"`
-	ValidTo      LocalTime `json:"valid_to"`
-	Description  string    `json:"description"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID            int       `json:"id"`
+	Name          string    `json:"name"`
+	Type          string    `json:"type"` // delivery_fee 或 amount
+	DiscountValue float64   `json:"discount_value"`
+	MinAmount     float64   `json:"min_amount"`
+	CategoryIDs   []int     `json:"category_ids"`
+	TotalCount    int       `json:"total_count"`
+	UsedCount     int       `json:"used_count"`
+	Status        int       `json:"status"`
+	ValidFrom     LocalTime `json:"valid_from"`
+	ValidTo       LocalTime `json:"valid_to"`
+	Description   string    `json:"description"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // UserCoupon 用户优惠券关联
@@ -85,6 +86,134 @@ type UserCoupon struct {
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	Coupon    *Coupon    `json:"coupon,omitempty"` // 关联的优惠券信息
+}
+
+// CouponIssueLog 优惠券发放记录（管理员 / 员工）
+type CouponIssueLog struct {
+	ID           int        `json:"id"`
+	UserID       int        `json:"user_id"`              // 客户ID
+	UserName     string     `json:"user_name,omitempty"`  // 客户名称
+	UserCode     string     `json:"user_code,omitempty"`  // 客户编号
+	CouponID     int        `json:"coupon_id"`            // 优惠券ID
+	CouponName   string     `json:"coupon_name"`          // 优惠券名称快照
+	Quantity     int        `json:"quantity"`             // 发放数量
+	Reason       string     `json:"reason"`               // 发放原因
+	OperatorType string     `json:"operator_type"`        // admin / employee
+	OperatorID   int        `json:"operator_id"`          // 操作人ID
+	OperatorName string     `json:"operator_name"`        // 操作人名称
+	CreatedAt    time.Time  `json:"created_at"`           // 发放时间
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"` // 到期时间（如有）
+}
+
+// CreateCouponIssueLog 创建一条优惠券发放记录
+func CreateCouponIssueLog(log *CouponIssueLog) error {
+	query := `
+		INSERT INTO coupon_issue_logs
+			(user_id, coupon_id, coupon_name, quantity, reason, operator_type, operator_id, operator_name, expires_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+	`
+
+	_, err := database.DB.Exec(
+		query,
+		log.UserID,
+		log.CouponID,
+		log.CouponName,
+		log.Quantity,
+		strings.TrimSpace(log.Reason),
+		log.OperatorType,
+		log.OperatorID,
+		log.OperatorName,
+		log.ExpiresAt,
+	)
+	return err
+}
+
+// GetCouponIssueLogs 获取优惠券发放记录（分页，可按优惠券/用户/操作人搜索）
+func GetCouponIssueLogs(pageNum, pageSize int, keyword string, couponID int) ([]CouponIssueLog, int, error) {
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+
+	where := "1=1"
+	args := []interface{}{}
+
+	if couponID > 0 {
+		where += " AND coupon_id = ?"
+		args = append(args, couponID)
+	}
+
+	if keyword != "" {
+		kw := "%" + strings.TrimSpace(keyword) + "%"
+		where += " AND (coupon_name LIKE ? OR operator_name LIKE ? OR reason LIKE ?)"
+		args = append(args, kw, kw, kw)
+	}
+
+	// 统计总数
+	countQuery := "SELECT COUNT(*) FROM coupon_issue_logs WHERE " + where
+	var total int
+	if err := database.DB.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	// 分页查询
+	offset := (pageNum - 1) * pageSize
+	query := `
+		SELECT l.id, l.user_id, l.coupon_id, l.coupon_name, l.quantity, l.reason,
+		       l.operator_type, l.operator_id, l.operator_name, l.expires_at, l.created_at,
+		       u.name AS user_name, u.user_code
+		FROM coupon_issue_logs l
+		LEFT JOIN mini_app_users u ON l.user_id = u.id
+		WHERE ` + where + `
+		ORDER BY l.created_at DESC
+		LIMIT ? OFFSET ?
+	`
+	args = append(args, pageSize, offset)
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	logs := make([]CouponIssueLog, 0)
+	for rows.Next() {
+		var l CouponIssueLog
+		var expiresAt sql.NullTime
+		var userName, userCode sql.NullString
+		if err := rows.Scan(
+			&l.ID,
+			&l.UserID,
+			&l.CouponID,
+			&l.CouponName,
+			&l.Quantity,
+			&l.Reason,
+			&l.OperatorType,
+			&l.OperatorID,
+			&l.OperatorName,
+			&expiresAt,
+			&l.CreatedAt,
+			&userName,
+			&userCode,
+		); err != nil {
+			return nil, 0, err
+		}
+		if expiresAt.Valid {
+			t := expiresAt.Time
+			l.ExpiresAt = &t
+		}
+		if userName.Valid {
+			l.UserName = userName.String
+		}
+		if userCode.Valid {
+			l.UserCode = userCode.String
+		}
+		logs = append(logs, l)
+	}
+
+	return logs, total, nil
 }
 
 // CouponWithStats 带统计信息的优惠券
@@ -120,7 +249,7 @@ func GetAllCoupons() ([]CouponWithStats, error) {
 		if err := rows.Scan(&coupon.ID, &coupon.Name, &coupon.Type, &coupon.DiscountValue, &coupon.MinAmount, &categoryIDsJSON, &coupon.TotalCount, &coupon.UsedCount, &coupon.Status, &validFrom, &validTo, &coupon.Description, &coupon.CreatedAt, &coupon.UpdatedAt, &coupon.IssuedCount, &actualUsedCount); err != nil {
 			return nil, err
 		}
-		
+
 		// 使用实际统计的已使用数量
 		coupon.UsedCount = actualUsedCount
 
@@ -475,5 +604,3 @@ func IssueCouponToUser(userID, couponID, quantity int, expiresAt *time.Time) err
 
 	return tx.Commit()
 }
-
-

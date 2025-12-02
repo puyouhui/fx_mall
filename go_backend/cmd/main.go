@@ -171,12 +171,13 @@ func main() {
 				protectedGroup.DELETE("/employees/:id", api.DeleteEmployee)   // 删除员工
 
 				// 优惠券管理
-				protectedGroup.GET("/coupons", api.GetAllCoupons)            // 获取所有优惠券
-				protectedGroup.GET("/coupons/:id", api.GetCouponByID)        // 获取优惠券详情
-				protectedGroup.POST("/coupons", api.CreateCoupon)            // 创建优惠券
-				protectedGroup.PUT("/coupons/:id", api.UpdateCoupon)         // 更新优惠券
-				protectedGroup.DELETE("/coupons/:id", api.DeleteCoupon)      // 删除优惠券
-				protectedGroup.POST("/coupons/issue", api.IssueCouponToUser) // 发放优惠券给用户
+				protectedGroup.GET("/coupons", api.GetAllCoupons)             // 获取所有优惠券
+				protectedGroup.GET("/coupons/:id", api.GetCouponByID)         // 获取优惠券详情
+				protectedGroup.POST("/coupons", api.CreateCoupon)             // 创建优惠券
+				protectedGroup.PUT("/coupons/:id", api.UpdateCoupon)          // 更新优惠券
+				protectedGroup.DELETE("/coupons/:id", api.DeleteCoupon)       // 删除优惠券
+				protectedGroup.POST("/coupons/issue", api.IssueCouponToUser)  // 发放优惠券给用户
+				protectedGroup.GET("/coupons/issues", api.GetCouponIssueLogs) // 优惠券发放记录列表
 
 				// 订单管理
 				protectedGroup.GET("/orders", api.GetAllOrdersForAdmin)         // 获取所有订单（后台管理）
@@ -220,18 +221,26 @@ func main() {
 				employeeProtectedGroup.GET("/delivery/my-orders", api.GetDeliveryOrders)               // 获取我的配送订单（通过status参数筛选）
 
 				// 销售员相关接口
-				employeeProtectedGroup.GET("/sales/customers", api.GetSalesCustomers)                              // 获取我的客户列表
-				employeeProtectedGroup.GET("/sales/customer-by-code", api.GetSalesCustomerByCode)                  // 通过编号查客户
-				employeeProtectedGroup.GET("/sales/customers/:id", api.GetSalesCustomerDetail)                     // 获取客户详情
-				employeeProtectedGroup.GET("/sales/customers/:id/orders", api.GetSalesCustomerOrders)              // 获取客户的订单列表
-				employeeProtectedGroup.GET("/sales/customers/:id/purchase-list", api.GetSalesCustomerPurchaseList) // 获取客户的采购单
-				employeeProtectedGroup.PUT("/sales/customers/:id/profile", api.UpdateSalesCustomerProfile)         // 更新客户基础资料
-				employeeProtectedGroup.POST("/sales/customers/:id/addresses", api.CreateSalesCustomerAddress)      // 为客户新增地址
-				employeeProtectedGroup.PUT("/sales/addresses/:id", api.UpdateSalesCustomerAddress)                 // 更新客户地址
-				employeeProtectedGroup.POST("/upload/address-avatar", api.UploadAddressAvatarByEmployee)           // 上传门头照
-				employeeProtectedGroup.POST("/sales/orders", api.CreateOrderForCustomer)                           // 为客户创建订单
-				employeeProtectedGroup.GET("/sales/products", api.GetSalesProducts)                                // 获取商品列表
-				employeeProtectedGroup.GET("/sales/pending-orders", api.GetMyPendingOrders)                        // 获取待配送订单列表
+				employeeProtectedGroup.GET("/sales/customers", api.GetSalesCustomers)                                            // 获取我的客户列表
+				employeeProtectedGroup.GET("/sales/customer-by-code", api.GetSalesCustomerByCode)                                // 通过编号查客户
+				employeeProtectedGroup.GET("/sales/customers/:id", api.GetSalesCustomerDetail)                                   // 获取客户详情
+				employeeProtectedGroup.GET("/sales/customers/:id/orders", api.GetSalesCustomerOrders)                            // 获取客户的订单列表
+				employeeProtectedGroup.GET("/sales/customers/:id/coupons", api.GetAdminUserCoupons)                              // 获取客户的优惠券列表（销售员查看）
+				employeeProtectedGroup.GET("/sales/customers/:id/purchase-list", api.GetSalesCustomerPurchaseList)               // 获取客户的采购单
+				employeeProtectedGroup.POST("/sales/customers/:id/purchase-list", api.AddSalesCustomerPurchaseItem)              // 新增客户采购单条目
+				employeeProtectedGroup.PUT("/sales/customers/:id/purchase-list/:itemId", api.UpdateSalesCustomerPurchaseItem)    // 更新客户采购单条目
+				employeeProtectedGroup.DELETE("/sales/customers/:id/purchase-list/:itemId", api.DeleteSalesCustomerPurchaseItem) // 删除客户采购单条目
+				employeeProtectedGroup.PUT("/sales/customers/:id/profile", api.UpdateSalesCustomerProfile)                       // 更新客户基础资料
+				employeeProtectedGroup.POST("/sales/customers/:id/addresses", api.CreateSalesCustomerAddress)                    // 为客户新增地址
+				employeeProtectedGroup.PUT("/sales/addresses/:id", api.UpdateSalesCustomerAddress)                               // 更新客户地址
+				employeeProtectedGroup.POST("/upload/address-avatar", api.UploadAddressAvatarByEmployee)                         // 上传门头照
+				employeeProtectedGroup.POST("/sales/orders", api.CreateOrderForCustomer)                                         // 为客户创建订单
+				employeeProtectedGroup.GET("/sales/products", api.GetSalesProducts)                                              // 获取商品列表
+				employeeProtectedGroup.GET("/sales/pending-orders", api.GetMyPendingOrders)                                      // 获取待配送订单列表
+				employeeProtectedGroup.GET("/sales/coupons", api.GetAllCoupons)                                                  // 销售员查看优惠券列表
+				employeeProtectedGroup.POST("/sales/coupons/issue", api.IssueCouponToUser)                                       // 销售员为客户发放优惠券
+				employeeProtectedGroup.GET("/sales/orders", api.GetSalesOrders)                                                  // 销售员查看名下订单列表
+				employeeProtectedGroup.GET("/sales/orders/:id", api.GetSalesOrderDetail)                                         // 销售员查看订单详情
 			}
 		}
 	}

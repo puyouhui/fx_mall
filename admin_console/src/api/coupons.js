@@ -66,3 +66,15 @@ export const issueCouponToUser = async (issueData) => {
   }
 }
 
+// 获取优惠券发放记录列表
+export const getCouponIssues = async (params) => {
+  try {
+    // 这里直接返回完整响应对象 { code, data, message }
+    const res = await request.get('/admin/coupons/issues', { params })
+    return res
+  } catch (error) {
+    console.error('获取优惠券发放记录失败:', error)
+    throw error
+  }
+}
+
