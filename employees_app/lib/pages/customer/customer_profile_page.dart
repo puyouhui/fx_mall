@@ -1064,7 +1064,7 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
                                   const SizedBox(height: 12),
                                   // 店铺类型（与小程序一致）
                                   DropdownButtonFormField<String>(
-                                    value:
+                                    initialValue:
                                         (_selectedStoreType != null &&
                                             _selectedStoreType!.isNotEmpty)
                                         ? _selectedStoreType

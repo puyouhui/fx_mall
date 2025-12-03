@@ -6,7 +6,10 @@ import 'package:intl/intl.dart';
 
 /// 我的客户列表页面（销售员）
 class CustomerListPage extends StatefulWidget {
-  const CustomerListPage({super.key});
+  /// 是否作为“选择客户”弹出，true 时点击客户会返回选中的客户数据
+  final bool pickMode;
+
+  const CustomerListPage({super.key, this.pickMode = false});
 
   @override
   State<CustomerListPage> createState() => _CustomerListPageState();
@@ -253,12 +256,17 @@ class _CustomerListPageState extends State<CustomerListPage> {
       onTap: id <= 0
           ? null
           : () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      CustomerDetailPage(customerId: id, customerName: name),
-                ),
-              );
+              if (widget.pickMode) {
+                // 作为选择客户使用，直接返回选中的客户信息
+                Navigator.of(context).pop<Map<String, dynamic>>(customer);
+              } else {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        CustomerDetailPage(customerId: id, customerName: name),
+                  ),
+                );
+              }
             },
       borderRadius: BorderRadius.circular(16),
       child: Container(

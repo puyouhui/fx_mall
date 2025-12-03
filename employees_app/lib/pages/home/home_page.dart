@@ -3,6 +3,7 @@ import 'package:employees_app/api/auth_api.dart';
 import 'package:employees_app/utils/request.dart';
 import 'package:employees_app/pages/customer/customer_profile_page.dart';
 import 'package:employees_app/pages/customer/customer_list_page.dart';
+import 'package:employees_app/pages/order/sales_create_order_page.dart';
 import 'package:employees_app/pages/coupon/coupon_send_page.dart';
 import 'package:employees_app/pages/product/product_search_page.dart';
 import 'package:employees_app/pages/order/order_list_page.dart';
@@ -392,10 +393,9 @@ class _OverviewTabState extends State<OverviewTab> {
                             iconColor: const Color(0xFF4C8DF6),
                             label: '销售开单',
                             onTap: () {
-                              // 先进入我的客户列表，选择客户后在客户详情里点击“创建新订单”完成代客下单
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const CustomerListPage(),
+                                  builder: (_) => const SalesCreateOrderPage(),
                                 ),
                               );
                             },
@@ -508,7 +508,7 @@ class _OverviewTabState extends State<OverviewTab> {
                   children: [
                     ..._pendingOrders
                         .map((order) => OrderPreviewRow(order: order))
-                        .toList(),
+                        ,
                     if (_isLoadingMore)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 8),
