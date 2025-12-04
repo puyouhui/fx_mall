@@ -512,3 +512,30 @@ func GetCouponIssueLogs(c *gin.Context) {
 
 	successResponse(c, data, "")
 }
+
+// GetCouponUsageLogs 获取优惠券使用记录列表（后台管理）
+func GetCouponUsageLogs(c *gin.Context) {
+	pageNum := parseQueryInt(c, "pageNum", 1)
+	pageSize := parseQueryInt(c, "pageSize", 20)
+	keyword := strings.TrimSpace(c.Query("keyword"))
+	couponID := parseQueryInt(c, "couponId", 0)
+
+	logs, total, err := model.GetCouponUsageLogs(pageNum, pageSize, keyword, couponID)
+	if err != nil {
+		internalErrorResponse(c, "获取优惠券使用记录失败: "+err.Error())
+		return
+	}
+
+	if logs == nil {
+		logs = []model.CouponUsageLog{}
+	}
+
+	data := gin.H{
+		"list":     logs,
+		"total":    total,
+		"pageNum":  pageNum,
+		"pageSize": pageSize,
+	}
+
+	successResponse(c, data, "")
+}

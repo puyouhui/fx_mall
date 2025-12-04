@@ -81,6 +81,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true, // 让body延伸到系统操作条下方
       appBar: AppBar(
         title: const Text('商品详情', style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.transparent,
@@ -96,18 +97,23 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             colors: [Color(0xFF20CB6B), Color(0xFFEFF7F2)],
           ),
         ),
-        child: SafeArea(
-          child: _isLoading
-              ? const Center(
+        child: _isLoading
+            ? SafeArea(
+                child: const Center(
                   child: CircularProgressIndicator(
                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
-                )
-              : _product == null
-              ? const Center(
+                ),
+              )
+            : _product == null
+            ? SafeArea(
+                child: const Center(
                   child: Text('商品不存在', style: TextStyle(color: Colors.white)),
-                )
-              : LayoutBuilder(
+                ),
+              )
+            : SafeArea(
+                bottom: false, // 底部不使用SafeArea，让内容延伸到系统操作条
+                child: LayoutBuilder(
                   builder: (context, constraints) {
                     return Column(
                       children: [
@@ -135,7 +141,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     );
                   },
                 ),
-        ),
+              ),
       ),
     );
   }
@@ -725,21 +731,27 @@ class _FullScreenImagePageState extends State<_FullScreenImagePage> {
       // 底部指示器
       bottomNavigationBar: widget.images.length > 1
           ? Container(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              // 外层Container：背景延伸到系统操作条区域
               color: Colors.black.withOpacity(0.5),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(
-                  widget.images.length,
-                  (index) => Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _currentIndex == index
-                          ? Colors.white
-                          : Colors.white.withOpacity(0.4),
+              child: Container(
+                padding: EdgeInsets.only(
+                  top: 16,
+                  bottom: 16 + MediaQuery.of(context).padding.bottom,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    widget.images.length,
+                    (index) => Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _currentIndex == index
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.4),
+                      ),
                     ),
                   ),
                 ),

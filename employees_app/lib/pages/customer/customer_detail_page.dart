@@ -74,6 +74,7 @@ class _CustomerDetailPageState extends State<CustomerDetailPage> {
         (_user != null ? (_user!['name'] as String? ?? '客户详情') : '客户详情');
 
     return Scaffold(
+      extendBody: true, // 让body延伸到系统操作条下方
       appBar: AppBar(
         title: Text(name),
         centerTitle: true,
@@ -88,21 +89,26 @@ class _CustomerDetailPageState extends State<CustomerDetailPage> {
             colors: [Color(0xFF20CB6B), Color(0xFFEFF7F2)],
           ),
         ),
-        child: SafeArea(
-          child: _isLoading
-              ? const Center(
+        child: _isLoading
+            ? SafeArea(
+                child: const Center(
                   child: CircularProgressIndicator(
                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
-                )
-              : _error != null
-              ? Center(
+                ),
+              )
+            : _error != null
+            ? SafeArea(
+                child: Center(
                   child: Text(
                     _error!,
                     style: const TextStyle(color: Colors.white),
                   ),
-                )
-              : RefreshIndicator(
+                ),
+              )
+            : SafeArea(
+                bottom: false, // 底部不使用SafeArea，让内容延伸到系统操作条
+                child: RefreshIndicator(
                   onRefresh: _loadDetail,
                   child: ListView(
                     padding: const EdgeInsets.all(16),
@@ -117,7 +123,7 @@ class _CustomerDetailPageState extends State<CustomerDetailPage> {
                     ],
                   ),
                 ),
-        ),
+              ),
       ),
       // 底部操作区：改客户信息 + 创建新订单
       bottomNavigationBar: _buildBottomActions(),
@@ -502,92 +508,103 @@ class _CustomerDetailPageState extends State<CustomerDetailPage> {
 
     final canEdit = userId != null && userId > 0;
 
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 8,
-            offset: Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: canEdit
-                  ? () {
-                      // 跳转到新客资料编辑页面（带上编号）
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              CustomerProfilePage(initialUserCode: userCode),
-                        ),
-                      );
-                    }
-                  : null,
-              icon: const Icon(Icons.edit, size: 18, color: Color(0xFF4C8DF6)),
-              label: const Text(
-                '改客户信息',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF4C8DF6),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF4C8DF6)),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(22),
-                ),
-              ),
+      // 外层Container：白色背景延伸到系统操作条区域
+      color: Colors.white,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 8,
+              offset: Offset(0, -2),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: canEdit
-                  ? () {
-                      final user = _user;
-                      if (user == null || user['id'] == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('客户信息未加载完成')),
-                        );
-                        return;
-                      }
-                      final id = user['id'] as int;
-                      final name = (user['name'] as String?) ?? widget.customerName;
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => SalesCreateOrderPage(
-                            customerId: id,
-                            customerName: name,
+          ],
+        ),
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 12 + bottomPadding),
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: canEdit
+                    ? () {
+                        // 跳转到新客资料编辑页面（带上编号）
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                CustomerProfilePage(initialUserCode: userCode),
                           ),
-                        ),
-                      );
-                    }
-                  : null,
-              icon: const Icon(Icons.add_shopping_cart, size: 18),
-              label: const Text(
-                '创建新订单',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF20CB6B),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(22),
+                        );
+                      }
+                    : null,
+                icon: const Icon(
+                  Icons.edit,
+                  size: 18,
+                  color: Color(0xFF4C8DF6),
                 ),
-                elevation: 0,
+                label: const Text(
+                  '改客户信息',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF4C8DF6),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFF4C8DF6)),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: canEdit
+                    ? () {
+                        final user = _user;
+                        if (user == null || user['id'] == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('客户信息未加载完成')),
+                          );
+                          return;
+                        }
+                        final id = user['id'] as int;
+                        final name =
+                            (user['name'] as String?) ?? widget.customerName;
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => SalesCreateOrderPage(
+                              customerId: id,
+                              customerName: name,
+                            ),
+                          ),
+                        );
+                      }
+                    : null,
+                icon: const Icon(Icons.add_shopping_cart, size: 18),
+                label: const Text(
+                  '创建新订单',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF20CB6B),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  elevation: 0,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -15,7 +15,7 @@
         </div>
       </div>
 
-      <!-- 列表 Tab：优惠券列表 / 发放记录 -->
+      <!-- 列表 Tab：优惠券列表 / 发放记录 / 使用记录 -->
       <el-tabs v-model="activeTab" class="coupons-tabs">
         <el-tab-pane label="优惠券列表" name="coupons">
           <el-card class="coupons-card">
@@ -151,6 +151,76 @@
                 layout="prev, pager, next, jumper"
                 @current-change="loadCouponIssues"
                 @size-change="loadCouponIssues"
+              />
+            </div>
+          </el-card>
+        </el-tab-pane>
+
+        <el-tab-pane label="使用记录" name="usages">
+          <el-card class="coupons-card">
+            <div class="search-bar" style="margin-bottom: 16px;">
+              <el-input
+                v-model="usageKeyword"
+                placeholder="搜索用户姓名、手机号或订单号"
+                style="width: 300px; margin-right: 12px;"
+                clearable
+                @clear="loadCouponUsages"
+                @keyup.enter="loadCouponUsages"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+              <el-button type="primary" @click="loadCouponUsages">搜索</el-button>
+            </div>
+            <el-table :data="couponUsages" stripe v-loading="usagesLoading">
+              <el-table-column prop="id" label="ID" align="center" width="80" />
+              <el-table-column label="用户信息" min-width="150">
+                <template #default="{ row }">
+                  <div>{{ row.user_name || '未知' }}</div>
+                  <div style="color: #909399; font-size: 12px;">{{ row.user_phone || '-' }}</div>
+                </template>
+              </el-table-column>
+              <el-table-column label="优惠券信息" min-width="200">
+                <template #default="{ row }">
+                  <div>{{ row.coupon_name || '-' }}</div>
+                  <div style="color: #909399; font-size: 12px;">
+                    <el-tag :type="row.coupon_type === 'delivery_fee' ? 'success' : 'warning'" size="small">
+                      {{ row.coupon_type === 'delivery_fee' ? '配送费券' : '金额券' }}
+                    </el-tag>
+                    <span v-if="row.coupon_type === 'amount'" style="margin-left: 8px;">
+                      ¥{{ (row.discount_value || 0).toFixed(2) }}
+                    </span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="订单信息" min-width="150">
+                <template #default="{ row }">
+                  <div v-if="row.order_number">
+                    <el-link type="primary" :underline="false">{{ row.order_number }}</el-link>
+                  </div>
+                  <div v-else style="color: #909399;">-</div>
+                </template>
+              </el-table-column>
+              <el-table-column label="使用时间" min-width="180">
+                <template #default="{ row }">
+                  <span>{{ formatDate(row.used_at) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="发放时间" min-width="180">
+                <template #default="{ row }">
+                  <span>{{ formatDate(row.created_at) }}</span>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div style="margin-top: 12px; text-align: right;" v-if="usagesTotal > 0">
+              <el-pagination
+                v-model:current-page="usagesPageNum"
+                v-model:page-size="usagesPageSize"
+                :total="usagesTotal"
+                layout="prev, pager, next, jumper"
+                @current-change="loadCouponUsages"
+                @size-change="loadCouponUsages"
               />
             </div>
           </el-card>
@@ -415,10 +485,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
-import { getCoupons, createCoupon, updateCoupon, deleteCoupon, issueCouponToUser, getCouponIssues } from '../api/coupons'
+import { Plus, Search } from '@element-plus/icons-vue'
+import { getCoupons, createCoupon, updateCoupon, deleteCoupon, issueCouponToUser, getCouponIssues, getCouponUsages } from '../api/coupons'
 import { getCategoryList } from '../api/category'
 import { getMiniUsers } from '../api/miniUsers'
 import { formatDate } from '../utils/time-format'
@@ -456,6 +526,14 @@ const issuesPageNum = ref(1)
 const issuesPageSize = ref(20)
 const issuesTotal = ref(0)
 const issueKeyword = ref('')
+
+// 使用记录相关
+const couponUsages = ref([])
+const usagesLoading = ref(false)
+const usagesPageNum = ref(1)
+const usagesPageSize = ref(20)
+const usagesTotal = ref(0)
+const usageKeyword = ref('')
 
 const couponForm = reactive({
   id: null,
@@ -908,6 +986,46 @@ const loadCouponIssues = async () => {
     issuesLoading.value = false
   }
 }
+
+// 加载优惠券使用记录
+const loadCouponUsages = async () => {
+  usagesLoading.value = true
+  try {
+    const params = {
+      pageNum: usagesPageNum.value,
+      pageSize: usagesPageSize.value
+    }
+    if (usageKeyword.value && usageKeyword.value.trim() !== '') {
+      params.keyword = usageKeyword.value.trim()
+    }
+
+    const response = await getCouponUsages(params)
+    if (response && response.code === 200 && response.data) {
+      const { list, total, pageNum, pageSize } = response.data
+      couponUsages.value = Array.isArray(list) ? list : []
+      usagesTotal.value = total || 0
+      usagesPageNum.value = pageNum || 1
+      usagesPageSize.value = pageSize || 20
+    } else {
+      couponUsages.value = []
+      usagesTotal.value = 0
+    }
+  } catch (error) {
+    console.error('获取优惠券使用记录失败:', error)
+    ElMessage.error('获取优惠券使用记录失败')
+    couponUsages.value = []
+    usagesTotal.value = 0
+  } finally {
+    usagesLoading.value = false
+  }
+}
+
+// 监听tab切换
+watch(activeTab, (newTab) => {
+  if (newTab === 'usages') {
+    loadCouponUsages()
+  }
+})
 
 onMounted(() => {
   loadCategories()

@@ -216,6 +216,133 @@ func GetCouponIssueLogs(pageNum, pageSize int, keyword string, couponID int) ([]
 	return logs, total, nil
 }
 
+// CouponUsageLog 优惠券使用记录
+type CouponUsageLog struct {
+	ID            int       `json:"id"`
+	UserCouponID  int       `json:"user_coupon_id"`
+	UserID        int       `json:"user_id"`
+	UserName      string    `json:"user_name"`
+	UserPhone     string    `json:"user_phone"`
+	CouponID      int       `json:"coupon_id"`
+	CouponName    string    `json:"coupon_name"`
+	CouponType    string    `json:"coupon_type"`
+	DiscountValue float64   `json:"discount_value"`
+	OrderID       int       `json:"order_id"`
+	OrderNumber   string    `json:"order_number"`
+	UsedAt        time.Time `json:"used_at"`
+	CreatedAt     time.Time `json:"created_at"` // 发放时间
+}
+
+// GetCouponUsageLogs 获取优惠券使用记录（分页，可按优惠券/用户/订单搜索）
+func GetCouponUsageLogs(pageNum, pageSize int, keyword string, couponID int) ([]CouponUsageLog, int, error) {
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+
+	offset := (pageNum - 1) * pageSize
+	if offset < 0 {
+		offset = 0
+	}
+
+	// 构建WHERE条件
+	where := "uc.status = 'used' AND uc.used_at IS NOT NULL"
+	args := []interface{}{}
+
+	if couponID > 0 {
+		where += " AND uc.coupon_id = ?"
+		args = append(args, couponID)
+	}
+
+	if keyword != "" {
+		where += " AND (u.name LIKE ? OR u.phone LIKE ? OR o.order_number LIKE ?)"
+		keywordPattern := "%" + keyword + "%"
+		args = append(args, keywordPattern, keywordPattern, keywordPattern)
+	}
+
+	// 查询总数
+	countQuery := "SELECT COUNT(*) FROM user_coupons uc " +
+		"LEFT JOIN mini_app_users u ON uc.user_id = u.id " +
+		"LEFT JOIN orders o ON uc.order_id = o.id " +
+		"WHERE " + where
+
+	var total int
+	err := database.DB.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("查询总数失败: %w", err)
+	}
+
+	// 查询列表
+	query := `
+		SELECT 
+			uc.id, uc.user_id, uc.coupon_id, uc.order_id, uc.used_at, uc.created_at,
+			u.name, u.phone,
+			c.name, c.type, c.discount_value,
+			o.order_number
+		FROM user_coupons uc
+		LEFT JOIN mini_app_users u ON uc.user_id = u.id
+		LEFT JOIN coupons c ON uc.coupon_id = c.id
+		LEFT JOIN orders o ON uc.order_id = o.id
+		WHERE ` + where + `
+		ORDER BY uc.used_at DESC
+		LIMIT ? OFFSET ?
+	`
+	args = append(args, pageSize, offset)
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("查询使用记录失败: %w", err)
+	}
+	defer rows.Close()
+
+	logs := make([]CouponUsageLog, 0)
+	for rows.Next() {
+		var l CouponUsageLog
+		var userName, userPhone, couponName, couponType, orderNumber sql.NullString
+		var discountValue sql.NullFloat64
+		var orderID sql.NullInt64
+
+		err := rows.Scan(
+			&l.UserCouponID, &l.UserID, &l.CouponID, &orderID, &l.UsedAt, &l.CreatedAt,
+			&userName, &userPhone,
+			&couponName, &couponType, &discountValue,
+			&orderNumber,
+		)
+		if err != nil {
+			continue
+		}
+
+		l.ID = l.UserCouponID
+		if userName.Valid {
+			l.UserName = userName.String
+		}
+		if userPhone.Valid {
+			l.UserPhone = userPhone.String
+		}
+		if couponName.Valid {
+			l.CouponName = couponName.String
+		}
+		if couponType.Valid {
+			l.CouponType = couponType.String
+		}
+		if discountValue.Valid {
+			l.DiscountValue = discountValue.Float64
+		}
+		if orderID.Valid {
+			l.OrderID = int(orderID.Int64)
+		}
+		if orderNumber.Valid {
+			l.OrderNumber = orderNumber.String
+		}
+
+		logs = append(logs, l)
+	}
+
+	return logs, total, nil
+}
+
 // CouponWithStats 带统计信息的优惠券
 type CouponWithStats struct {
 	Coupon
@@ -496,11 +623,21 @@ func UseCoupon(userID, couponID, orderID int) error {
 		return fmt.Errorf("优惠券已用完")
 	}
 
-	// 检查用户是否已使用过该优惠券
+	// 检查用户优惠券记录，包括状态和有效期
 	var existingStatus string
-	err = tx.QueryRow("SELECT status FROM user_coupons WHERE user_id = ? AND coupon_id = ?", userID, couponID).Scan(&existingStatus)
-	if err == nil && existingStatus == "used" {
-		return fmt.Errorf("该优惠券已使用")
+	var expiresAt sql.NullTime
+	err = tx.QueryRow("SELECT status, expires_at FROM user_coupons WHERE user_id = ? AND coupon_id = ?", userID, couponID).Scan(&existingStatus, &expiresAt)
+	if err == nil {
+		if existingStatus == "used" {
+			return fmt.Errorf("该优惠券已使用")
+		}
+		// 检查用户优惠券的有效期（expires_at）
+		if expiresAt.Valid {
+			now := time.Now()
+			if now.After(expiresAt.Time) {
+				return fmt.Errorf("该优惠券已过期")
+			}
+		}
 	}
 
 	// 更新或插入用户优惠券记录

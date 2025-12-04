@@ -919,8 +919,14 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
           ),
         ),
         child: SafeArea(
+          bottom: false, // 底部不使用SafeArea，让内容延伸到系统操作条
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              12,
+              16,
+              16 + MediaQuery.of(context).padding.bottom, // 添加底部安全区域内边距
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

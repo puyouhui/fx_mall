@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:employees_app/utils/request.dart';
 import 'package:employees_app/pages/product/product_detail_page.dart';
 
@@ -215,6 +216,7 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true, // 让body延伸到系统操作条下方
       appBar: AppBar(
         title: const Text('销售产品查询', style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.transparent,
@@ -231,6 +233,7 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
           ),
         ),
         child: SafeArea(
+          bottom: false, // 底部不使用SafeArea，让内容延伸到系统操作条
           child: Column(
             children: [
               // 搜索和分类筛选区域
@@ -445,7 +448,15 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
                       )
                     : ListView.builder(
                         controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          0,
+                          16,
+                          16 +
+                              MediaQuery.of(
+                                context,
+                              ).padding.bottom, // 添加底部安全区域内边距
+                        ),
                         itemCount: _products.length + (_hasMore ? 1 : 0),
                         itemBuilder: (context, index) {
                           if (index == _products.length) {

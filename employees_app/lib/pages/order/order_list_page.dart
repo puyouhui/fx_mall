@@ -175,6 +175,7 @@ class _OrderListPageState extends State<OrderListPage> {
             fontWeight: FontWeight.w600,
           ),
         ),
+        extendBody: true, // 让body延伸到系统操作条下方
         body: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -184,6 +185,7 @@ class _OrderListPageState extends State<OrderListPage> {
             ),
           ),
           child: SafeArea(
+            bottom: false, // 底部不使用SafeArea，让内容延伸到系统操作条
             child: Column(
               children: [
                 _buildSearchBar(),
@@ -201,11 +203,14 @@ class _OrderListPageState extends State<OrderListPage> {
                           onRefresh: () => _loadOrders(reset: true),
                           child: _orders.isEmpty
                               ? ListView(
-                                  padding: const EdgeInsets.fromLTRB(
+                                  padding: EdgeInsets.fromLTRB(
                                     16,
                                     40,
                                     16,
-                                    16,
+                                    16 +
+                                        MediaQuery.of(
+                                          context,
+                                        ).padding.bottom, // 添加底部安全区域内边距
                                   ),
                                   children: const [
                                     Center(
@@ -221,11 +226,14 @@ class _OrderListPageState extends State<OrderListPage> {
                                 )
                               : ListView.builder(
                                   controller: _scrollController,
-                                  padding: const EdgeInsets.fromLTRB(
+                                  padding: EdgeInsets.fromLTRB(
                                     16,
                                     0,
                                     16,
-                                    16,
+                                    16 +
+                                        MediaQuery.of(
+                                          context,
+                                        ).padding.bottom, // 添加底部安全区域内边距
                                   ),
                                   itemCount:
                                       _orders.length + (_hasMore ? 1 : 0),

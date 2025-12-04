@@ -178,6 +178,7 @@ func main() {
 				protectedGroup.DELETE("/coupons/:id", api.DeleteCoupon)       // 删除优惠券
 				protectedGroup.POST("/coupons/issue", api.IssueCouponToUser)  // 发放优惠券给用户
 				protectedGroup.GET("/coupons/issues", api.GetCouponIssueLogs) // 优惠券发放记录列表
+				protectedGroup.GET("/coupons/usages", api.GetCouponUsageLogs) // 优惠券使用记录列表
 
 				// 订单管理
 				protectedGroup.GET("/orders", api.GetAllOrdersForAdmin)         // 获取所有订单（后台管理）

@@ -78,3 +78,14 @@ export const getCouponIssues = async (params) => {
   }
 }
 
+// 获取优惠券使用记录列表
+export const getCouponUsages = async (params) => {
+  try {
+    const res = await request.get('/admin/coupons/usages', { params })
+    return res
+  } catch (error) {
+    console.error('获取优惠券使用记录失败:', error)
+    throw error
+  }
+}
+

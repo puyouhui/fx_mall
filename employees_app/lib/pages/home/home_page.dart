@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:employees_app/api/auth_api.dart';
 import 'package:employees_app/utils/request.dart';
 import 'package:employees_app/pages/customer/customer_profile_page.dart';
@@ -25,6 +26,11 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _loadDashboard();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   Future<void> _loadDashboard() async {
@@ -63,6 +69,7 @@ class _HomePageState extends State<HomePage> {
     final employeeCode = (_dashboard?['employee_code'] as String?) ?? '';
 
     return Scaffold(
+      extendBody: true, // 让body延伸到系统操作条下方
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -72,6 +79,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         child: SafeArea(
+          bottom: false, // 底部不使用SafeArea，让内容延伸到系统操作条
           child: _isLoading
               ? const Center(
                   child: CircularProgressIndicator(
@@ -280,7 +288,12 @@ class _OverviewTabState extends State<OverviewTab> {
         return false;
       },
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          12,
+          16,
+          16 + MediaQuery.of(context).padding.bottom, // 添加底部安全区域内边距
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -506,9 +519,9 @@ class _OverviewTabState extends State<OverviewTab> {
               else
                 Column(
                   children: [
-                    ..._pendingOrders
-                        .map((order) => OrderPreviewRow(order: order))
-                        ,
+                    ..._pendingOrders.map(
+                      (order) => OrderPreviewRow(order: order),
+                    ),
                     if (_isLoadingMore)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 8),

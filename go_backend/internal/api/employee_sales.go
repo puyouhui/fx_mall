@@ -1183,10 +1183,15 @@ func CreateOrderForCustomer(c *gin.Context) {
 	}
 
 	var req struct {
-		UserID    int    `json:"user_id" binding:"required"`
-		AddressID int    `json:"address_id" binding:"required"`
-		ItemIDs   []int  `json:"item_ids"` // 采购单项ID列表，为空则使用全部
-		Remark    string `json:"remark"`
+		UserID              int    `json:"user_id" binding:"required"`
+		AddressID           int    `json:"address_id" binding:"required"`
+		ItemIDs             []int  `json:"item_ids"`              // 采购单项ID列表，为空则使用全部
+		Remark              string `json:"remark"`                // 订单备注
+		CouponID            int    `json:"coupon_id"`             // 用户优惠券ID（user_coupon_id），可选
+		OutOfStockStrategy  string `json:"out_of_stock_strategy"` // 缺货处理：cancel_item / ship_available / contact_me
+		TrustReceipt        bool   `json:"trust_receipt"`         // 信任签收
+		HidePrice           bool   `json:"hide_price"`            // 是否隐藏价格
+		RequirePhoneContact bool   `json:"require_phone_contact"` // 配送时是否电话联系
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1260,21 +1265,107 @@ func CreateOrderForCustomer(c *gin.Context) {
 		return
 	}
 
+	// 计算订单金额和分类信息用于优惠券筛选
+	orderAmount := 0.0
+	categoryIDSet := make(map[int]struct{})
+	productIDs := make([]int, 0, len(items))
+	for _, item := range items {
+		// 根据用户类型计算商品金额
+		var price float64
+		if userType == "wholesale" {
+			price = item.SpecSnapshot.WholesalePrice
+			if price <= 0 {
+				price = item.SpecSnapshot.RetailPrice
+			}
+		} else {
+			price = item.SpecSnapshot.RetailPrice
+			if price <= 0 {
+				price = item.SpecSnapshot.WholesalePrice
+			}
+		}
+		if price <= 0 {
+			price = item.SpecSnapshot.Cost
+		}
+		if price < 0 {
+			price = 0
+		}
+		orderAmount += price * float64(item.Quantity)
+		productIDs = append(productIDs, item.ProductID)
+	}
+
+	categoryInfo, err := model.FetchProductCategoryInfo(productIDs)
+	if err == nil {
+		for _, info := range categoryInfo {
+			if info.CategoryID > 0 {
+				categoryIDSet[info.CategoryID] = struct{}{}
+			}
+			if info.ParentID > 0 {
+				categoryIDSet[info.ParentID] = struct{}{}
+			}
+		}
+	}
+	categoryIDs := make([]int, 0, len(categoryIDSet))
+	for id := range categoryIDSet {
+		categoryIDs = append(categoryIDs, id)
+	}
+
+	// 获取可用优惠券并计算折扣
+	couponDiscount := 0.0
+	var selectedCoupon *model.AvailableCouponInfo
+	if req.CouponID > 0 {
+		availableCoupons, err := model.GetAvailableCouponsForPurchaseList(
+			req.UserID,
+			orderAmount,
+			categoryIDs,
+			summary.DeliveryFee,
+			summary.IsFreeShipping,
+		)
+		if err == nil {
+			// 查找指定的优惠券
+			for i := range availableCoupons {
+				if availableCoupons[i].UserCouponID == req.CouponID && availableCoupons[i].IsAvailable {
+					selectedCoupon = &availableCoupons[i]
+					// 计算折扣金额
+					if selectedCoupon.Type == "delivery_fee" {
+						couponDiscount = summary.DeliveryFee
+					} else if selectedCoupon.Type == "amount" {
+						couponDiscount = selectedCoupon.DiscountValue
+					}
+					break
+				}
+			}
+		}
+	}
+
+	// 处理缺货策略，默认为 contact_me
+	outOfStockStrategy := req.OutOfStockStrategy
+	if outOfStockStrategy == "" {
+		outOfStockStrategy = "contact_me"
+	}
+
 	// 创建订单
 	options := model.OrderCreationOptions{
 		Remark:              req.Remark,
-		OutOfStockStrategy:  "contact_me",
-		TrustReceipt:        false,
-		HidePrice:           false,
-		RequirePhoneContact: true,
+		OutOfStockStrategy:  outOfStockStrategy,
+		TrustReceipt:        req.TrustReceipt,
+		HidePrice:           req.HidePrice,
+		RequirePhoneContact: req.RequirePhoneContact,
 		PointsDiscount:      0,
-		CouponDiscount:      0,
+		CouponDiscount:      couponDiscount,
 	}
 
 	order, orderItems, err := model.CreateOrderFromPurchaseList(req.UserID, req.AddressID, items, summary, options, userType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建订单失败: " + err.Error()})
 		return
+	}
+
+	// 创建订单成功后，使用优惠券（标记为已使用并关联订单ID）
+	if selectedCoupon != nil {
+		if err := model.UseCoupon(req.UserID, selectedCoupon.CouponID, order.ID); err != nil {
+			// 如果使用失败，记录错误但不影响订单创建
+			// 这里可以记录日志，但不返回错误给前端
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

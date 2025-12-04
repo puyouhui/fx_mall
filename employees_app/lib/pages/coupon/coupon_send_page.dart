@@ -207,8 +207,9 @@ class _CouponSendPageState extends State<CouponSendPage> {
     if (_expireType == 'days') {
       body['expires_in'] = _expireDays;
     } else if (_expireType == 'date' && _expireDateTime != null) {
-      body['expires_at'] =
-          DateFormat('yyyy-MM-dd HH:mm:ss').format(_expireDateTime!);
+      body['expires_at'] = DateFormat(
+        'yyyy-MM-dd HH:mm:ss',
+      ).format(_expireDateTime!);
     }
 
     final resp = await Request.post<dynamic>(
@@ -242,6 +243,7 @@ class _CouponSendPageState extends State<CouponSendPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true, // 让body延伸到系统操作条下方
       appBar: AppBar(
         title: const Text('送优惠券'),
         centerTitle: true,
@@ -257,12 +259,18 @@ class _CouponSendPageState extends State<CouponSendPage> {
           ),
         ),
         child: SafeArea(
+          bottom: false, // 底部不使用SafeArea，让内容延伸到系统操作条
           child: Column(
             children: [
               _buildCustomerSearchBar(),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    0,
+                    16,
+                    16 + MediaQuery.of(context).padding.bottom, // 添加底部安全区域内边距
+                  ),
                   child: Column(
                     children: [
                       _buildCustomerSection(),
@@ -865,8 +873,9 @@ class _CouponSendPageState extends State<CouponSendPage> {
                     child: Text(
                       _expireDateTime == null
                           ? '请选择过期日期时间'
-                          : DateFormat('yyyy-MM-dd HH:mm')
-                              .format(_expireDateTime!),
+                          : DateFormat(
+                              'yyyy-MM-dd HH:mm',
+                            ).format(_expireDateTime!),
                       style: TextStyle(
                         fontSize: 13,
                         color: _expireDateTime == null
@@ -936,44 +945,49 @@ class _CouponSendPageState extends State<CouponSendPage> {
   }
 
   Widget _buildBottomButton() {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 8,
-            offset: Offset(0, -2),
-          ),
-        ],
-      ),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          onPressed: _isIssuing ? null : _issueCoupon,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF20CB6B),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
+      // 外层Container：白色背景延伸到系统操作条区域
+      color: Colors.white,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 8,
+              offset: Offset(0, -2),
             ),
-            elevation: 0,
-          ),
-          child: _isIssuing
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ],
+        ),
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 12 + bottomPadding),
+        child: SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isIssuing ? null : _issueCoupon,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF20CB6B),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              elevation: 0,
+            ),
+            child: _isIssuing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Text(
+                    '确认发放',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                   ),
-                )
-              : const Text(
-                  '确认发放',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                ),
+          ),
         ),
       ),
     );

@@ -71,6 +71,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true, // 让body延伸到系统操作条下方
       appBar: AppBar(
         title: const Text('订单详情'),
         centerTitle: true,
@@ -92,6 +93,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           ),
         ),
         child: SafeArea(
+          bottom: false, // 底部不使用SafeArea，让内容延伸到系统操作条
           child: _loading
               ? const Center(
                   child: CircularProgressIndicator(
@@ -108,7 +110,12 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
               : RefreshIndicator(
                   onRefresh: _loadDetail,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      12,
+                      16,
+                      16 + MediaQuery.of(context).padding.bottom, // 添加底部安全区域内边距
+                    ),
                     children: [
                       _buildBaseInfoCard(),
                       const SizedBox(height: 12),

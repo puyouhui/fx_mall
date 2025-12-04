@@ -126,6 +126,7 @@ class _CustomerListPageState extends State<CustomerListPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true, // 让body延伸到系统操作条下方
       appBar: AppBar(
         title: const Text('我的客户'),
         centerTitle: true,
@@ -141,6 +142,7 @@ class _CustomerListPageState extends State<CustomerListPage> {
           ),
         ),
         child: SafeArea(
+          bottom: false, // 底部不使用SafeArea，让内容延伸到系统操作条
           child: Column(
             children: [
               // 搜索栏
@@ -208,7 +210,15 @@ class _CustomerListPageState extends State<CustomerListPage> {
                         onRefresh: () => _loadCustomers(reset: true),
                         child: ListView.builder(
                           controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          padding: EdgeInsets.fromLTRB(
+                            16,
+                            0,
+                            16,
+                            16 +
+                                MediaQuery.of(
+                                  context,
+                                ).padding.bottom, // 添加底部安全区域内边距
+                          ),
                           itemCount: _customers.length + (_hasMore ? 1 : 0),
                           itemBuilder: (context, index) {
                             if (index >= _customers.length) {
