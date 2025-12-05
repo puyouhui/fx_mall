@@ -41,6 +41,14 @@ dependencies:
   # 本地存储（保存 token 等信息）
   shared_preferences: ^2.2.2
 
+  # 定位服务
+  geolocator: ^13.0.1
+  permission_handler: ^11.3.1
+
+  # 地图组件（flutter_map）
+  flutter_map: ^8.0.0
+  latlong2: ^0.9.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

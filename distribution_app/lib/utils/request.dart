@@ -84,6 +84,27 @@ class Request {
     }
   }
 
+  // PUT 请求
+  static Future<ApiResponse<T>> put<T>(
+    String path, {
+    Map<String, dynamic>? body,
+    bool needAuth = true,
+    T Function(dynamic)? parser,
+  }) async {
+    try {
+      final uri = Uri.parse('${Config.apiBaseUrl}$path');
+      final response = await http.put(
+        uri,
+        headers: await _getHeaders(needAuth: needAuth),
+        body: body != null ? jsonEncode(body) : null,
+      );
+
+      return _handleResponse<T>(response, parser: parser);
+    } catch (e) {
+      return ApiResponse<T>(code: 500, message: '网络请求失败: ${e.toString()}');
+    }
+  }
+
   // 文件上传（如上传图片）
   static Future<ApiResponse<Map<String, dynamic>>> uploadFile(
     String path,
@@ -150,5 +171,6 @@ class Request {
     }
   }
 }
+
 
 

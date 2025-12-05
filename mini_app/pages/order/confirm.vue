@@ -2,24 +2,26 @@
   <view class="order-confirm-page">
     <!-- 地址栏 -->
     <view class="section address-section" @click="goSelectAddress">
-      <view class="address-left">
+      <view class="address-content">
         <view v-if="defaultAddress" class="address-main">
-          <view class="address-row">
-            <text class="address-name">{{ defaultAddress.name || '收货地址' }}</text>
+          <view class="address-header">
+            <view class="address-title-row">
+              <text class="address-store">{{ defaultAddress.name || '收货地址' }}</text>
             <text class="address-tag" v-if="defaultAddress.is_default">默认</text>
           </view>
-          <view class="address-row">
+            <view class="address-contact-row">
             <text class="address-contact">{{ defaultAddress.contact }}</text>
             <text class="address-phone">{{ defaultAddress.phone }}</text>
           </view>
           <view class="address-detail">{{ defaultAddress.address }}</view>
+          </view>
         </view>
         <view v-else class="address-empty">
-          <text>请选择收货地址</text>
+          <text class="empty-text">请选择收货地址</text>
         </view>
-      </view>
-      <view class="address-right">
-        <uni-icons type="right" size="20" color="#ccc"></uni-icons>
+        <view class="address-arrow">
+          <uni-icons type="right" size="18" color="#C0C4CC"></uni-icons>
+        </view>
       </view>
     </view>
 
@@ -33,7 +35,9 @@
         <view class="goods-item" v-for="item in items" :key="item.id">
           <image :src="item.product_image || defaultImage" class="goods-image" mode="aspectFill" />
           <view class="goods-info">
+            <view class="goods-name-row">
             <text class="goods-name">{{ item.product_name }}</text>
+            </view>
             <text class="goods-spec" v-if="item.spec_name">{{ item.spec_name }}</text>
             <view class="goods-bottom">
               <text class="goods-price">¥{{ getDisplayPrice(item).toFixed(2) }}</text>
@@ -47,33 +51,31 @@
     <!-- 金额信息 -->
     <view class="section amount-section">
       <view class="amount-row">
-        <text>商品金额</text>
-        <text>¥{{ goodsAmount }}</text>
+        <text class="amount-label">商品金额</text>
+        <text class="amount-value">¥{{ goodsAmount }}</text>
       </view>
       <view class="amount-row">
-        <text>配送费</text>
-        <view class="amount-right">
-          <text>{{ deliveryFeeText }}</text>
-          <!-- <text class="delivery-note" v-if="deliveryFeeNote">{{ deliveryFeeNote }}</text> -->
-        </view>
+        <text class="amount-label">配送费</text>
+        <text class="amount-value" :class="deliveryFeeText === '免配送费' ? 'free-text' : ''">{{ deliveryFeeText }}</text>
       </view>
       <view class="amount-row">
-        <text>积分抵扣</text>
-        <text class="muted">暂未使用</text>
+        <text class="amount-label">积分抵扣</text>
+        <text class="amount-value muted">暂未使用</text>
       </view>
       <view class="amount-row" v-if="couponDiscountText">
-        <text>优惠券</text>
-        <text class="success">{{ couponDiscountText }}</text>
+        <text class="amount-label">优惠券</text>
+        <text class="amount-value discount-text">{{ couponDiscountText }}</text>
       </view>
-      <view class="amount-row total">
-        <text>小计</text>
-        <text>¥{{ totalAmount }}</text>
+      <view class="amount-divider"></view>
+      <view class="amount-row total-row">
+        <text class="amount-label total-label">小计</text>
+        <text class="amount-value total-value">¥{{ totalAmount }}</text>
       </view>
     </view>
 
     <!-- 备注和缺货处理 -->
     <view class="section remark-section">
-      <view class="remark-row">
+      <view class="remark-header">
         <text class="section-title">订单备注</text>
       </view>
       <textarea
@@ -81,14 +83,23 @@
         v-model="remark"
         placeholder="如有特殊要求可在此说明，例如需要纸箱包装"
         auto-height
+        maxlength="200"
       />
 
       <view class="sub-section">
         <text class="sub-title">遇到缺货时</text>
-        <!-- uni-app 的 radio-group 不支持 v-model，这里用 @change 手动更新 -->
         <radio-group class="strategy-group" @change="onOutOfStockChange">
-          <label class="strategy-item" v-for="item in outOfStockOptions" :key="item.value">
-            <radio :value="item.value" :checked="outOfStockStrategy === item.value" />
+          <label 
+            class="strategy-item" 
+            v-for="item in outOfStockOptions" 
+            :key="item.value"
+            :class="{ 'strategy-item-active': outOfStockStrategy === item.value }"
+          >
+            <radio 
+              :value="item.value" 
+              :checked="outOfStockStrategy === item.value"
+              color="#20CB6B"
+            />
             <text class="strategy-text">{{ item.label }}</text>
           </label>
         </radio-group>
@@ -102,7 +113,11 @@
           <text class="option-title">信任签收</text>
           <text class="option-desc">配送电话联系不上时，允许放门口或指定位置</text>
         </view>
-        <switch :checked="trustReceipt" @change="trustReceipt = $event.detail.value" />
+        <switch 
+          :checked="trustReceipt" 
+          @change="trustReceipt = $event.detail.value"
+          color="#20CB6B"
+        />
       </view>
 
       <view class="option-row">
@@ -110,7 +125,11 @@
           <text class="option-title">隐藏价格</text>
           <text class="option-desc">选择后，小票中将不显示商品价格</text>
         </view>
-        <switch :checked="hidePrice" @change="hidePrice = $event.detail.value" />
+        <switch 
+          :checked="hidePrice" 
+          @change="hidePrice = $event.detail.value"
+          color="#20CB6B"
+        />
       </view>
 
       <view class="option-row">
@@ -118,17 +137,28 @@
           <text class="option-title">配送时电话联系</text>
           <text class="option-desc">建议保持电话畅通，方便配送员联系</text>
         </view>
-        <switch :checked="requirePhoneContact" @change="requirePhoneContact = $event.detail.value" />
+        <switch 
+          :checked="requirePhoneContact" 
+          @change="requirePhoneContact = $event.detail.value"
+          color="#20CB6B"
+        />
       </view>
     </view>
 
     <!-- 底部提交栏 -->
     <view class="bottom-bar">
       <view class="bottom-left">
-        <text class="bottom-label">应付：</text>
+        <text class="bottom-label">合计：</text>
         <text class="bottom-amount">¥{{ totalAmount }}</text>
       </view>
-      <button class="submit-btn" @click="submitOrder">提交订单</button>
+      <button 
+        class="submit-btn" 
+        :class="{ 'submit-btn-disabled': submitting }"
+        :disabled="submitting"
+        @click="submitOrder"
+      >
+        {{ submitting ? '提交中...' : '提交订单' }}
+      </button>
     </view>
   </view>
 </template>
@@ -382,79 +412,116 @@ export default {
 <style scoped>
 .order-confirm-page {
   min-height: 100vh;
-  background-color: #f5f5f5;
-  padding-bottom: 120rpx;
+  background-color: #F5F6FA;
+  padding-bottom: 180rpx;
 }
 
 .section {
   background-color: #fff;
-  margin: 20rpx;
-  border-radius: 16rpx;
-  padding: 24rpx 24rpx 20rpx;
+  margin: 20rpx 24rpx;
+  border-radius: 20rpx;
+  padding: 32rpx 28rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
 }
 
 .address-section {
+  margin-top: 24rpx;
+}
+
+.address-content {
   display: flex;
   align-items: center;
+  justify-content: space-between;
 }
 
-.address-left {
+.address-main {
   flex: 1;
+  padding-right: 24rpx;
 }
 
-.address-right {
-  padding-left: 20rpx;
+.address-header {
+  width: 100%;
 }
 
-.address-main .address-row {
+.address-title-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.address-store {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+  line-height: 1.4;
+}
+
+.address-tag {
+  margin-left: 12rpx;
+  padding: 4rpx 12rpx;
+  font-size: 20rpx;
+  color: #20CB6B;
+  background-color: #E8F8F0;
+  border-radius: 4rpx;
+  line-height: 1.2;
+}
+
+.address-contact-row {
   display: flex;
   align-items: center;
   margin-bottom: 8rpx;
 }
 
-.address-name {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333;
-}
-
-.address-tag {
-  margin-left: 12rpx;
-  padding: 2rpx 10rpx;
-  font-size: 20rpx;
-  color: #20CB6B;
-  border-radius: 20rpx;
-  border: 1px solid #20CB6B;
-}
-
-.address-contact,
-.address-phone {
-  font-size: 26rpx;
+.address-contact {
+  font-size: 28rpx;
   color: #666;
   margin-right: 16rpx;
+  font-weight: 500;
+}
+
+.address-phone {
+  font-size: 28rpx;
+  color: #666;
 }
 
 .address-detail {
-  font-size: 24rpx;
+  font-size: 26rpx;
   color: #909399;
+  line-height: 1.5;
+  margin-top: 4rpx;
 }
 
 .address-empty {
+  flex: 1;
+  padding-right: 24rpx;
+}
+
+.empty-text {
   font-size: 28rpx;
   color: #909399;
 }
 
+.address-arrow {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .section-title {
-  font-size: 30rpx;
+  font-size: 32rpx;
   font-weight: 600;
   color: #333;
+  line-height: 1.4;
 }
 
 .goods-section .goods-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16rpx;
+  margin-bottom: 24rpx;
+  padding-bottom: 20rpx;
+  border-bottom: 1rpx solid #F0F0F0;
 }
 
 .delivery-time {
@@ -465,19 +532,21 @@ export default {
 .goods-list {
   display: flex;
   flex-direction: column;
-  gap: 16rpx;
+  gap: 24rpx;
 }
 
 .goods-item {
   display: flex;
+  align-items: flex-start;
 }
 
 .goods-image {
-  width: 120rpx;
-  height: 120rpx;
-  border-radius: 12rpx;
-  margin-right: 16rpx;
-  background-color: #f5f5f5;
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 16rpx;
+  margin-right: 20rpx;
+  background-color: #F5F5F5;
+  flex-shrink: 0;
 }
 
 .goods-info {
@@ -485,124 +554,201 @@ export default {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  min-height: 140rpx;
+  padding-top: 4rpx;
+}
+
+.goods-name-row {
+  margin-bottom: 8rpx;
 }
 
 .goods-name {
   font-size: 28rpx;
   color: #333;
+  font-weight: 500;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .goods-spec {
   font-size: 24rpx;
   color: #909399;
+  margin-bottom: 12rpx;
+  line-height: 1.4;
 }
 
 .goods-bottom {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-top: auto;
 }
 
 .goods-price {
-  font-size: 28rpx;
-  color: #ff4d4f;
+  font-size: 30rpx;
+  color: #FF4D4F;
   font-weight: 600;
 }
 
 .goods-qty {
-  font-size: 24rpx;
+  font-size: 26rpx;
   color: #666;
+  font-weight: 500;
 }
 
 .amount-section .amount-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12rpx;
-  font-size: 26rpx;
+  margin-bottom: 20rpx;
+  min-height: 44rpx;
+}
+
+.amount-label {
+  font-size: 28rpx;
+  color: #666;
+  font-weight: 400;
+}
+
+.amount-value {
+  font-size: 28rpx;
   color: #333;
+  font-weight: 500;
+  text-align: right;
 }
 
-.amount-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
-
-.delivery-note {
-  font-size: 24rpx;
-  color: #909399;
-  margin-top: 4rpx;
-}
-
-.amount-section .amount-row .muted {
-  color: #909399;
-}
-
-.amount-section .amount-row .success {
+.amount-value.free-text {
   color: #20CB6B;
 }
 
-.amount-section .amount-row.total {
-  margin-top: 10rpx;
-  font-size: 30rpx;
+.amount-value.muted {
+  color: #909399;
+}
+
+.amount-value.discount-text {
+  color: #20CB6B;
+  font-weight: 500;
+}
+
+.amount-divider {
+  height: 1rpx;
+  background-color: #F0F0F0;
+  margin: 20rpx 0;
+}
+
+.amount-section .total-row {
+  margin-top: 8rpx;
+  margin-bottom: 0;
+  padding-top: 12rpx;
+}
+
+.total-label {
+  font-size: 32rpx;
+  color: #333;
   font-weight: 600;
+}
+
+.total-value {
+  font-size: 36rpx;
+  color: #FF4D4F;
+  font-weight: 600;
+}
+
+.remark-header {
+  margin-bottom: 20rpx;
 }
 
 .remark-input {
   margin-top: 16rpx;
-  padding: 16rpx;
-  background-color: #f5f5f5;
+  padding: 20rpx;
+  background-color: #F5F6FA;
   border-radius: 12rpx;
-  font-size: 26rpx;
-  min-height: 120rpx;
+  font-size: 28rpx;
+  color: #333;
+  min-height: 140rpx;
+  line-height: 1.6;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .sub-section {
-  margin-top: 24rpx;
+  margin-top: 32rpx;
+  padding-top: 32rpx;
+  border-top: 1rpx solid #F0F0F0;
 }
 
 .sub-title {
-  font-size: 28rpx;
+  font-size: 30rpx;
   font-weight: 600;
   color: #333;
+  margin-bottom: 20rpx;
 }
 
 .strategy-group {
-  margin-top: 12rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-top: 16rpx;
 }
 
 .strategy-item {
   display: flex;
-  align-items: center;
-  margin-bottom: 12rpx;
+  align-items: flex-start;
+  padding: 16rpx;
+  border-radius: 12rpx;
+  background-color: #F5F6FA;
+  border: 1rpx solid transparent;
+  transition: all 0.3s;
+  box-sizing: border-box;
+}
+
+.strategy-item-active {
+  background-color: #E8F8F0;
+  border-color: #20CB6B;
 }
 
 .strategy-text {
-  margin-left: 12rpx;
-  font-size: 26rpx;
-  color: #555;
+  margin-left: 16rpx;
+  font-size: 28rpx;
+  color: #333;
+  line-height: 1.5;
+  flex: 1;
 }
 
 .options-section .option-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10rpx 0;
+  padding: 24rpx 0;
+  min-height: 80rpx;
+}
+
+.options-section .option-row:not(:last-child) {
+  border-bottom: 1rpx solid #F0F0F0;
 }
 
 .option-text {
   flex: 1;
+  padding-right: 24rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
 }
 
 .option-title {
-  font-size: 28rpx;
+  font-size: 30rpx;
   color: #333;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .option-desc {
   font-size: 24rpx;
   color: #909399;
+  line-height: 1.5;
 }
 
 .bottom-bar {
@@ -610,38 +756,61 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 100rpx;
+  height: 120rpx;
   background-color: #fff;
-  border-top: 1rpx solid #f0f0f0;
+  border-top: 1rpx solid #F0F0F0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24rpx;
+  padding: 0 32rpx;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -4rpx 20rpx rgba(0, 0, 0, 0.06);
+  z-index: 100;
 }
 
 .bottom-left {
   display: flex;
   align-items: baseline;
+  flex: 1;
 }
 
 .bottom-label {
-  font-size: 26rpx;
+  font-size: 28rpx;
   color: #666;
+  font-weight: 400;
 }
 
 .bottom-amount {
-  font-size: 34rpx;
-  color: #ff4d4f;
+  font-size: 40rpx;
+  color: #FF4D4F;
   font-weight: 600;
   margin-left: 8rpx;
 }
 
 .submit-btn {
+  width: 50%;
+  height: 48px;
+  line-height: 48px;
   background-color: #20CB6B;
   color: #fff;
-  font-size: 28rpx;
-  padding: 12rpx 40rpx;
-  border-radius: 40rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  padding: 0 60rpx;
+  border-radius: 50rpx;
+  border: none;
+  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  transition: all 0.3s;
+  box-sizing: border-box;
+}
+
+.submit-btn::after {
+  border: none;
+}
+
+.submit-btn-disabled {
+  background-color: #CCE8D9;
+  box-shadow: none;
+  opacity: 0.7;
 }
 </style>
 

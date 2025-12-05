@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/storage.dart';
 
 /// 我的 页面视图
 class ProfileView extends StatelessWidget {
@@ -128,6 +129,9 @@ class ProfileView extends StatelessWidget {
     );
 
     if (result == true && context.mounted) {
+      // 清除登录信息
+      await Storage.clearAll();
+      
       // 退出登录：返回到登录页并清空之前的页面栈
       Navigator.of(context).pushNamedAndRemoveUntil(
         '/login',
