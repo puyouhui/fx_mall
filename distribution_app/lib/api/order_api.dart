@@ -88,5 +88,46 @@ class OrderApi {
       data: response.data,
     );
   }
+
+  // 完成配送
+  static Future<ApiResponse<Map<String, dynamic>>> completeOrder(
+    int orderId,
+  ) async {
+    final response = await Request.put<Map<String, dynamic>>(
+      '/employee/delivery/orders/$orderId/complete',
+      parser: (data) => data as Map<String, dynamic>,
+    );
+
+    return ApiResponse<Map<String, dynamic>>(
+      code: response.code,
+      message: response.message,
+      data: response.data,
+    );
+  }
+
+  // 问题上报
+  static Future<ApiResponse<Map<String, dynamic>>> reportOrderIssue({
+    required int orderId,
+    required String issueType,
+    required String description,
+    String? contactPhone,
+  }) async {
+    final response = await Request.post<Map<String, dynamic>>(
+      '/employee/delivery/orders/$orderId/report',
+      body: {
+        'issue_type': issueType,
+        'description': description,
+        if (contactPhone != null && contactPhone.isNotEmpty)
+          'contact_phone': contactPhone,
+      },
+      parser: (data) => data as Map<String, dynamic>,
+    );
+
+    return ApiResponse<Map<String, dynamic>>(
+      code: response.code,
+      message: response.message,
+      data: response.data,
+    );
+  }
 }
 

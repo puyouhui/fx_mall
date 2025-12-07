@@ -126,6 +126,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "8.2.2"
+  flutter_map_location_marker:
+    dependency: "direct main"
+    description:
+      name: flutter_map_location_marker
+      sha256: e7ceb0d0bbb4edbd065a4c274ae86be8b934d0a15a8236733f81037a41973aac
+      url: "https://pub.dev"
+    source: hosted
+    version: "10.0.2"
+  flutter_rotation_sensor:
+    dependency: transitive
+    description:
+      name: flutter_rotation_sensor
+      sha256: "7944dbadf3d05be128a81cb0f37b2ba2b53247fef22b85f8096c60b06c1e50a4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -264,6 +280,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.6.2"
+  logging:
+    dependency: transitive
+    description:
+      name: logging
+      sha256: c8245ada5f1717ed44271ed1c26b8ce85ca3228fd2ffdb75468ab01979309d61
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.0"
   matcher:
     dependency: transitive
     description:
@@ -296,6 +320,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
+  native_device_orientation:
+    dependency: transitive
+    description:
+      name: native_device_orientation
+      sha256: "39249012f4d80c620ab1b01e3e814e0f71958c34ba9432f0033e5d8dba2d2cc7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.5"
   path:
     dependency: transitive
     description:

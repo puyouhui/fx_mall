@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'order_list_tab.dart';
 import 'route_planning_view.dart';
-import '../utils/location_service.dart';
 
 /// 接单大厅页：包含三个Tab（新任务、待取货、配送中）
 class OrderHallView extends StatefulWidget {
@@ -113,112 +112,13 @@ class _OrderHallViewState extends State<OrderHallView>
                       ),
                     ],
                   ),
-                  // 定位信息显示
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        if (widget.isLoadingLocation)
-                          const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        else
-                          Icon(
-                            widget.currentPosition != null
-                                ? Icons.location_on
-                                : Icons.location_off,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            widget.isLoadingLocation
-                                ? '正在获取定位...'
-                                : widget.locationError ?? 
-                                  (widget.currentPosition != null
-                                      ? LocationService.formatLocation(widget.currentPosition)
-                                      : '定位未获取'),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                        if (!widget.isLoadingLocation)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (widget.locationError != null)
-                                TextButton(
-                                  onPressed: () async {
-                                    // 根据错误类型打开不同的设置页面
-                                    if (widget.locationError!.contains('定位服务未启用') ||
-                                        widget.locationError!.contains('GPS')) {
-                                      await LocationService.openLocationSettings();
-                                    } else {
-                                      await LocationService.openAppSettingsPage();
-                                    }
-                                    // 延迟一下再刷新，给用户时间操作
-                                    Future.delayed(const Duration(seconds: 1), () {
-                                      if (widget.onRefreshLocation != null) {
-                                        widget.onRefreshLocation!();
-                                      }
-                                    });
-                                  },
-                                  style: TextButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    minimumSize: Size.zero,
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  child: Text(
-                                    widget.locationError!.contains('定位服务未启用') ||
-                                            widget.locationError!.contains('GPS')
-                                        ? '开启GPS'
-                                        : '去设置',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      decoration: TextDecoration.underline,
-                                    ),
-                                  ),
-                                ),
-                              if (widget.onRefreshLocation != null)
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.refresh,
-                                    color: Colors.white,
-                                    size: 18,
-                                  ),
-                                  onPressed: widget.onRefreshLocation,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                            ],
-                          ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ),
           ),
           // Tab栏
           Container(
-            color: Colors.white,
+            color: const Color(0xFFF5F5F5),
             child: TabBar(
               controller: _tabController,
               labelColor: const Color(0xFF20CB6B),

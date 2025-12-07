@@ -32,7 +32,7 @@
         :key="index"
         :class="{ 'default-address': address.is_default }"
       >
-        <view class="address-content" @click="handleSetDefault(address)">
+        <view class="address-content">
           <view class="address-header">
             <text class="address-name" :class="{ 'default-name': address.is_default }">{{ address.name }}</text>
             <view class="default-badge" v-if="address.is_default">
@@ -44,12 +44,8 @@
         </view>
         <view class="address-actions">
           <view class="address-action" @click.stop="handleEdit(address)">
-            <uni-icons type="compose" size="20" color="#20CB6B"></uni-icons>
+            <uni-icons type="compose" size="22" color="#20CB6B"></uni-icons>
             <text class="action-text">编辑</text>
-          </view>
-          <view class="address-action delete-action" @click.stop="handleDelete(address, index)">
-            <uni-icons type="trash" size="20" color="#ff4d4f"></uni-icons>
-            <text class="action-text">删除</text>
           </view>
         </view>
       </view>
@@ -71,7 +67,7 @@
 </template>
 
 <script>
-import { getMiniUserAddresses, deleteMiniUserAddress, setDefaultMiniUserAddress } from '../../api/index';
+import { getMiniUserAddresses } from '../../api/index';
 
 export default {
   data() {
@@ -164,62 +160,7 @@ export default {
       });
     },
     
-    // 删除地址
-    async handleDelete(address, index) {
-      uni.showModal({
-        title: '提示',
-        content: '确定要删除这个地址吗？',
-        confirmText: '删除',
-        cancelText: '取消',
-        confirmColor: '#ff4d4f',
-        success: async (res) => {
-          if (res.confirm) {
-            try {
-              const result = await deleteMiniUserAddress(address.id, this.userToken);
-              if (result && result.code === 200) {
-                uni.showToast({
-                  title: '删除成功',
-                  icon: 'success'
-                });
-                // 重新加载地址列表
-                this.loadAddresses();
-              }
-            } catch (error) {
-              console.error('删除地址失败:', error);
-              uni.showToast({
-                title: error?.message || '删除失败',
-                icon: 'none'
-              });
-            }
-          }
-        }
-      });
-    },
     
-    // 设置默认地址
-    async handleSetDefault(address) {
-      if (address.is_default) {
-        return; // 已经是默认地址，不需要操作
-      }
-      
-      try {
-        const res = await setDefaultMiniUserAddress(address.id, this.userToken);
-        if (res && res.code === 200) {
-          uni.showToast({
-            title: '设置成功',
-            icon: 'success'
-          });
-          // 重新加载地址列表
-          this.loadAddresses();
-        }
-      } catch (error) {
-        console.error('设置默认地址失败:', error);
-        uni.showToast({
-          title: error?.message || '设置失败',
-          icon: 'none'
-        });
-      }
-    }
   }
 };
 </script>
@@ -293,17 +234,26 @@ export default {
 
 .address-item {
   background-color: #FFFFFF;
-  border-radius: 16rpx;
-  padding: 30rpx;
-  margin-bottom: 20rpx;
+  border-radius: 20rpx;
+  padding: 32rpx 28rpx;
+  margin-bottom: 24rpx;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.06);
+  border: 1rpx solid #f0f0f0;
+  transition: all 0.3s ease;
+}
+
+.address-item:active {
+  transform: scale(0.98);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
 }
 
 .address-item.default-address {
-  background-color: #F0F9F4;
+  background: linear-gradient(135deg, #F0FDF6 0%, #E8F8F0 100%);
+  border: 2rpx solid #20CB6B;
+  box-shadow: 0 4rpx 20rpx rgba(32, 203, 107, 0.15);
 }
 
 .address-content {
@@ -315,11 +265,11 @@ export default {
 .address-header {
   display: flex;
   align-items: center;
-  margin-bottom: 16rpx;
+  margin-bottom: 18rpx;
 }
 
 .address-name {
-  font-size: 32rpx;
+  font-size: 34rpx;
   font-weight: 600;
   color: #333;
   margin-right: 16rpx;
@@ -330,38 +280,43 @@ export default {
 }
 
 .default-badge {
-  background-color: #ff4d4f;
-  border-radius: 4rpx;
-  padding: 4rpx 12rpx;
+  background: linear-gradient(135deg, #20CB6B 0%, #16b35d 100%);
+  border-radius: 8rpx;
+  padding: 6rpx 16rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2rpx 8rpx rgba(32, 203, 107, 0.3);
 }
 
 .default-text {
-  font-size: 20rpx;
+  font-size: 22rpx;
   color: #FFFFFF;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .address-detail {
   font-size: 28rpx;
   color: #666;
-  line-height: 1.6;
-  margin-bottom: 12rpx;
+  line-height: 1.7;
+  margin-bottom: 14rpx;
+  word-break: break-all;
 }
 
 .address-contact {
   font-size: 26rpx;
-  color: #999;
+  color: #909399;
+  font-weight: 500;
 }
 
 .address-actions {
   display: flex;
   flex-direction: column;
-  gap: 20rpx;
-  margin-left: 20rpx;
+  align-items: center;
+  justify-content: center;
+  margin-left: 24rpx;
   flex-shrink: 0;
+  padding: 8rpx 0;
 }
 
 .address-action {
@@ -369,18 +324,24 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 60rpx;
-  padding: 10rpx;
+  width: 80rpx;
+  padding: 16rpx 12rpx;
+  /* background-color: #f0fdf6; */
+  border-radius: 12rpx;
+  /* border: 1rpx solid #e8f8f0; */
+  transition: all 0.3s ease;
+}
+
+.address-action:active {
+  background-color: #e8f8f0;
+  transform: scale(0.95);
 }
 
 .action-text {
-  font-size: 20rpx;
-  color: #666;
-  margin-top: 4rpx;
-}
-
-.delete-action .action-text {
-  color: #ff4d4f;
+  font-size: 22rpx;
+  color: #20CB6B;
+  margin-top: 6rpx;
+  font-weight: 500;
 }
 
 .empty-state {

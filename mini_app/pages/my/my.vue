@@ -1,7 +1,7 @@
 <template>
   <view class="my-page">
     <!-- 个人信息区域 -->
-    <view class="user-section">
+    <view class="user-section" :style="{ paddingTop: (statusBarHeight + 50) + 'px' }">
       <view class="user-header" v-if="isLoggedIn">
         <view class="avatar-wrapper" @click="goToProfile">
           <image v-if="userInfo.avatar" :src="userInfo.avatar" class="avatar" mode="aspectFill"></image>
@@ -10,13 +10,21 @@
           </view>
         </view>
         <view class="user-info">
-          <text class="user-name">{{ displayName }}</text>
+          <view class="user-name-row">
+            <text class="user-name">{{ displayName }}</text>
+            <text class="user-code" v-if="userInfo.user_code">客户编号：{{ userInfo.user_code }}</text>
+          </view>
           <view class="user-meta">
-            <text class="user-type" :class="userTypeClass">{{ userTypeText }}</text>
+            <view class="user-type" :class="userTypeClass">
+              <image v-if="userInfo.user_type === 'wholesale'" src="/static/icon/vip.png" class="user-type-icon" mode="aspectFit" @error="handleIconError"></image>
+              <image v-else-if="userInfo.user_type === 'retail'" src="/static/icon/zx.png" class="user-type-icon" mode="aspectFit" @error="handleIconError"></image>
+              <view v-else class="user-type-icon-placeholder"></view>
+              <text class="user-type-text">{{ userTypeText }}</text>
+            </view>
           </view>
         </view>
-        <view class="edit-btn" @click="goToProfile">
-          <uni-icons type="right" size="18" color="#999"></uni-icons>
+        <view class="service-icon" @click="goToCustomerService">
+          <image src="/static/icon/zx.png" class="service-icon-image" mode="aspectFit"></image>
         </view>
       </view>
       <view class="login-prompt" v-else @click="goToLogin">
@@ -29,20 +37,40 @@
           <text class="login-text">点击登录</text>
           <text class="login-tip">登录后享受更多服务</text>
         </view>
-        <view class="edit-btn">
-          <uni-icons type="right" size="18" color="#999"></uni-icons>
+        <view class="service-icon" @click="goToCustomerService">
+          <image src="/static/icon/zx.png" class="service-icon-image" mode="aspectFit"></image>
         </view>
       </view>
     </view>
 
-    <!-- 订单入口 -->
-    <view class="order-section">
+    <!-- 账户概览卡片 -->
+    <view class="account-card" v-if="isLoggedIn">
+      <view class="account-item">
+        <text class="account-label">余额(元)</text>
+        <text class="account-value">{{ userBalance.toFixed(2) }}</text>
+      </view>
+      <view class="account-item">
+        <text class="account-label">优惠券</text>
+        <text class="account-value">{{ couponCount }}</text>
+      </view>
+      <!-- <view class="account-item">
+        <text class="account-label">锁价(货)单</text>
+        <text class="account-value">{{ lockedOrdersCount }}</text>
+      </view> -->
+      <view class="account-item">
+        <text class="account-label">积分</text>
+        <text class="account-value">{{ userPoints }}</text>
+      </view>
+    </view>
+
+    <!-- 订单信息 -->
+    <view class="order-section" v-if="isLoggedIn">
       <view class="section-header" @click="goToOrderList">
-        <text class="section-title">我的订单</text>
-        <view class="section-more">
+        <text class="section-title">订单信息</text>
+        <!-- <view class="section-more">
           <text class="more-text">查看全部</text>
           <uni-icons type="right" size="14" color="#999"></uni-icons>
-        </view>
+        </view> -->
       </view>
       <view class="order-tabs">
         <view class="order-tab" @click="goToOrderList('pending_delivery')">
@@ -66,89 +94,87 @@
           </view>
           <text class="tab-text">已送达</text>
         </view>
-        <view class="order-tab" @click="goToOrderList('paid')">
+        <view class="order-tab" @click="goToOrderList()">
           <view class="tab-icon-wrapper">
-            <uni-icons type="wallet" size="24" color="#20CB6B"></uni-icons>
+            <uni-icons type="list" size="24" color="#20CB6B"></uni-icons>
           </view>
-          <text class="tab-text">已收款</text>
+          <text class="tab-text">全部订单</text>
         </view>
       </view>
     </view>
 
-    <!-- 常用功能 -->
+
+    <!-- 我的功能 -->
     <view class="functions-section">
-      <view class="function-group">
-        <view class="function-item" @click="goToCoupons">
-          <view class="function-icon coupon-icon">
-            <uni-icons type="wallet" size="22" color="#20CB6B"></uni-icons>
+      <view class="section-header">
+        <text class="section-title">我的功能</text>
+      </view>
+      <view class="functions-grid">
+        <view class="function-item" v-for="(func, index) in functions" :key="index" @click="handleFunctionClick(func)">
+          <view class="function-icon-wrapper">
+            <uni-icons :type="func.icon" size="28" :color="func.color || '#20CB6B'"></uni-icons>
+            <view class="function-badge" v-if="func.badge">{{ func.badge }}</view>
           </view>
-          <text class="function-text">我的优惠券</text>
-          <view class="function-right">
-            <text class="coupon-count" v-if="couponCount > 0">{{ couponCount }}</text>
-            <uni-icons type="right" size="16" color="#ddd"></uni-icons>
-          </view>
-        </view>
-        <view class="function-item" @click="goToCustomerService">
-          <view class="function-icon customer-service-icon">
-            <uni-icons type="chatbubble" size="22" color="#20CB6B"></uni-icons>
-          </view>
-          <text class="function-text">我的客服</text>
-          <uni-icons type="right" size="16" color="#ddd"></uni-icons>
-        </view>
-        <view class="function-item" @click="goToAddress">
-          <view class="function-icon address-icon">
-            <uni-icons type="location" size="22" color="#20CB6B"></uni-icons>
-          </view>
-          <text class="function-text">收货地址</text>
-          <uni-icons type="right" size="16" color="#ddd"></uni-icons>
-        </view>
-        <view class="function-item" @click="goToProfile">
-          <view class="function-icon profile-icon">
-            <uni-icons type="person" size="22" color="#20CB6B"></uni-icons>
-          </view>
-          <text class="function-text">个人资料</text>
-          <uni-icons type="right" size="16" color="#ddd"></uni-icons>
+          <text class="function-text">{{ func.name }}</text>
         </view>
       </view>
-      
-      <view class="function-group">
-        <view class="function-item" @click="goToSettings">
-          <view class="function-icon settings-icon">
-            <uni-icons type="gear" size="22" color="#20CB6B"></uni-icons>
-          </view>
-          <text class="function-text">设置</text>
-          <uni-icons type="right" size="16" color="#ddd"></uni-icons>
-        </view>
-      </view>
+    </view>
+
+
+    
+    <!-- 轮播图 -->
+    <view class="carousel-section" v-if="carousels.length > 0">
+      <swiper class="carousel-swiper" :indicator-dots="true" :autoplay="true" :interval="3000" :duration="500" circular>
+        <swiper-item v-for="(item, index) in carousels" :key="index" @click="handleCarouselClick(item)">
+          <image :src="item.image" class="carousel-image" mode="aspectFill"></image>
+        </swiper-item>
+      </swiper>
     </view>
   </view>
 </template>
 
 <script>
-import { getMiniUserInfo, getMiniUserDefaultAddress, getUserCoupons, getUserOrders } from '../../api/index.js';
+import { getMiniUserInfo, getMiniUserDefaultAddress, getUserCoupons, getUserOrders, getCarousels } from '../../api/index.js';
 
 export default {
   data() {
     return {
+      statusBarHeight: 20, // 状态栏高度（默认值）
       userInfo: {},
       isLoggedIn: false,
-      defaultAddress: null, // 默认地址
+      defaultAddress: null,
       orderCounts: {
         pending_delivery: 0,
         delivering: 0,
-        delivered: 0,
-        paid: 0
+        delivered: 0
       },
-      couponCount: 0
+      couponCount: 0,
+      userBalance: 0.00,
+      lockedOrdersCount: 0,
+      userPoints: 0,
+      carousels: [],
+      functions: [
+        { name: '地址管理', icon: 'location', path: '/pages/address/address', color: '#20CB6B' },
+        { name: '我的账单', icon: 'wallet', path: '/pages/bill/bill', color: '#20CB6B' },
+        { name: '发票中心', icon: 'paperplane', path: '/pages/invoice/invoice', color: '#20CB6B' },
+        { name: '新品需求', icon: 'star', path: '/pages/product-request/product-request', color: '#20CB6B' },
+        { name: '客服与帮助', icon: 'chatbubble', path: '/pages/customer-service/customer-service', color: '#20CB6B' },
+        { name: '系统设置', icon: 'gear', path: '/pages/settings/settings', color: '#20CB6B' },
+        { name: '供应商合作', icon: 'shop', path: '/pages/supplier/supplier', color: '#20CB6B' },
+        { name: '加入我们', icon: 'person-add', path: '/pages/join-us/join-us', color: '#20CB6B' }
+      ]
     };
   },
   computed: {
-    // 显示名称：有name显示name，否则显示user_code
+    // 显示名称：有name显示name，否则显示用户XXXX
     displayName() {
       if (this.userInfo.name && this.userInfo.name.trim()) {
         return this.userInfo.name;
       }
-      return this.userInfo.user_code ? `用户${this.userInfo.user_code}` : '未设置';
+      if (this.userInfo.user_code) {
+        return `用户${this.userInfo.user_code}`;
+      }
+      return '未设置';
     },
     // 用户类型文本
     userTypeText() {
@@ -170,17 +196,23 @@ export default {
     }
   },
   onLoad() {
+    // 获取设备信息
+    const info = uni.getSystemInfoSync();
+    // 设置状态栏高度
+    this.statusBarHeight = info.statusBarHeight || 20;
+    
     this.checkLoginStatus();
     this.loadUserInfo();
     this.loadOrderCounts();
+    this.loadCarousels();
   },
-  // 页面显示时更新用户信息
   onShow() {
     this.checkLoginStatus();
     this.updateUserInfo();
     this.loadDefaultAddress();
     this.loadOrderCounts();
     this.loadCouponCount();
+    this.loadUserBalance();
   },
   methods: {
     // 检查登录状态
@@ -209,7 +241,6 @@ export default {
 
         const res = await getMiniUserInfo(token);
         if (res && res.code === 200 && res.data) {
-          // 更新本地存储的用户信息
           uni.setStorageSync('miniUserInfo', res.data);
           if (res.data.unique_id) {
             uni.setStorageSync('miniUserUniqueId', res.data.unique_id);
@@ -219,7 +250,6 @@ export default {
         }
       } catch (error) {
         console.error('获取用户信息失败:', error);
-        // 静默失败，不显示错误提示
       }
     },
     
@@ -228,6 +258,24 @@ export default {
       const storedUserInfo = uni.getStorageSync('miniUserInfo');
       if (storedUserInfo) {
         this.userInfo = storedUserInfo;
+        // 从用户信息中获取余额和积分
+        this.userBalance = parseFloat(storedUserInfo.balance || 0);
+        this.userPoints = parseInt(storedUserInfo.points || 0);
+      }
+    },
+    
+    // 加载用户余额
+    async loadUserBalance() {
+      if (!this.isLoggedIn) {
+        this.userBalance = 0;
+        this.userPoints = 0;
+        return;
+      }
+      // 余额和积分从用户信息中获取，已在updateUserInfo中更新
+      const storedUserInfo = uni.getStorageSync('miniUserInfo');
+      if (storedUserInfo) {
+        this.userBalance = parseFloat(storedUserInfo.balance || 0);
+        this.userPoints = parseInt(storedUserInfo.points || 0);
       }
     },
     
@@ -262,8 +310,7 @@ export default {
         this.orderCounts = {
           pending_delivery: 0,
           delivering: 0,
-          delivered: 0,
-          paid: 0
+          delivered: 0
         };
         return;
       }
@@ -274,8 +321,7 @@ export default {
           return;
         }
         
-        // 获取各状态的订单数量
-        const statuses = ['pending_delivery', 'delivering', 'delivered', 'paid'];
+        const statuses = ['pending_delivery', 'delivering', 'delivered'];
         const counts = {};
         
         for (const status of statuses) {
@@ -298,15 +344,51 @@ export default {
         this.orderCounts = {
           pending_delivery: 0,
           delivering: 0,
-          delivered: 0,
-          paid: 0
+          delivered: 0
         };
+      }
+    },
+    
+    // 加载优惠券数量
+    async loadCouponCount() {
+      if (!this.isLoggedIn) {
+        this.couponCount = 0;
+        return;
+      }
+      
+      try {
+        const token = uni.getStorageSync('miniUserToken');
+        if (!token) {
+          return;
+        }
+        
+        const res = await getUserCoupons(token);
+        if (res && res.code === 200 && Array.isArray(res.data)) {
+          this.couponCount = res.data.filter(coupon => coupon.status === 'unused').length;
+        } else {
+          this.couponCount = 0;
+        }
+      } catch (error) {
+        console.error('加载优惠券数量失败:', error);
+        this.couponCount = 0;
+      }
+    },
+    
+    // 加载轮播图
+    async loadCarousels() {
+      try {
+        const res = await getCarousels();
+        if (res && res.code === 200 && Array.isArray(res.data)) {
+          this.carousels = res.data.filter(item => item.type === 'my' || !item.type);
+        }
+      } catch (error) {
+        console.error('加载轮播图失败:', error);
+        this.carousels = [];
       }
     },
     
     // 跳转到登录页
     goToLogin() {
-      // TODO: 跳转到登录页面
       uni.showToast({
         title: '请先登录',
         icon: 'none'
@@ -343,59 +425,41 @@ export default {
       });
     },
     
-    // 跳转到收货地址
-    goToAddress() {
-      if (!this.isLoggedIn) {
-        this.goToLogin();
-        return;
+    // 处理轮播图点击
+    handleCarouselClick(item) {
+      if (item.link) {
+        // 根据link类型跳转
+        if (item.link.startsWith('/')) {
+          uni.navigateTo({ url: item.link });
+        } else if (item.link.startsWith('http')) {
+          // 外部链接，可以打开webview
+          uni.showToast({
+            title: '外部链接',
+            icon: 'none'
+          });
+        }
       }
-      uni.navigateTo({
-        url: '/pages/address/address'
-      });
     },
     
-    // 跳转到设置
-    goToSettings() {
-      uni.navigateTo({
-        url: '/pages/settings/settings'
-      });
-    },
-    
-    // 跳转到优惠券页面
-    goToCoupons() {
-      if (!this.isLoggedIn) {
+    // 处理功能点击
+    handleFunctionClick(func) {
+      if (!this.isLoggedIn && func.requireLogin) {
         this.goToLogin();
-        return;
-      }
-      uni.navigateTo({
-        url: '/pages/coupons/coupons'
-      });
-    },
-    
-    // 加载优惠券数量
-    async loadCouponCount() {
-      if (!this.isLoggedIn) {
-        this.couponCount = 0;
         return;
       }
       
-      try {
-        const token = uni.getStorageSync('miniUserToken');
-        if (!token) {
-          return;
-        }
-        
-        const res = await getUserCoupons(token);
-        if (res && res.code === 200 && Array.isArray(res.data)) {
-          // 统计未使用的优惠券数量
-          this.couponCount = res.data.filter(coupon => coupon.status === 'unused').length;
-        } else {
-          this.couponCount = 0;
-        }
-      } catch (error) {
-        console.error('加载优惠券数量失败:', error);
-        this.couponCount = 0;
+      if (func.path) {
+        uni.navigateTo({
+          url: func.path
+        });
+      } else if (func.handler) {
+        func.handler();
       }
+    },
+    
+    // 处理图标加载错误
+    handleIconError() {
+      // 图标加载失败时静默处理，不显示图标
     }
   }
 };
@@ -404,20 +468,21 @@ export default {
 <style scoped>
 .my-page {
   min-height: 100vh;
-  background-color: #f5f5f5;
-  padding-bottom: 40rpx;
+  background: linear-gradient(180deg, #E8F8F0 0%, #E8F8F0 20%, #f5f5f5 40%, #f5f5f5 100%);
 }
 
 /* 个人信息区域 */
 .user-section {
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
-  padding: 60rpx 30rpx 40rpx;
+  /* background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%); */
+  padding: 0 30rpx 90rpx 30rpx;
+  border-radius: 0 0 0 0;
 }
 
 .user-header,
 .login-prompt {
   display: flex;
   align-items: center;
+  position: relative;
 }
 
 .avatar-wrapper {
@@ -450,35 +515,92 @@ export default {
   flex-direction: column;
 }
 
+.user-name-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 12rpx;
+  flex-wrap: wrap;
+}
+
+.user-name-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 12rpx;
+  flex-wrap: wrap;
+}
+
 .user-name {
   font-size: 36rpx;
   font-weight: 600;
-  color: #fff;
-  margin-bottom: 12rpx;
+  color: #333;
 }
 
 .user-meta {
   display: flex;
   align-items: center;
-  gap: 20rpx;
+  gap: 16rpx;
+  flex-wrap: wrap;
 }
 
 .user-type {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
   font-size: 24rpx;
-  padding: 4rpx 16rpx;
+  padding: 0 16rpx;
   border-radius: 20rpx;
-  background-color: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background-color: #E8F8F0;
+  color: #20CB6B;
+  height: 40rpx;
+  line-height: 40rpx;
+}
+
+.user-type-icon {
+  width: 30rpx;
+  height: 30rpx;
+  flex-shrink: 0;
+}
+
+.user-type-icon-placeholder {
+  width: 30rpx;
+  height: 30rpx;
+  flex-shrink: 0;
+}
+
+.user-type-text {
+  color: inherit;
 }
 
 .type-retail {
-  background-color: rgba(255, 255, 255, 0.25);
+  background-color: #E8F8F0;
+  color: #20CB6B;
 }
 
 .type-wholesale {
-  background-color: rgba(255, 255, 255, 0.3);
+  background-color: #FFF3DA;
+  color: #D4A574;
 }
 
+.user-code {
+  font-size: 24rpx;
+  color: #333;
+}
+
+.service-icon {
+  width: 60rpx;
+  height: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.service-icon-image {
+  width: 48rpx;
+  height: 48rpx;
+}
 
 .login-text {
   font-size: 36rpx;
@@ -492,14 +614,40 @@ export default {
   color: rgba(255, 255, 255, 0.8);
 }
 
-.edit-btn {
-  padding: 10rpx;
+/* 账户概览卡片 */
+.account-card {
+  background-color: #373D52;
+  margin: -40rpx 20rpx 20rpx;
+  border-radius: 20rpx;
+  padding: 32rpx 28rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+  display: flex;
+  justify-content: space-around;
 }
 
-/* 订单入口 */
+.account-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.account-label {
+  font-size: 24rpx;
+  color: #FFF3DA;
+  margin-bottom: 8rpx;
+}
+
+.account-value {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #FFF3DA ;
+}
+
+/* 订单信息 */
 .order-section {
   background-color: #fff;
-  margin: -30rpx 20rpx 20rpx;
+  margin: 0 20rpx 20rpx;
   border-radius: 20rpx;
   padding: 30rpx;
   box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
@@ -513,7 +661,7 @@ export default {
 }
 
 .section-title {
-  font-size: 32rpx;
+  font-size: 28rpx;
   font-weight: 600;
   color: #333;
 }
@@ -576,85 +724,77 @@ export default {
   color: #666;
 }
 
-/* 常用功能 */
-.functions-section {
-  margin: 0 20rpx;
-}
-
-.function-group {
-  background-color: #fff;
+/* 轮播图 */
+.carousel-section {
+  margin: 20rpx 20rpx 20rpx;
   border-radius: 20rpx;
-  margin-bottom: 20rpx;
   overflow: hidden;
   box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
 }
 
+.carousel-swiper {
+  width: 100%;
+  height: 200rpx;
+}
+
+.carousel-image {
+  width: 100%;
+  height: 100%;
+}
+
+/* 我的功能 */
+.functions-section {
+  background-color: #fff;
+  margin: 0 20rpx;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+}
+
+.functions-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 32rpx 20rpx;
+}
+
 .function-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 30rpx;
-  border-bottom: 1rpx solid #f5f5f5;
-  transition: background-color 0.2s;
 }
 
-.function-item:last-child {
-  border-bottom: none;
+.function-icon-wrapper {
+  position: relative;
+  width: 88rpx;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #F0F9F4;
+  border-radius: 20rpx;
+  margin-bottom: 12rpx;
 }
 
-.function-item:active {
-  background-color: #f8f8f8;
-}
-
-.function-icon {
-  width: 64rpx;
-  height: 64rpx;
+.function-badge {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 8rpx;
+  background-color: #ff4d4f;
+  color: #fff;
+  font-size: 20rpx;
   border-radius: 16rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 24rpx;
-}
-
-.customer-service-icon {
-  background-color: #E8F8F0;
-}
-
-.address-icon {
-  background-color: #E8F8F0;
-}
-
-.profile-icon {
-  background-color: #E8F8F0;
-}
-
-.settings-icon {
-  background-color: #E8F8F0;
-}
-
-.about-icon {
-  background-color: #E8F8F0;
+  border: 2rpx solid #fff;
 }
 
 .function-text {
-  flex: 1;
-  font-size: 28rpx;
-  color: #333;
-}
-
-.function-right {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-}
-
-.coupon-icon {
-  background-color: #E8F8F0;
-}
-
-.coupon-count {
   font-size: 24rpx;
-  color: #ff4d4f;
-  font-weight: 500;
+  color: #666;
+  text-align: center;
 }
-
 </style>

@@ -366,14 +366,17 @@
       <el-dialog
         v-model="addressEditDialogVisible"
         title="编辑地址"
-        width="700px"
+        width="800px"
         :close-on-click-modal="false"
+        destroy-on-close
+        class="address-edit-dialog"
       >
         <el-form
           ref="addressEditFormRef"
           :model="addressEditForm"
           :rules="addressEditFormRules"
-          label-width="120px"
+          label-width="100px"
+          class="address-edit-form"
         >
           <el-form-item label="地址名称" prop="name">
             <el-input v-model="addressEditForm.name" placeholder="请输入地址名称" />
@@ -385,43 +388,77 @@
             <el-input v-model="addressEditForm.phone" placeholder="请输入手机号" />
           </el-form-item>
           <el-form-item label="详细地址" prop="address">
-            <el-input 
-              v-model="addressEditForm.address" 
-              type="textarea" 
-              :rows="3"
-              placeholder="请输入详细地址" 
-            />
+            <div style="display: flex; gap: 8px; align-items: flex-start;">
+              <el-input 
+                v-model="addressEditForm.address" 
+                type="textarea" 
+                :rows="3"
+                placeholder="请输入详细地址或点击选择地址按钮"
+                style="flex: 1"
+              />
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <el-button 
+                  type="primary" 
+                  @click="showAddressPicker = true"
+                  style="white-space: nowrap"
+                >
+                  选择地址
+                </el-button>
+                <el-button 
+                  type="default" 
+                  :loading="geocoding"
+                  @click="handleGeocodeAddress"
+                  style="white-space: nowrap"
+                >
+                  解析地址
+                </el-button>
+              </div>
+            </div>
           </el-form-item>
           <el-form-item label="店铺类型">
             <el-input v-model="addressEditForm.storeType" placeholder="请输入店铺类型" />
           </el-form-item>
-          <el-form-item label="门头照片URL">
-            <el-input v-model="addressEditForm.avatar" placeholder="请输入门头照片URL" />
-            <div v-if="addressEditForm.avatar" style="margin-top: 10px;">
-              <el-image
-                :src="addressEditForm.avatar"
-                style="width: 100px; height: 100px; border-radius: 8px;"
-                fit="cover"
-              />
+          <el-form-item label="门头照片">
+            <div class="avatar-upload-wrapper">
+              <el-upload
+                class="avatar-uploader"
+                :action="uploadAddressAvatarUrl"
+                :show-file-list="false"
+                :on-success="handleAddressAvatarSuccess"
+                :before-upload="beforeAddressAvatarUpload"
+                :headers="uploadHeaders"
+                :on-error="handleAddressAvatarError"
+              >
+                <el-image
+                  v-if="addressEditForm.avatar"
+                  :src="addressEditForm.avatar"
+                  class="avatar-image"
+                  fit="cover"
+                  :preview-src-list="[addressEditForm.avatar]"
+                />
+                <div v-else class="avatar-upload-placeholder">
+                  <el-icon class="avatar-upload-icon"><Plus /></el-icon>
+                  <div class="avatar-upload-text">上传门头照片</div>
+                </div>
+              </el-upload>
+              <div class="upload-tip">支持 JPG、PNG 格式，大小不超过 5MB</div>
             </div>
           </el-form-item>
-          <el-form-item label="经度">
-            <el-input-number 
-              v-model="addressEditForm.longitude" 
-              :precision="6"
-              :step="0.000001"
-              placeholder="请输入经度"
-              style="width: 100%"
-            />
-          </el-form-item>
-          <el-form-item label="纬度">
-            <el-input-number 
-              v-model="addressEditForm.latitude" 
-              :precision="6"
-              :step="0.000001"
-              placeholder="请输入纬度"
-              style="width: 100%"
-            />
+          <el-form-item label="经纬度">
+            <div style="display: flex; gap: 12px;">
+              <el-input 
+                v-model="addressEditForm.longitude" 
+                placeholder="经度"
+                style="flex: 1"
+                type="number"
+              />
+              <el-input 
+                v-model="addressEditForm.latitude" 
+                placeholder="纬度"
+                style="flex: 1"
+                type="number"
+              />
+            </div>
           </el-form-item>
           <el-form-item label="设为默认地址">
             <el-switch
@@ -439,6 +476,29 @@
             </el-button>
           </span>
         </template>
+      </el-dialog>
+
+      <!-- 地址选择弹窗 -->
+      <el-dialog
+        v-model="showAddressPicker"
+        title="选择地址"
+        width="90%"
+        :close-on-click-modal="false"
+        destroy-on-close
+      >
+        <div id="addressPickerMap" style="width: 100%; height: 500px;"></div>
+        <div style="margin-top: 16px;">
+          <el-input
+            v-model="selectedAddressText"
+            placeholder="已选择的地址"
+            readonly
+            style="margin-bottom: 8px;"
+          />
+          <div style="display: flex; gap: 8px;">
+            <el-button @click="showAddressPicker = false">取消</el-button>
+            <el-button type="primary" @click="handleConfirmAddress">确认选择</el-button>
+          </div>
+        </div>
       </el-dialog>
 
       <!-- 发放优惠券弹窗 -->
@@ -625,10 +685,11 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted, computed } from 'vue'
+import { reactive, ref, onMounted, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Picture, Plus } from '@element-plus/icons-vue'
-import { getMiniUsers, getMiniUserDetail, updateMiniUser, getAdminAddressDetail, updateAdminAddress, getSalesEmployees, uploadUserAvatar, getUserCoupons } from '../api/miniUsers'
+import { getMiniUsers, getMiniUserDetail, updateMiniUser, getAdminAddressDetail, updateAdminAddress, getSalesEmployees, uploadUserAvatar, getUserCoupons, geocodeAddress, reverseGeocode } from '../api/miniUsers'
+import { getMapSettings } from '../api/settings'
 import { getCoupons, issueCouponToUser } from '../api/coupons'
 
 const loading = ref(false)
@@ -674,6 +735,12 @@ const uploadHeaders = computed(() => {
     'Authorization': `Bearer ${token}`
   }
 })
+
+// 地址头像上传URL（管理员接口）
+const uploadAddressAvatarUrl = computed(() => {
+  const baseURL = 'http://localhost:8082/api/mini'
+  return `${baseURL}/admin/mini-app/addresses/avatar`
+})
 const salesEmployees = ref([])
 
 // 发放优惠券相关
@@ -716,6 +783,7 @@ const editFormRules = {
 // 地址编辑相关
 const addressEditDialogVisible = ref(false)
 const addressEditSubmitting = ref(false)
+const geocoding = ref(false)
 const addressEditFormRef = ref(null)
 const addressEditForm = reactive({
   name: '',
@@ -729,6 +797,15 @@ const addressEditForm = reactive({
   isDefault: false
 })
 const editingAddressId = ref(null)
+
+// 地址选择器相关
+const showAddressPicker = ref(false)
+const selectedAddressText = ref('')
+const selectedLatitude = ref(null)
+const selectedLongitude = ref(null)
+let addressPickerMap = null
+let addressPickerMarker = null
+let addressPickerGeocoder = null
 
 const addressEditFormRules = {
   name: [
@@ -956,6 +1033,253 @@ const handleEditAddress = async (address) => {
   addressEditForm.isDefault = address.is_default || false
   
   addressEditDialogVisible.value = true
+}
+
+const handleGeocodeAddress = async () => {
+  if (!addressEditForm.address || !addressEditForm.address.trim()) {
+    ElMessage.warning('请先输入详细地址')
+    return
+  }
+
+  geocoding.value = true
+  try {
+    const res = await geocodeAddress(addressEditForm.address.trim())
+    if (res.code === 200 && res.data && res.data.success) {
+      addressEditForm.latitude = res.data.latitude
+      addressEditForm.longitude = res.data.longitude
+      ElMessage.success('地址解析成功')
+    } else {
+      ElMessage.error(res.message || res.data?.message || '地址解析失败，请检查地址是否正确')
+    }
+  } catch (error) {
+    console.error('地址解析失败:', error)
+    ElMessage.error('地址解析失败，请稍后再试')
+  } finally {
+    geocoding.value = false
+  }
+}
+
+// 动态加载高德地图API
+const loadAmapScript = (key) => {
+  return new Promise((resolve, reject) => {
+    if (window.AMap) {
+      // 如果AMap已加载，检查插件是否已加载
+      if (window.AMap.plugin) {
+        resolve()
+        return
+      }
+    }
+    const script = document.createElement('script')
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${key}`
+    script.onload = () => {
+      // 等待AMap完全初始化
+      if (window.AMap && window.AMap.plugin) {
+        resolve()
+      } else {
+        setTimeout(() => resolve(), 100)
+      }
+    }
+    script.onerror = () => reject(new Error('地图加载失败'))
+    document.head.appendChild(script)
+  })
+}
+
+// 加载高德地图插件
+const loadAmapPlugin = (pluginName) => {
+  return new Promise((resolve, reject) => {
+    if (!window.AMap || !window.AMap.plugin) {
+      reject(new Error('AMap未加载'))
+      return
+    }
+    window.AMap.plugin(pluginName, () => {
+      resolve()
+    })
+  })
+}
+
+// 初始化地址选择器地图
+const initAddressPicker = async () => {
+  // 从系统设置获取高德地图API Key
+  let amapKey = ''
+  try {
+    const res = await getMapSettings()
+    if (res.code === 200 && res.data) {
+      amapKey = res.data.amap_key || ''
+    }
+  } catch (error) {
+    console.error('获取地图设置失败:', error)
+  }
+
+  if (!amapKey) {
+    ElMessage.warning('未配置高德地图API Key，请在系统设置中配置')
+    return
+  }
+
+  // 动态加载地图API
+  try {
+    await loadAmapScript(amapKey)
+  } catch (error) {
+    ElMessage.error('地图加载失败，请检查API Key是否正确')
+    return
+  }
+
+  // 加载地理编码插件
+  try {
+    await loadAmapPlugin('AMap.Geocoder')
+  } catch (error) {
+    ElMessage.error('地理编码插件加载失败')
+    return
+  }
+
+  // 创建地图实例（默认中心为昆明市）
+  const defaultCenter = addressEditForm.longitude && addressEditForm.latitude 
+    ? [addressEditForm.longitude, addressEditForm.latitude]
+    : [102.712251, 25.040609] // 默认昆明市
+
+  addressPickerMap = new AMap.Map('addressPickerMap', {
+    zoom: 15,
+    center: defaultCenter
+  })
+
+  // 创建地理编码实例
+  addressPickerGeocoder = new AMap.Geocoder({
+    city: '全国'
+  })
+
+  // 如果已有地址，创建并显示标记
+  if (addressEditForm.longitude && addressEditForm.latitude) {
+    addressPickerMarker = new AMap.Marker({
+      position: [addressEditForm.longitude, addressEditForm.latitude],
+      draggable: false
+    })
+    addressPickerMap.add(addressPickerMarker)
+    updateAddressFromCoordinates(addressEditForm.longitude, addressEditForm.latitude)
+  }
+
+  // 地图点击事件（点击后再添加marker）
+  addressPickerMap.on('click', (e) => {
+    const { lng, lat } = e.lnglat
+    
+    // 如果marker不存在，创建它
+    if (!addressPickerMarker) {
+      addressPickerMarker = new AMap.Marker({
+        position: [lng, lat],
+        draggable: false
+      })
+      addressPickerMap.add(addressPickerMarker)
+    } else {
+      // 如果marker已存在，更新位置
+      addressPickerMarker.setPosition([lng, lat])
+    }
+    
+    updateAddressFromCoordinates(lng, lat)
+  })
+
+}
+
+// 根据坐标更新地址
+const updateAddressFromCoordinates = (lng, lat) => {
+  selectedLongitude.value = lng
+  selectedLatitude.value = lat
+
+  addressPickerGeocoder.getAddress([lng, lat], (status, result) => {
+    if (status === 'complete' && result.info === 'OK') {
+      selectedAddressText.value = result.regeocode.formattedAddress
+    } else {
+      selectedAddressText.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+    }
+  })
+}
+
+// 确认选择地址
+const handleConfirmAddress = async () => {
+  if (!selectedLongitude.value || !selectedLatitude.value) {
+    ElMessage.warning('请先选择地址位置')
+    return
+  }
+
+  // 先填充经纬度
+  addressEditForm.longitude = selectedLongitude.value
+  addressEditForm.latitude = selectedLatitude.value
+
+  // 调用接口进行逆地理编码，获取地址
+  try {
+    geocoding.value = true
+    const res = await reverseGeocode(selectedLongitude.value, selectedLatitude.value)
+    if (res.code === 200 && res.data && res.data.success && res.data.address) {
+      addressEditForm.address = res.data.address
+      ElMessage.success('地址解析成功')
+    } else {
+      // 如果接口解析失败，使用地图反解析的地址作为备用
+      addressEditForm.address = selectedAddressText.value || ''
+      ElMessage.warning(res.message || '接口解析失败，使用地图解析的地址')
+    }
+  } catch (error) {
+    console.error('逆地理编码失败:', error)
+    // 如果接口解析失败，使用地图反解析的地址作为备用
+    addressEditForm.address = selectedAddressText.value || ''
+    ElMessage.warning('接口解析失败，使用地图解析的地址')
+  } finally {
+    geocoding.value = false
+  }
+
+  showAddressPicker.value = false
+}
+
+// 监听地址选择器弹窗
+watch(showAddressPicker, (newVal) => {
+  if (newVal) {
+    // 延迟初始化，确保DOM已渲染
+    setTimeout(() => {
+      initAddressPicker()
+    }, 100)
+  } else {
+    // 销毁地图实例
+    if (addressPickerMap) {
+      addressPickerMap.destroy()
+      addressPickerMap = null
+      addressPickerMarker = null
+      addressPickerGeocoder = null
+    }
+  }
+})
+
+// 地址头像上传成功
+const handleAddressAvatarSuccess = (response) => {
+  if (response.code === 200 && response.data) {
+    // 兼容多种返回字段名
+    const imageUrl = response.data.url || response.data.imageUrl || response.data.avatar
+    if (imageUrl) {
+      addressEditForm.avatar = imageUrl
+      ElMessage.success('门头照片上传成功')
+    } else {
+      ElMessage.error('上传成功但未返回图片URL')
+    }
+  } else {
+    ElMessage.error(response.message || '上传失败')
+  }
+}
+
+// 地址头像上传前验证
+const beforeAddressAvatarUpload = (file) => {
+  const isImage = file.type.startsWith('image/')
+  const isLt5M = file.size / 1024 / 1024 < 5
+
+  if (!isImage) {
+    ElMessage.error('只能上传图片文件!')
+    return false
+  }
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB!')
+    return false
+  }
+  return true
+}
+
+// 地址头像上传失败
+const handleAddressAvatarError = (error) => {
+  console.error('门头照片上传失败:', error)
+  ElMessage.error('门头照片上传失败，请稍后再试')
 }
 
 const handleSaveAddressEdit = async () => {
@@ -1578,6 +1902,94 @@ onMounted(() => {
   transform: scale(1.05);
 }
 
+/* 编辑地址对话框样式优化 */
+.address-edit-dialog :deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+.address-edit-form {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.address-edit-form :deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+
+.address-edit-form :deep(.el-form-item__label) {
+  font-weight: 500;
+  color: #606266;
+}
+
+/* 门头照片上传样式优化 */
+.avatar-upload-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.avatar-uploader {
+  border: 2px dashed #d9d9d9;
+  border-radius: 8px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s;
+  background-color: #fafafa;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-uploader:hover {
+  border-color: #409eff;
+  background-color: #f0f9ff;
+}
+
+.avatar-upload-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #8c939d;
+  gap: 8px;
+}
+
+.avatar-upload-icon {
+  font-size: 32px;
+  color: #8c939d;
+}
+
+.avatar-upload-text {
+  font-size: 12px;
+  color: #8c939d;
+}
+
+.avatar-image {
+  width: 120px;
+  height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.avatar-image:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.upload-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+}
+
 .sales-employee-info {
   display: flex;
   align-items: center;
@@ -1586,6 +1998,95 @@ onMounted(() => {
 .sales-employee-name {
   font-weight: 500;
   color: #303133;
+}
+
+/* 编辑地址对话框样式优化 */
+.address-edit-dialog :deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+.address-edit-form {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.address-edit-form :deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+
+.address-edit-form :deep(.el-form-item__label) {
+  font-weight: 500;
+  color: #606266;
+}
+
+/* 门头照片上传样式优化 */
+.avatar-upload-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.avatar-uploader {
+  border: 2px dashed #d9d9d9;
+  border-radius: 8px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s;
+  background-color: #fafafa;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-uploader:hover {
+  border-color: #409eff;
+  background-color: #f0f9ff;
+}
+
+.avatar-upload-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #8c939d;
+  gap: 8px;
+}
+
+.avatar-upload-icon {
+  font-size: 32px;
+  color: #8c939d;
+}
+
+.avatar-upload-text {
+  font-size: 12px;
+  color: #8c939d;
+}
+
+.avatar-image {
+  width: 120px;
+  height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.avatar-image:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.upload-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
 }
 </style>
 

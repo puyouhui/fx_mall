@@ -48,6 +48,29 @@
       </view>
     </view>
 
+    <!-- 加急订单模块 -->
+    <view class="section urgent-section">
+      <view class="urgent-container" :class="{ 'urgent-active': isUrgent }">
+        <view class="urgent-left">
+          <view class="urgent-header">
+            <text class="urgent-title">加急订单</text>
+            <text class="urgent-tag">将优先为您配送</text>
+          </view>
+        </view>
+        <view class="urgent-right">
+          <view class="urgent-price-wrapper" v-if="urgentFee > 0">
+            <text class="urgent-price">¥{{ urgentFee.toFixed(2) }}</text>
+          </view>
+          <switch 
+            :checked="isUrgent" 
+            @change="onUrgentChange"
+            color="#20CB6B"
+            class="urgent-switch"
+          />
+        </view>
+      </view>
+    </view>
+
     <!-- 金额信息 -->
     <view class="section amount-section">
       <view class="amount-row">
@@ -65,6 +88,13 @@
       <view class="amount-row" v-if="couponDiscountText">
         <text class="amount-label">优惠券</text>
         <text class="amount-value discount-text">{{ couponDiscountText }}</text>
+      </view>
+      <view class="amount-row urgent-fee-row" v-if="isUrgent">
+        <view class="urgent-fee-label-wrapper">
+          <text class="amount-label urgent-fee-label">加急费用</text>
+          <text class="urgent-fee-tag">将优先为您配送</text>
+        </view>
+        <text class="amount-value urgent-fee-value">¥{{ (urgentFee || 0).toFixed(2) }}</text>
       </view>
       <view class="amount-divider"></view>
       <view class="amount-row total-row">
@@ -195,7 +225,9 @@ export default {
       couponDiscount: 0,
       deliveryFeeSaved: 0,
       amountCouponSaved: 0,
-      submitting: false
+      submitting: false,
+      isUrgent: false,
+      urgentFee: 0
     }
   },
   computed: {
@@ -231,7 +263,8 @@ export default {
       if (!this.summary) return goods.toFixed(2)
       const fee = this.summary.is_free_shipping ? 0 : Number(this.summary.delivery_fee || 0)
       const actualFee = Math.max(fee - this.deliveryFeeSaved, 0)
-      const total = goods + actualFee - Number(this.pointsDiscount || 0) - Number(this.amountCouponSaved || 0)
+      const urgent = this.isUrgent ? (this.urgentFee || 0) : 0
+      const total = goods + actualFee + urgent - Number(this.pointsDiscount || 0) - Number(this.amountCouponSaved || 0)
       return total.toFixed(2)
     },
     couponDiscountText() {
@@ -310,6 +343,10 @@ export default {
         if (res && res.code === 200 && res.data) {
           this.items = Array.isArray(res.data.items) ? res.data.items : []
           this.summary = res.data.summary || null
+          // 获取加急费用（从API返回的数据中获取）
+          if (res.data.urgent_fee !== undefined) {
+            this.urgentFee = Number(res.data.urgent_fee || 0)
+          }
           if (!this.itemIds.length && this.items.length) {
             this.itemIds = this.items.map(item => item.id)
           }
@@ -356,6 +393,16 @@ export default {
     onOutOfStockChange(e) {
       this.outOfStockStrategy = e.detail.value
     },
+    // 加急订单开关变化
+    onUrgentChange(e) {
+      this.isUrgent = e.detail.value
+      // 如果开启加急但费用为0，尝试从API获取
+      if (this.isUrgent && this.urgentFee === 0) {
+        // 加急费用应该已经从 loadPurchaseSummary 中获取了
+        // 如果还是0，说明系统设置中加急费用为0
+        console.log('加急费用:', this.urgentFee)
+      }
+    },
     async submitOrder() {
       if (!this.defaultAddress) {
         uni.showToast({ title: '请先选择收货地址', icon: 'none' })
@@ -380,7 +427,8 @@ export default {
           coupon_discount: this.couponDiscount,
           item_ids: this.itemIds,
           delivery_coupon_id: this.deliveryCouponId || null,
-          amount_coupon_id: this.amountCouponId || null
+          amount_coupon_id: this.amountCouponId || null,
+          is_urgent: this.isUrgent
         }
         const res = await createOrder(payload, this.token)
         if (res && res.code === 200) {
@@ -599,6 +647,71 @@ export default {
   font-weight: 500;
 }
 
+/* 加急订单模块样式 */
+.urgent-section {
+  margin-top: 0;
+}
+
+.urgent-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 12rpx;
+  transition: all 0.3s ease;
+}
+
+.urgent-left {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.urgent-header {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.urgent-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #20CB6B;
+}
+
+.urgent-tag {
+  display: inline-block;
+  padding: 4rpx 12rpx;
+  color: #20CB6B;
+  font-size: 24rpx;
+  font-weight: 500;
+  border-radius: 12rpx;
+  background-color: #E8F8F0;
+}
+
+.urgent-right {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.urgent-price-wrapper {
+  display: flex;
+  align-items: baseline;
+  padding: 8rpx 16rpx;
+  border-radius: 8rpx;
+}
+
+.urgent-price {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #20CB6B;
+  line-height: 1;
+}
+
+.urgent-switch {
+  transform: scale(0.95);
+}
+
 .amount-section .amount-row {
   display: flex;
   justify-content: space-between;
@@ -631,6 +744,34 @@ export default {
 .amount-value.discount-text {
   color: #20CB6B;
   font-weight: 500;
+}
+
+/* 加急费用突出显示 */
+.urgent-fee-row {
+  /* padding: 20rpx 24rpx; */
+  border-radius: 12rpx;
+  margin: 16rpx 0;
+}
+
+.urgent-fee-label-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.urgent-fee-tag {
+  display: inline-block;
+  padding: 4rpx 12rpx;
+  background-color: #E8F8F0;
+  color: #20CB6B;
+  font-size: 20rpx;
+  border-radius: 8rpx;
+  font-weight: 500;
+}
+
+.urgent-fee-value {
+  color: #20CB6B;
+  font-size: 30rpx;
 }
 
 .amount-divider {

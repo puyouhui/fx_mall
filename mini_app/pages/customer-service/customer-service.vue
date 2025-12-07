@@ -59,6 +59,28 @@
       </view>
     </view>
 
+    <!-- 第一联系人：销售员信息 -->
+    <view class="sales-employee-section" v-if="salesEmployee">
+      <view class="section-header">
+        <text class="section-title">第一联系人</text>
+      </view>
+      <view class="sales-employee-card" @click="callSalesEmployee">
+        <view class="sales-employee-info">
+          <view class="sales-employee-avatar">
+            <uni-icons type="person-filled" size="32" color="#20CB6B"></uni-icons>
+          </view>
+          <view class="sales-employee-details">
+            <text class="sales-employee-name">{{ salesEmployee.name }}</text>
+            <text class="sales-employee-phone">{{ salesEmployee.phone }}</text>
+          </view>
+        </view>
+        <view class="call-button">
+          <uni-icons type="phone" size="24" color="#20CB6B"></uni-icons>
+          <text class="call-text">拨打</text>
+        </view>
+      </view>
+    </view>
+
     <!-- 分类标签 -->
     <view class="category-tabs">
       <view 
@@ -96,12 +118,15 @@
 </template>
 
 <script>
+import { getMiniUserInfo } from '../../api/index.js';
+
 export default {
   data() {
     return {
       statusBarHeight: 20, // 状态栏高度（默认值）
       navBarHeight: 45, // 导航栏高度（默认值）
       currentCategoryIndex: 0, // 当前选中的分类索引
+      salesEmployee: null, // 销售员信息
       categories: [
         {
           name: '常见问题',
@@ -157,6 +182,9 @@ export default {
     
     // 获取胶囊按钮信息并计算导航栏高度
     this.getMenuButtonInfo();
+    
+    // 加载用户信息和销售员信息
+    this.loadUserInfo();
   },
   computed: {
     // 当前分类的问题列表
@@ -267,6 +295,51 @@ export default {
           }
         });
       }
+    },
+    
+    // 加载用户信息和销售员信息
+    async loadUserInfo() {
+      try {
+        const token = uni.getStorageSync('miniUserToken');
+        if (!token) {
+          return;
+        }
+        
+        const res = await getMiniUserInfo(token);
+        if (res && res.code === 200 && res.data) {
+          // 获取销售员信息
+          if (res.data.sales_employee) {
+            this.salesEmployee = res.data.sales_employee;
+          }
+        }
+      } catch (error) {
+        console.error('获取用户信息失败:', error);
+      }
+    },
+    
+    // 拨打销售员电话
+    callSalesEmployee() {
+      if (!this.salesEmployee || !this.salesEmployee.phone) {
+        uni.showToast({
+          title: '销售员电话不可用',
+          icon: 'none'
+        });
+        return;
+      }
+      
+      uni.makePhoneCall({
+        phoneNumber: this.salesEmployee.phone,
+        success: () => {
+          console.log('拨打电话成功');
+        },
+        fail: (err) => {
+          console.error('拨打电话失败:', err);
+          uni.showToast({
+            title: '拨打电话失败',
+            icon: 'none'
+          });
+        }
+      });
     }
   }
 };
@@ -427,6 +500,86 @@ export default {
 .btn-text {
   font-size: 26rpx;
   color: #333;
+  font-weight: 500;
+}
+
+/* 销售员信息区域 */
+.sales-employee-section {
+  background-color: #fff;
+  margin: 0 20rpx 20rpx;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+}
+
+.sales-employee-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx;
+  background-color: #F0FDF6;
+  border-radius: 16rpx;
+  border: 1rpx solid #E8F8F0;
+  transition: all 0.3s;
+}
+
+.sales-employee-card:active {
+  background-color: #E8F8F0;
+  transform: scale(0.98);
+}
+
+.sales-employee-info {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.sales-employee-avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background-color: #E8F8F0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 24rpx;
+  flex-shrink: 0;
+}
+
+.sales-employee-details {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.sales-employee-name {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8rpx;
+}
+
+.sales-employee-phone {
+  font-size: 26rpx;
+  color: #666;
+}
+
+.call-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16rpx 24rpx;
+  background-color: #20CB6B;
+  border-radius: 12rpx;
+  min-width: 100rpx;
+  flex-shrink: 0;
+}
+
+.call-text {
+  font-size: 24rpx;
+  color: #fff;
+  margin-top: 4rpx;
   font-weight: 500;
 }
 

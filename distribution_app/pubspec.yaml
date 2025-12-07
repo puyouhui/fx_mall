@@ -48,6 +48,7 @@ dependencies:
   # 地图组件（flutter_map）
   flutter_map: ^8.0.0
   latlong2: ^0.9.1
+  flutter_map_location_marker: ^10.0.2
 
 dev_dependencies:
   flutter_test:

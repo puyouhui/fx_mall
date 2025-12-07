@@ -1192,6 +1192,7 @@ func CreateOrderForCustomer(c *gin.Context) {
 		TrustReceipt        bool   `json:"trust_receipt"`         // 信任签收
 		HidePrice           bool   `json:"hide_price"`            // 是否隐藏价格
 		RequirePhoneContact bool   `json:"require_phone_contact"` // 配送时是否电话联系
+		IsUrgent            bool   `json:"is_urgent"`             // 是否加急订单
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1343,6 +1344,17 @@ func CreateOrderForCustomer(c *gin.Context) {
 		outOfStockStrategy = "contact_me"
 	}
 
+	// 获取加急费用（从系统设置）
+	urgentFee := 0.0
+	if req.IsUrgent {
+		urgentFeeStr, err := model.GetSystemSetting("order_urgent_fee")
+		if err == nil && urgentFeeStr != "" {
+			if fee, parseErr := strconv.ParseFloat(urgentFeeStr, 64); parseErr == nil && fee > 0 {
+				urgentFee = fee
+			}
+		}
+	}
+
 	// 创建订单
 	options := model.OrderCreationOptions{
 		Remark:              req.Remark,
@@ -1352,6 +1364,8 @@ func CreateOrderForCustomer(c *gin.Context) {
 		RequirePhoneContact: req.RequirePhoneContact,
 		PointsDiscount:      0,
 		CouponDiscount:      couponDiscount,
+		IsUrgent:            req.IsUrgent,
+		UrgentFee:           urgentFee,
 	}
 
 	order, orderItems, err := model.CreateOrderFromPurchaseList(req.UserID, req.AddressID, items, summary, options, userType)

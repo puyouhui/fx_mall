@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_location_marker/flutter_map_location_marker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:async';
 import '../utils/location_service.dart';
 
 /// 路线规划页面：使用 flutter_map 显示天地图图层
@@ -17,10 +19,17 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
   // 地图控制器
   final MapController _mapController = MapController();
 
-  // 用户位置
+  // 用户位置（保留用于显示状态）
   Position? _userPosition;
   bool _isLoadingLocation = false;
   String? _locationError;
+
+  // 位置流控制器（用于 flutter_map_location_marker）
+  final StreamController<LocationMarkerPosition?> _locationStreamController =
+      StreamController<LocationMarkerPosition?>.broadcast();
+
+  // 位置更新订阅
+  StreamSubscription<Position>? _positionStreamSubscription;
 
   // 地图初始中心点（北京天安门）
   final LatLng _initialCenter = const LatLng(39.90864, 116.39750);
@@ -54,14 +63,16 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
   @override
   void initState() {
     super.initState();
-    // 页面加载时获取用户位置
+    // 页面加载时获取用户位置并开始监听位置更新
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _getUserLocation();
+      _startLocationTracking();
     });
   }
 
   @override
   void dispose() {
+    _positionStreamSubscription?.cancel();
+    _locationStreamController.close();
     _mapController.dispose();
     super.dispose();
   }
@@ -93,7 +104,148 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
         false;
   }
 
-  /// 获取用户位置
+  /// 开始位置跟踪（使用 flutter_map_location_marker）
+  Future<void> _startLocationTracking() async {
+    print('[RoutePlanningView] 开始位置跟踪...');
+
+    if (mounted) {
+      setState(() {
+        _isLoadingLocation = true;
+        _locationError = null;
+      });
+    }
+
+    // 检查定位服务是否启用
+    final serviceEnabled = await LocationService.checkLocationServiceEnabled();
+    print('[RoutePlanningView] 定位服务状态: $serviceEnabled');
+
+    // 检查并请求权限
+    final hasPermission = await LocationService.checkAndRequestPermission();
+    print('[RoutePlanningView] 权限检查结果: $hasPermission');
+
+    if (!hasPermission) {
+      // 检查权限状态，给出更具体的提示
+      final permission = await Geolocator.checkPermission();
+      final permissionHandlerStatus = await Permission.location.status;
+
+      String errorMsg = '定位权限未授予';
+      bool needShowDialog = false;
+
+      if (permission == LocationPermission.deniedForever ||
+          permissionHandlerStatus.isPermanentlyDenied) {
+        errorMsg = '定位权限被永久拒绝，请到设置中开启';
+        needShowDialog = true;
+      } else if (permission == LocationPermission.denied ||
+          permissionHandlerStatus.isDenied) {
+        errorMsg = '定位权限未授予（小米手机请到设置中手动开启）';
+        needShowDialog = true;
+      }
+
+      if (mounted) {
+        setState(() {
+          _isLoadingLocation = false;
+          _locationError = errorMsg;
+        });
+      }
+
+      if (needShowDialog && mounted) {
+        final shouldOpenSettings = await _showPermissionDialog();
+        if (shouldOpenSettings) {
+          await LocationService.openAppSettingsPage();
+          await Future.delayed(const Duration(seconds: 2));
+          _startLocationTracking();
+        }
+      }
+      return;
+    }
+
+    // 如果定位服务未启用，提示用户
+    if (!serviceEnabled) {
+      if (mounted) {
+        setState(() {
+          _isLoadingLocation = false;
+          _locationError = '定位服务未启用，请先开启GPS';
+        });
+      }
+      return;
+    }
+
+    // 开始监听位置更新
+    try {
+      _positionStreamSubscription =
+          Geolocator.getPositionStream(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              distanceFilter: 10, // 每移动10米更新一次
+            ),
+          ).listen(
+            (Position position) {
+              print(
+                '[RoutePlanningView] 位置更新: ${position.latitude}, ${position.longitude}',
+              );
+
+              // 更新位置流
+              _locationStreamController.add(
+                LocationMarkerPosition(
+                  latitude: position.latitude,
+                  longitude: position.longitude,
+                  accuracy: position.accuracy,
+                ),
+              );
+
+              // 更新状态
+              if (mounted) {
+                setState(() {
+                  _userPosition = position;
+                  _isLoadingLocation = false;
+                  _locationError = null;
+                });
+              }
+
+              // 首次定位时，将地图中心移动到用户位置
+              if (_userPosition == null) {
+                _mapController.move(
+                  LatLng(position.latitude, position.longitude),
+                  _initialZoom,
+                );
+              }
+            },
+            onError: (error) {
+              print('[RoutePlanningView] 位置流错误: $error');
+              if (mounted) {
+                setState(() {
+                  _isLoadingLocation = false;
+                  _locationError = '定位失败: ${error.toString()}';
+                });
+              }
+            },
+          );
+
+      // 立即获取一次位置（用于初始定位）
+      final initialPosition = await LocationService.getCurrentLocation();
+      if (initialPosition != null && mounted) {
+        setState(() {
+          _userPosition = initialPosition;
+          _isLoadingLocation = false;
+          _locationError = null;
+        });
+        _mapController.move(
+          LatLng(initialPosition.latitude, initialPosition.longitude),
+          _initialZoom,
+        );
+      }
+    } catch (e) {
+      print('[RoutePlanningView] 启动位置跟踪失败: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingLocation = false;
+          _locationError = '启动位置跟踪失败';
+        });
+      }
+    }
+  }
+
+  /// 获取用户位置（保留用于兼容）
   Future<void> _getUserLocation() async {
     print('[RoutePlanningView] 开始获取用户位置...');
 
@@ -260,39 +412,10 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
                 maxZoom: 18,
                 tileProvider: createTiandituTileProvider(),
               ),
-              // 用户位置标记图层
-              if (_userPosition != null)
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: LatLng(
-                        _userPosition!.latitude,
-                        _userPosition!.longitude,
-                      ),
-                      width: 40,
-                      height: 40,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF20CB6B),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 3),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.3),
-                              blurRadius: 8,
-                              spreadRadius: 2,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.location_on,
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              // 用户位置标记图层（使用 flutter_map_location_marker）
+              CurrentLocationLayer(
+                positionStream: _locationStreamController.stream,
+              ),
               // 版权信息
               RichAttributionWidget(
                 attributions: [TextSourceAttribution('天地图', onTap: () {})],

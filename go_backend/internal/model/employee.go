@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"go_backend/internal/database"
@@ -432,7 +433,7 @@ func UpdateEmployee(id int, updateData map[string]interface{}) error {
 	updates = append(updates, "updated_at = NOW()")
 	args = append(args, id)
 
-	query := "UPDATE employees SET " + fmt.Sprintf("%s", updates[0])
+	query := "UPDATE employees SET " + updates[0]
 	for i := 1; i < len(updates); i++ {
 		query += ", " + updates[i]
 	}
@@ -448,4 +449,62 @@ func DeleteEmployee(id int) error {
 		UPDATE employees SET status = 0, updated_at = NOW() WHERE id = ?
 	`, id)
 	return err
+}
+
+// GetEmployeesByEmployeeCodes 批量获取员工信息
+func GetEmployeesByEmployeeCodes(employeeCodes []string) (map[string]*Employee, error) {
+	if len(employeeCodes) == 0 {
+		return make(map[string]*Employee), nil
+	}
+
+	// 构建 IN 查询
+	placeholders := make([]string, len(employeeCodes))
+	args := make([]interface{}, len(employeeCodes))
+	for i, code := range employeeCodes {
+		placeholders[i] = "?"
+		args[i] = code
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, employee_code, phone, password, name, is_delivery, is_sales, status, created_at, updated_at
+		FROM employees
+		WHERE employee_code IN (%s)`, strings.Join(placeholders, ","))
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	employees := make(map[string]*Employee)
+	for rows.Next() {
+		var (
+			employee              Employee
+			isDelivery, isSales, status sql.NullInt64
+		)
+
+		err := rows.Scan(
+			&employee.ID,
+			&employee.EmployeeCode,
+			&employee.Phone,
+			&employee.Password,
+			&employee.Name,
+			&isDelivery,
+			&isSales,
+			&status,
+			&employee.CreatedAt,
+			&employee.UpdatedAt,
+		)
+		if err != nil {
+			continue
+		}
+
+		employee.IsDelivery = isDelivery.Valid && isDelivery.Int64 == 1
+		employee.IsSales = isSales.Valid && isSales.Int64 == 1
+		employee.Status = status.Valid && status.Int64 == 1
+
+		employees[employee.EmployeeCode] = &employee
+	}
+
+	return employees, nil
 }

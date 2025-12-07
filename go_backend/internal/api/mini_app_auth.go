@@ -213,10 +213,43 @@ func GetMiniAppCurrentUser(c *gin.Context) {
 		}
 	}
 
+	// 构建返回数据
+	responseData := map[string]interface{}{
+		"id":                user.ID,
+		"unique_id":         user.UniqueID,
+		"user_code":         user.UserCode,
+		"name":              user.Name,
+		"avatar":            user.Avatar,
+		"phone":             user.Phone,
+		"sales_code":        user.SalesCode,
+		"store_type":        user.StoreType,
+		"user_type":         user.UserType,
+		"profile_completed": user.ProfileCompleted,
+		"created_at":        user.CreatedAt,
+		"updated_at":        user.UpdatedAt,
+	}
+
+	// 如果用户绑定了销售员，获取销售员信息
+	if user.SalesCode != "" {
+		employee, err := model.GetEmployeeByEmployeeCode(user.SalesCode)
+		if err == nil && employee != nil {
+			responseData["sales_employee"] = map[string]interface{}{
+				"id":            employee.ID,
+				"employee_code": employee.EmployeeCode,
+				"name":          employee.Name,
+				"phone":         employee.Phone,
+			}
+		} else {
+			responseData["sales_employee"] = nil
+		}
+	} else {
+		responseData["sales_employee"] = nil
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "获取成功",
-		"data":    user,
+		"data":    responseData,
 	})
 }
 
@@ -759,6 +792,20 @@ func UpdateMiniAppUserProfile(c *gin.Context) {
 		addressData["longitude"] = *req.Longitude
 	}
 
+	// 如果经纬度为空，尝试自动解析地址
+	if req.Latitude == nil && req.Longitude == nil && strings.TrimSpace(req.Address) != "" {
+		// 获取地图API Key
+		amapKey, _ := model.GetSystemSetting("map_amap_key")
+		tencentKey, _ := model.GetSystemSetting("map_tencent_key")
+
+		geocodeResult, err := utils.GeocodeAddress(strings.TrimSpace(req.Address), amapKey, tencentKey)
+		if err == nil && geocodeResult.Success {
+			addressData["latitude"] = geocodeResult.Latitude
+			addressData["longitude"] = geocodeResult.Longitude
+		}
+		// 如果解析失败，不阻止保存，但记录日志
+	}
+
 	var address *model.Address
 	// 判断是新增还是编辑
 	if req.AddressID == nil || *req.AddressID == 0 {
@@ -1027,6 +1074,61 @@ func UploadAddressAvatar(c *gin.Context) {
 		"data": gin.H{
 			"avatar":   fileURL,
 			"imageUrl": fileURL, // 兼容前端可能使用的字段名
+			"url":      fileURL, // 兼容更多字段名
+		},
+	})
+}
+
+// UploadAddressAvatarByAdmin 管理员上传地址头像（门头照片），只上传到MinIO并返回URL，不更新任何表
+func UploadAddressAvatarByAdmin(c *gin.Context) {
+	// 检查是否有文件上传
+	file, headers, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请选择要上传的图片: " + err.Error()})
+		return
+	}
+	defer file.Close()
+
+	if headers.Size > 15*1024*1024 { // 限制文件大小为15MB
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过15MB"})
+		return
+	}
+
+	// 检查文件类型
+	imageExtensions := map[string]bool{
+		".jpg":  true,
+		".jpeg": true,
+		".png":  true,
+		".gif":  true,
+		".bmp":  true,
+	}
+	extension := ""
+	for i := len(headers.Filename) - 1; i >= 0; i-- {
+		if headers.Filename[i] == '.' {
+			extension = headers.Filename[i:]
+			break
+		}
+	}
+	if !imageExtensions[strings.ToLower(extension)] {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请上传JPG、PNG或GIF格式的图片"})
+		return
+	}
+
+	// 上传图片到MinIO（使用不同的bucket前缀以区分地址头像）
+	fileURL, err := utils.UploadFile("mini-address-avatar", c.Request)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
+		return
+	}
+
+	// 只返回URL，不更新任何表
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "图片上传成功",
+		"data": gin.H{
+			"avatar":   fileURL,
+			"imageUrl": fileURL, // 兼容前端可能使用的字段名
+			"url":      fileURL, // 兼容更多字段名
 		},
 	})
 }
@@ -1260,5 +1362,88 @@ func UpdateMiniAppUserPhone(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "更新成功",
+	})
+}
+
+// GeocodeAddress 地址解析接口（将地址文本转换为经纬度）
+func GeocodeAddress(c *gin.Context) {
+	type geocodeRequest struct {
+		Address string `json:"address" binding:"required"`
+	}
+
+	var req geocodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	// 获取地图API Key
+	amapKey, _ := model.GetSystemSetting("map_amap_key")
+	tencentKey, _ := model.GetSystemSetting("map_tencent_key")
+
+	result, err := utils.GeocodeAddress(req.Address, amapKey, tencentKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "地址解析失败: " + err.Error(),
+		})
+		return
+	}
+
+	if !result.Success {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": result.Message,
+			"data":    result,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "地址解析成功",
+		"data":    result,
+	})
+}
+
+// ReverseGeocode 逆地理编码接口（根据经纬度获取地址）
+func ReverseGeocode(c *gin.Context) {
+	type reverseGeocodeRequest struct {
+		Longitude float64 `json:"longitude" binding:"required"`
+		Latitude  float64 `json:"latitude" binding:"required"`
+	}
+
+	var req reverseGeocodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	// 获取地图API Key
+	amapKey, _ := model.GetSystemSetting("map_amap_key")
+	tencentKey, _ := model.GetSystemSetting("map_tencent_key")
+
+	result, err := utils.ReverseGeocode(req.Longitude, req.Latitude, amapKey, tencentKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "逆地理编码失败: " + err.Error(),
+		})
+		return
+	}
+
+	if !result.Success {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": result.Message,
+			"data":    result,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "逆地理编码成功",
+		"data":    result,
 	})
 }

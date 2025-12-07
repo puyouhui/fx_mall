@@ -32,6 +32,10 @@ var Config = struct {
 		AppID     string `json:"app_id"`
 		AppSecret string `json:"app_secret"`
 	} `json:"mini_app"`
+	Map struct {
+		AmapKey    string `json:"amap_key"`    // 高德地图API Key
+		TencentKey string `json:"tencent_key"` // 腾讯地图API Key
+	} `json:"map"`
 }{}
 
 // InitConfig 初始化配置
@@ -58,4 +62,9 @@ func InitConfig() {
 	// 小程序配置（用于用户登录）
 	Config.MiniApp.AppID = "wxa2535727aedb00cc"
 	Config.MiniApp.AppSecret = "4e39a349d4eff820c3d4fa8f6441f3f0"
+	// 地图API配置（用于地址解析）
+	// 高德地图API Key（可选，如果配置了则优先使用高德）
+	Config.Map.AmapKey = ""
+	// 腾讯地图API Key（可选，如果配置了则使用腾讯）
+	Config.Map.TencentKey = ""
 }

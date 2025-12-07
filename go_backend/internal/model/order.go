@@ -17,18 +17,22 @@ type Order struct {
 	OrderNumber         string     `json:"order_number"` // 订单编号
 	UserID              int        `json:"user_id"`
 	AddressID           int        `json:"address_id"`
-	Status              string     `json:"status"`                // pending_delivery/delivering/delivered/paid/cancelled
-	GoodsAmount         float64    `json:"goods_amount"`          // 商品总金额
-	DeliveryFee         float64    `json:"delivery_fee"`          // 配送费
-	PointsDiscount      float64    `json:"points_discount"`       // 积分抵扣金额
-	CouponDiscount      float64    `json:"coupon_discount"`       // 优惠券抵扣金额
-	TotalAmount         float64    `json:"total_amount"`          // 实际应付金额
-	Remark              string     `json:"remark"`                // 备注
-	OutOfStockStrategy  string     `json:"out_of_stock_strategy"` // 缺货处理：cancel_item/ship_available/contact_me
-	TrustReceipt        bool       `json:"trust_receipt"`         // 是否信任签收
-	HidePrice           bool       `json:"hide_price"`            // 是否隐藏价格
-	RequirePhoneContact bool       `json:"require_phone_contact"` // 是否要求配送时电话联系
-	ExpectedDeliveryAt  *time.Time `json:"expected_delivery_at"`  // 预计送达时间（可为空）
+	Status              string     `json:"status"`                 // pending_delivery/delivering/delivered/paid/cancelled
+	GoodsAmount         float64    `json:"goods_amount"`           // 商品总金额
+	DeliveryFee         float64    `json:"delivery_fee"`           // 配送费
+	PointsDiscount      float64    `json:"points_discount"`        // 积分抵扣金额
+	CouponDiscount      float64    `json:"coupon_discount"`        // 优惠券抵扣金额
+	IsUrgent            bool       `json:"is_urgent"`              // 是否加急订单
+	UrgentFee           float64    `json:"urgent_fee"`             // 加急费用
+	TotalAmount         float64    `json:"total_amount"`           // 实际应付金额
+	Remark              string     `json:"remark"`                 // 备注
+	OutOfStockStrategy  string     `json:"out_of_stock_strategy"`  // 缺货处理：cancel_item/ship_available/contact_me
+	TrustReceipt        bool       `json:"trust_receipt"`          // 是否信任签收
+	HidePrice           bool       `json:"hide_price"`             // 是否隐藏价格
+	RequirePhoneContact bool       `json:"require_phone_contact"`  // 是否要求配送时电话联系
+	ExpectedDeliveryAt  *time.Time `json:"expected_delivery_at"`   // 预计送达时间（可为空）
+	WeatherInfo         *string    `json:"weather_info,omitempty"` // 天气信息（JSON格式）
+	IsIsolated          bool       `json:"is_isolated"`            // 是否孤立订单（8公里内无其他订单）
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
 }
@@ -55,6 +59,8 @@ type OrderCreationOptions struct {
 	RequirePhoneContact bool
 	PointsDiscount      float64
 	CouponDiscount      float64
+	IsUrgent            bool
+	UrgentFee           float64
 }
 
 // GenerateOrderNumber 生成订单编号
@@ -117,6 +123,8 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	requirePhoneContact := opts.RequirePhoneContact
 	pointsDiscount := opts.PointsDiscount
 	couponDiscount := opts.CouponDiscount
+	isUrgent := opts.IsUrgent
+	urgentFee := opts.UrgentFee
 
 	// 计算金额
 	goodsAmount := summary.TotalAmount
@@ -130,8 +138,14 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	if couponDiscount < 0 {
 		couponDiscount = 0
 	}
+	if urgentFee < 0 {
+		urgentFee = 0
+	}
+	if !isUrgent {
+		urgentFee = 0
+	}
 
-	totalAmount := goodsAmount + deliveryFee - pointsDiscount - couponDiscount
+	totalAmount := goodsAmount + deliveryFee + urgentFee - pointsDiscount - couponDiscount
 	if totalAmount < 0 {
 		totalAmount = 0
 	}
@@ -156,13 +170,13 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	// 插入订单主表
 	res, err := tx.Exec(`
 		INSERT INTO orders (
-			order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount, coupon_discount, total_amount,
+			order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount, coupon_discount, is_urgent, urgent_fee, total_amount,
 			remark, out_of_stock_strategy, trust_receipt, hide_price, require_phone_contact, expected_delivery_at,
 			created_at, updated_at
-		) VALUES (?, ?, ?, 'pending_delivery', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
+		) VALUES (?, ?, ?, 'pending_delivery', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
 	`,
 		orderNumber, userID, addressID,
-		goodsAmount, deliveryFee, pointsDiscount, couponDiscount, totalAmount,
+		goodsAmount, deliveryFee, pointsDiscount, couponDiscount, boolToTinyInt(isUrgent), urgentFee, totalAmount,
 		opts.Remark, outOfStockStrategy, boolToTinyInt(trustReceipt), boolToTinyInt(hidePrice), boolToTinyInt(requirePhoneContact),
 	)
 	if err != nil {
@@ -245,20 +259,43 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 		return nil, nil, err
 	}
 
+	// 计算并存储配送费计算结果和利润信息
+	// 注意：这里在事务外执行，避免阻塞订单创建
+	go func() {
+		// 先更新订单的配送相关信息（孤立状态、天气信息等）
+		_ = UpdateOrderDeliveryInfo(orderID)
+
+		// 然后计算并存储配送费计算结果和利润
+		_ = CalculateAndStoreOrderProfit(orderID)
+	}()
+
 	// 查询刚插入的订单记录
 	var order Order
 	var expectedDelivery sql.NullTime
+	var weatherInfo sql.NullString
+	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
 	err = database.DB.QueryRow(`
 		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
-		       coupon_discount, total_amount, remark, out_of_stock_strategy, trust_receipt,
-		       hide_price, require_phone_contact, expected_delivery_at, created_at, updated_at
+		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
+		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, created_at, updated_at
 		FROM orders WHERE id = ?
 	`, orderID).Scan(
 		&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
-		&order.PointsDiscount, &order.CouponDiscount, &order.TotalAmount, &order.Remark,
-		&order.OutOfStockStrategy, &order.TrustReceipt, &order.HidePrice, &order.RequirePhoneContact,
-		&expectedDelivery, &order.CreatedAt, &order.UpdatedAt,
+		&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
+		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
+		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &order.CreatedAt, &order.UpdatedAt,
 	)
+	if err != nil {
+		return nil, nil, err
+	}
+	order.IsUrgent = isUrgentTinyInt == 1
+	order.TrustReceipt = trustReceiptTinyInt == 1
+	order.HidePrice = hidePriceTinyInt == 1
+	order.RequirePhoneContact = requirePhoneContactTinyInt == 1
+	order.IsIsolated = isIsolatedTinyInt == 1
+	if weatherInfo.Valid {
+		order.WeatherInfo = &weatherInfo.String
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -325,8 +362,8 @@ func GetOrdersWithPagination(pageNum, pageSize int, keyword string, status strin
 	// 获取分页数据
 	query := `
 		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
-		       coupon_discount, total_amount, remark, out_of_stock_strategy, trust_receipt,
-		       hide_price, require_phone_contact, expected_delivery_at, created_at, updated_at
+		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
+		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, created_at, updated_at
 		FROM orders WHERE ` + where + ` ORDER BY id DESC LIMIT ? OFFSET ?`
 	args = append(args, pageSize, offset)
 
@@ -339,20 +376,29 @@ func GetOrdersWithPagination(pageNum, pageSize int, keyword string, status strin
 	for rows.Next() {
 		var order Order
 		var expectedDelivery sql.NullTime
+		var weatherInfo sql.NullString
+		var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
 
 		err := rows.Scan(
 			&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
-			&order.PointsDiscount, &order.CouponDiscount, &order.TotalAmount, &order.Remark,
-			&order.OutOfStockStrategy, &order.TrustReceipt, &order.HidePrice, &order.RequirePhoneContact,
-			&expectedDelivery, &order.CreatedAt, &order.UpdatedAt,
+			&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
+			&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
+			&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &order.CreatedAt, &order.UpdatedAt,
 		)
 		if err != nil {
 			return nil, 0, err
 		}
-
+		order.IsUrgent = isUrgentTinyInt == 1
+		order.TrustReceipt = trustReceiptTinyInt == 1
+		order.HidePrice = hidePriceTinyInt == 1
+		order.RequirePhoneContact = requirePhoneContactTinyInt == 1
+		order.IsIsolated = isIsolatedTinyInt == 1
 		if expectedDelivery.Valid {
 			t := expectedDelivery.Time
 			order.ExpectedDeliveryAt = &t
+		}
+		if weatherInfo.Valid {
+			order.WeatherInfo = &weatherInfo.String
 		}
 
 		orders = append(orders, order)
@@ -365,18 +411,20 @@ func GetOrdersWithPagination(pageNum, pageSize int, keyword string, status strin
 func GetOrderByID(id int) (*Order, error) {
 	var order Order
 	var expectedDelivery sql.NullTime
+	var weatherInfo sql.NullString
 
 	query := `
 		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
-		       coupon_discount, total_amount, remark, out_of_stock_strategy, trust_receipt,
-		       hide_price, require_phone_contact, expected_delivery_at, created_at, updated_at
+		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
+		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, created_at, updated_at
 		FROM orders WHERE id = ?
 	`
+	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
 	err := database.DB.QueryRow(query, id).Scan(
 		&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
-		&order.PointsDiscount, &order.CouponDiscount, &order.TotalAmount, &order.Remark,
-		&order.OutOfStockStrategy, &order.TrustReceipt, &order.HidePrice, &order.RequirePhoneContact,
-		&expectedDelivery, &order.CreatedAt, &order.UpdatedAt,
+		&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
+		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
+		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -384,10 +432,17 @@ func GetOrderByID(id int) (*Order, error) {
 		}
 		return nil, err
 	}
-
+	order.IsUrgent = isUrgentTinyInt == 1
+	order.TrustReceipt = trustReceiptTinyInt == 1
+	order.HidePrice = hidePriceTinyInt == 1
+	order.RequirePhoneContact = requirePhoneContactTinyInt == 1
+	order.IsIsolated = isIsolatedTinyInt == 1
 	if expectedDelivery.Valid {
 		t := expectedDelivery.Time
 		order.ExpectedDeliveryAt = &t
+	}
+	if weatherInfo.Valid {
+		order.WeatherInfo = &weatherInfo.String
 	}
 
 	return &order, nil
@@ -661,6 +716,44 @@ func GetOrderItemCountByOrderID(orderID int) (int, error) {
 	return count, nil
 }
 
+// GetOrderItemCountsByOrderIDs 批量获取订单商品数量
+func GetOrderItemCountsByOrderIDs(orderIDs []int) (map[int]int, error) {
+	if len(orderIDs) == 0 {
+		return make(map[int]int), nil
+	}
+
+	// 构建 IN 查询
+	placeholders := make([]string, len(orderIDs))
+	args := make([]interface{}, len(orderIDs))
+	for i, id := range orderIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT order_id, COUNT(*) as count
+		FROM order_items
+		WHERE order_id IN (%s)
+		GROUP BY order_id`, strings.Join(placeholders, ","))
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[int]int)
+	for rows.Next() {
+		var orderID, count int
+		if err := rows.Scan(&orderID, &count); err != nil {
+			continue
+		}
+		counts[orderID] = count
+	}
+
+	return counts, nil
+}
+
 // CountOrdersByUserID 统计指定用户的订单数量
 func CountOrdersByUserID(userID int) (int, error) {
 	var count int
@@ -741,5 +834,14 @@ func GetRecentOrdersByUserID(userID int, limit int) ([]map[string]interface{}, e
 func UpdateOrderStatus(orderID int, newStatus string) error {
 	query := "UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?"
 	_, err := database.DB.Exec(query, newStatus, orderID)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// 更新订单状态后，重新计算配送费和利润（异步执行，避免阻塞）
+	go func() {
+		_ = CalculateAndStoreOrderProfit(orderID)
+	}()
+
+	return nil
 }

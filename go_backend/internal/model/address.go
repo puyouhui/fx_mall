@@ -2,10 +2,12 @@ package model
 
 import (
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
 	"go_backend/internal/database"
+	"go_backend/internal/utils"
 )
 
 // Address 表示用户地址
@@ -55,6 +57,22 @@ func CreateAddress(userID int, addressData map[string]interface{}) (*Address, er
 	}
 	if lng, ok := addressData["longitude"].(float64); ok {
 		longitude = lng
+	}
+
+	// 如果经纬度为空，尝试自动解析地址（兜底逻辑）
+	if latitude == nil && longitude == nil {
+		if addressStr, ok := addressData["address"].(string); ok && strings.TrimSpace(addressStr) != "" {
+			// 获取地图API Key
+			amapKey, _ := GetSystemSetting("map_amap_key")
+			tencentKey, _ := GetSystemSetting("map_tencent_key")
+
+			geocodeResult, err := utils.GeocodeAddress(strings.TrimSpace(addressStr), amapKey, tencentKey)
+			if err == nil && geocodeResult.Success {
+				latitude = geocodeResult.Latitude
+				longitude = geocodeResult.Longitude
+			}
+			// 如果解析失败，不阻止保存，但记录日志
+		}
 	}
 
 	result, err := database.DB.Exec(query,
@@ -312,13 +330,34 @@ func UpdateAddress(id int, userID int, addressData map[string]interface{}) error
 		args = append(args, storeType)
 	}
 	// 不再更新sales_code，销售员绑定到用户而不是地址
+	var hasLatitude, hasLongitude bool
 	if latitude, ok := addressData["latitude"].(float64); ok {
+		hasLatitude = true
 		updates = append(updates, "latitude = ?")
 		args = append(args, latitude)
 	}
 	if longitude, ok := addressData["longitude"].(float64); ok {
+		hasLongitude = true
 		updates = append(updates, "longitude = ?")
 		args = append(args, longitude)
+	}
+
+	// 如果经纬度为空，尝试自动解析地址（兜底逻辑）
+	if !hasLatitude && !hasLongitude {
+		if addressStr, ok := addressData["address"].(string); ok && strings.TrimSpace(addressStr) != "" {
+			// 获取地图API Key
+			amapKey, _ := GetSystemSetting("map_amap_key")
+			tencentKey, _ := GetSystemSetting("map_tencent_key")
+
+			geocodeResult, err := utils.GeocodeAddress(strings.TrimSpace(addressStr), amapKey, tencentKey)
+			if err == nil && geocodeResult.Success {
+				updates = append(updates, "latitude = ?")
+				args = append(args, geocodeResult.Latitude)
+				updates = append(updates, "longitude = ?")
+				args = append(args, geocodeResult.Longitude)
+			}
+			// 如果解析失败，不阻止保存，但记录日志
+		}
 	}
 	if isDefault, ok := addressData["is_default"].(bool); ok {
 		var defaultValue int
@@ -422,4 +461,76 @@ func CountAddressesByUserID(userID int) (int, error) {
 		WHERE user_id = ?
 	`, userID).Scan(&count)
 	return count, err
+}
+
+// GetAddressesByIDs 批量获取地址信息
+func GetAddressesByIDs(ids []int) (map[int]*Address, error) {
+	if len(ids) == 0 {
+		return make(map[int]*Address), nil
+	}
+
+	// 构建 IN 查询
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, user_id, name, contact, phone, address, avatar, latitude, longitude, store_type, sales_code, is_default, created_at, updated_at
+		FROM mini_app_addresses
+		WHERE id IN (%s)`, strings.Join(placeholders, ","))
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	addresses := make(map[int]*Address)
+	for rows.Next() {
+		var (
+			address                      Address
+			avatar, storeType, salesCode sql.NullString
+			latitude, longitude          sql.NullFloat64
+			isDefault                    sql.NullInt64
+		)
+
+		err := rows.Scan(
+			&address.ID,
+			&address.UserID,
+			&address.Name,
+			&address.Contact,
+			&address.Phone,
+			&address.Address,
+			&avatar,
+			&latitude,
+			&longitude,
+			&storeType,
+			&salesCode,
+			&isDefault,
+			&address.CreatedAt,
+			&address.UpdatedAt,
+		)
+		if err != nil {
+			continue
+		}
+
+		if latitude.Valid {
+			val := latitude.Float64
+			address.Latitude = &val
+		}
+		if longitude.Valid {
+			val := longitude.Float64
+			address.Longitude = &val
+		}
+		address.StoreType = nullString(storeType)
+		address.SalesCode = nullString(salesCode)
+		address.IsDefault = isDefault.Valid && isDefault.Int64 == 1
+
+		addresses[address.ID] = &address
+	}
+
+	return addresses, nil
 }

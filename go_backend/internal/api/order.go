@@ -26,6 +26,7 @@ type CreateOrderRequest struct {
 	CouponDiscount      float64 `json:"coupon_discount"`       // 预留：优惠券抵扣金额（当前已在购物车+确认页计算）
 	DeliveryCouponID    int     `json:"delivery_coupon_id"`    // 指定免配送费券
 	AmountCouponID      int     `json:"amount_coupon_id"`      // 指定金额券
+	IsUrgent            bool    `json:"is_urgent"`             // 是否加急订单
 }
 
 // CreateOrderFromCart 从当前采购单创建订单
@@ -167,6 +168,17 @@ func CreateOrderFromCart(c *gin.Context) {
 		req.AmountCouponID,
 	)
 
+	// 获取加急费用（从系统设置）
+	urgentFee := 0.0
+	if req.IsUrgent {
+		urgentFeeStr, err := model.GetSystemSetting("order_urgent_fee")
+		if err == nil && urgentFeeStr != "" {
+			if fee, parseErr := strconv.ParseFloat(urgentFeeStr, 64); parseErr == nil && fee > 0 {
+				urgentFee = fee
+			}
+		}
+	}
+
 	// 使用模型层事务函数创建订单并落库
 	options := model.OrderCreationOptions{
 		Remark:              req.Remark,
@@ -176,6 +188,8 @@ func CreateOrderFromCart(c *gin.Context) {
 		RequirePhoneContact: req.RequirePhoneContact,
 		PointsDiscount:      req.PointsDiscount,
 		CouponDiscount:      appliedCombination.TotalDiscount,
+		IsUrgent:            req.IsUrgent,
+		UrgentFee:           urgentFee,
 	}
 
 	order, orderItems, err := model.CreateOrderFromPurchaseList(user.ID, req.AddressID, items, summary, options, userType)
@@ -255,8 +269,8 @@ func GetUserOrders(c *gin.Context) {
 	// 获取分页数据
 	query := `
 		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
-		       coupon_discount, total_amount, remark, out_of_stock_strategy, trust_receipt,
-		       hide_price, require_phone_contact, expected_delivery_at, created_at, updated_at
+		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
+		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, created_at, updated_at
 		FROM orders WHERE ` + where + ` ORDER BY id DESC LIMIT ? OFFSET ?`
 	args = append(args, pageSize, offset)
 
@@ -271,21 +285,31 @@ func GetUserOrders(c *gin.Context) {
 	for rows.Next() {
 		var order model.Order
 		var expectedDelivery sql.NullTime
+		var weatherInfo sql.NullString
+		var isUrgentTinyInt, trustReceiptTinyInt, hidePriceTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
 
 		err := rows.Scan(
 			&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
-			&order.PointsDiscount, &order.CouponDiscount, &order.TotalAmount, &order.Remark,
-			&order.OutOfStockStrategy, &order.TrustReceipt, &order.HidePrice, &order.RequirePhoneContact,
-			&expectedDelivery, &order.CreatedAt, &order.UpdatedAt,
+			&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
+			&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
+			&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &order.CreatedAt, &order.UpdatedAt,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "解析订单数据失败: " + err.Error()})
 			return
 		}
 
+		order.IsUrgent = isUrgentTinyInt == 1
+		order.TrustReceipt = trustReceiptTinyInt == 1
+		order.HidePrice = hidePriceTinyInt == 1
+		order.RequirePhoneContact = requirePhoneContactTinyInt == 1
+		order.IsIsolated = isIsolatedTinyInt == 1
 		if expectedDelivery.Valid {
 			t := expectedDelivery.Time
 			order.ExpectedDeliveryAt = &t
+		}
+		if weatherInfo.Valid {
+			order.WeatherInfo = &weatherInfo.String
 		}
 
 		// 获取订单商品数量

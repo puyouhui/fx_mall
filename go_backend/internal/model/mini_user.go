@@ -462,3 +462,69 @@ func nullString(ns sql.NullString) string {
 	}
 	return ""
 }
+
+// GetMiniAppUsersByIDs 批量获取用户信息
+func GetMiniAppUsersByIDs(ids []int) (map[int]*MiniAppUser, error) {
+	if len(ids) == 0 {
+		return make(map[int]*MiniAppUser), nil
+	}
+
+	// 构建 IN 查询
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, created_at, updated_at
+		FROM mini_app_users
+		WHERE id IN (%s)`, strings.Join(placeholders, ","))
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make(map[int]*MiniAppUser)
+	for rows.Next() {
+		var (
+			user                          MiniAppUser
+			userCode, name, avatar, phone sql.NullString
+			salesCode, storeType          sql.NullString
+			profileCompleted              sql.NullInt64
+		)
+
+		err := rows.Scan(
+			&user.ID,
+			&user.UniqueID,
+			&userCode,
+			&name,
+			&avatar,
+			&phone,
+			&salesCode,
+			&storeType,
+			&user.UserType,
+			&profileCompleted,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		)
+		if err != nil {
+			continue
+		}
+
+		user.UserCode = nullString(userCode)
+		user.Name = nullString(name)
+		user.Avatar = nullString(avatar)
+		user.Phone = nullString(phone)
+		user.SalesCode = nullString(salesCode)
+		user.StoreType = nullString(storeType)
+		user.ProfileCompleted = profileCompleted.Valid && profileCompleted.Int64 == 1
+
+		users[user.ID] = &user
+	}
+
+	return users, nil
+}

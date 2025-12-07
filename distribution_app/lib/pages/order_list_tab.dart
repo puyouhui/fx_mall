@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../api/order_api.dart';
-import 'order_items_view.dart';
+import 'order_detail_view.dart';
 
 /// 订单列表Tab组件：用于显示不同状态的订单列表
 class OrderListTab extends StatefulWidget {
@@ -98,9 +98,7 @@ class _OrderListTabState extends State<OrderListTab> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              response.message.isNotEmpty
-                  ? response.message
-                  : '获取订单列表失败',
+              response.message.isNotEmpty ? response.message : '获取订单列表失败',
             ),
           ),
         );
@@ -144,10 +142,7 @@ class _OrderListTabState extends State<OrderListTab> {
       widget.onOrderAccepted();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(response.message),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text(response.message), backgroundColor: Colors.red),
       );
       setState(() {
         _acceptingOrders.remove(orderId);
@@ -157,21 +152,12 @@ class _OrderListTabState extends State<OrderListTab> {
 
   void _viewOrderItems(Map<String, dynamic> order) {
     final orderId = (order['id'] as num?)?.toInt();
-    final orderNumber = order['order_number'] as String?;
-    final items = (order['items'] as List<dynamic>?)
-            ?.cast<Map<String, dynamic>>() ??
-        [];
 
     if (orderId == null) return;
 
+    // 跳转到订单详情页面
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => OrderItemsView(
-          orderId: orderId,
-          items: items,
-          orderNumber: orderNumber,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => OrderDetailView(orderId: orderId)),
     );
   }
 
@@ -233,8 +219,17 @@ class _OrderListTabState extends State<OrderListTab> {
     final contact = addressData?['contact'] as String? ?? '';
     final phone = addressData?['phone'] as String? ?? '';
 
-    final isAccepting =
-        orderId != null && (_acceptingOrders[orderId] == true);
+    // 加急状态
+    final isUrgent = (order['is_urgent'] as bool?) ?? false;
+    final urgentFee = (order['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+
+    // 配送费计算结果
+    final deliveryFeeCalc =
+        order['delivery_fee_calculation'] as Map<String, dynamic>?;
+    final riderPayableFee =
+        (deliveryFeeCalc?['rider_payable_fee'] as num?)?.toDouble() ?? 0.0;
+
+    final isAccepting = orderId != null && (_acceptingOrders[orderId] == true);
     final showAcceptButton = widget.status == null; // 只有新任务显示接单按钮
 
     return Container(
@@ -309,8 +304,99 @@ class _OrderListTabState extends State<OrderListTab> {
                         ),
                       ],
                     ),
-                  const SizedBox(height: 8),
-                  // 商品数量（可点击查看详情）
+                  const SizedBox(height: 12),
+                  // 配送金额和加急状态（突出显示）
+                  Row(
+                    children: [
+                      // 配送金额（突出显示）
+                      if (deliveryFeeCalc != null)
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF20CB6B), Color(0xFF1AB85A)],
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(
+                                    0xFF20CB6B,
+                                  ).withOpacity(0.3),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.local_shipping,
+                                  size: 16,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '¥${riderPayableFee.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      // 加急状态标签
+                      if (isUrgent) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF6B6B).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: const Color(0xFFFF6B6B),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.flash_on,
+                                size: 16,
+                                color: Color(0xFFFF6B6B),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                urgentFee > 0
+                                    ? '加急 +¥${urgentFee.toStringAsFixed(2)}'
+                                    : '加急',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFFF6B6B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // 商品数量和查看提示
                   Row(
                     children: [
                       const Icon(
@@ -328,12 +414,14 @@ class _OrderListTabState extends State<OrderListTab> {
                       ),
                       const Spacer(),
                       const Text(
-                        '点击查看商品列表',
+                        '查看详情',
                         style: TextStyle(
                           fontSize: 12,
                           color: Color(0xFF20CB6B),
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
+                      const SizedBox(width: 2),
                       const Icon(
                         Icons.chevron_right,
                         size: 16,
@@ -393,4 +481,3 @@ class _OrderListTabState extends State<OrderListTab> {
     );
   }
 }
-

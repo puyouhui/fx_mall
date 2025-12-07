@@ -84,12 +84,28 @@
             </el-button>
           </template>
         </el-table-column>
-        <el-table-column label="金额信息" min-width="180">
+        <el-table-column label="金额信息" min-width="250">
           <template #default="scope">
             <div>商品金额: ¥{{ formatMoney(scope.row.goods_amount) }}</div>
             <div>配送费: ¥{{ formatMoney(scope.row.delivery_fee) }}</div>
-            <div style="color: #ff4d4f; font-weight: 600;">
+            <div v-if="scope.row.delivery_fee_calculation" style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed #e4e7ed;">
+              <div style="color: #409eff; font-size: 12px;">
+                预估配送费: ¥{{ formatMoney(scope.row.delivery_fee_calculation.rider_payable_fee) }}
+                <span v-if="scope.row.delivery_fee_calculation.profit_share > 0" style="color: #67c23a;">
+                  （包含利润分成¥{{ formatMoney(scope.row.delivery_fee_calculation.profit_share) }}）
+                </span>
+              </div>
+            </div>
+            <div style="color: #ff4d4f; font-weight: 600; margin-top: 4px;">
               实付: ¥{{ formatMoney(scope.row.total_amount) }}
+            </div>
+            <div v-if="scope.row.order_profit !== undefined" style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed #e4e7ed;">
+              <div style="color: #67c23a; font-size: 12px; font-weight: 600;">
+                总利润: ¥{{ formatMoney(scope.row.order_profit) }}
+              </div>
+              <div v-if="scope.row.net_profit !== undefined" style="color: #e6a23c; font-size: 12px; font-weight: 600;">
+                净利润: ¥{{ formatMoney(scope.row.net_profit) }}
+              </div>
             </div>
           </template>
         </el-table-column>
@@ -250,6 +266,57 @@
             <span class="total-amount">¥{{ orderDetail.order?.total_amount?.toFixed(2) || '0.00' }}</span>
           </el-descriptions-item>
         </el-descriptions>
+
+        <!-- 利润信息 -->
+        <el-divider content-position="left">利润信息</el-divider>
+        <el-descriptions :column="1" border v-if="orderDetail.order_profit !== undefined">
+          <el-descriptions-item label="总利润（商品金额 - 商品成本）" label-class-name="profit-label">
+            <span class="profit-amount">¥{{ (orderDetail.order_profit || 0).toFixed(2) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="配送费成本" v-if="orderDetail.delivery_fee_calculation">
+            <span style="color: #f56c6c;">-¥{{ (orderDetail.delivery_fee_calculation.total_platform_cost || 0).toFixed(2) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="净利润（总利润 - 配送费成本）" label-class-name="net-profit-label">
+            <span class="net-profit-amount">¥{{ (orderDetail.net_profit || 0).toFixed(2) }}</span>
+          </el-descriptions-item>
+        </el-descriptions>
+        <el-empty v-else description="利润信息暂不可用" :image-size="80" />
+
+        <!-- 预估配送费计算详情 -->
+        <el-divider content-position="left">预估配送费计算</el-divider>
+        <el-descriptions :column="1" border v-if="orderDetail.delivery_fee_calculation && Object.keys(orderDetail.delivery_fee_calculation).length > 0">
+          <el-descriptions-item label="基础配送费">
+            ¥{{ (orderDetail.delivery_fee_calculation.base_fee || 0).toFixed(2) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="孤立订单补贴" v-if="orderDetail.delivery_fee_calculation.isolated_fee > 0">
+            <el-tag type="warning" size="small">+¥{{ (orderDetail.delivery_fee_calculation.isolated_fee || 0).toFixed(2) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="件数补贴" v-if="orderDetail.delivery_fee_calculation.item_fee > 0">
+            <el-tag type="info" size="small">+¥{{ (orderDetail.delivery_fee_calculation.item_fee || 0).toFixed(2) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="加急订单补贴" v-if="orderDetail.delivery_fee_calculation.urgent_fee > 0">
+            <el-tag type="danger" size="small">+¥{{ (orderDetail.delivery_fee_calculation.urgent_fee || 0).toFixed(2) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="极端天气补贴" v-if="orderDetail.delivery_fee_calculation.weather_fee > 0">
+            <el-tag type="warning" size="small">+¥{{ (orderDetail.delivery_fee_calculation.weather_fee || 0).toFixed(2) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="配送员实际所得（预估配送费）" label-class-name="rider-fee-label">
+            <span class="rider-fee">
+              ¥{{ (orderDetail.delivery_fee_calculation.rider_payable_fee || 0).toFixed(2) }}
+              <span v-if="orderDetail.delivery_fee_calculation.profit_share > 0" style="color: #67c23a; margin-left: 8px; font-size: 14px;">
+                （包含利润分成¥{{ (orderDetail.delivery_fee_calculation.profit_share || 0).toFixed(2) }}）
+              </span>
+            </span>
+          </el-descriptions-item>
+          <el-descriptions-item label="利润分成明细" v-if="orderDetail.delivery_fee_calculation.profit_share > 0">
+            <el-tag type="success" size="small">+¥{{ (orderDetail.delivery_fee_calculation.profit_share || 0).toFixed(2) }}</el-tag>
+            <span style="margin-left: 8px; color: #909399; font-size: 12px;">(已包含在预估配送费中，仅管理员可见)</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="平台总成本" label-class-name="platform-cost-label">
+            <span class="platform-cost">¥{{ (orderDetail.delivery_fee_calculation.total_platform_cost || 0).toFixed(2) }}</span>
+          </el-descriptions-item>
+        </el-descriptions>
+        <el-empty v-else description="配送费计算信息暂不可用" :image-size="80" />
 
         <!-- 其他信息 -->
         <el-divider content-position="left">其他信息</el-divider>
@@ -626,6 +693,46 @@ onMounted(() => {
   font-size: 18px;
   font-weight: 700;
   color: #ff4d4f;
+}
+
+.rider-fee-label {
+  font-weight: 600;
+}
+
+.rider-fee {
+  font-size: 16px;
+  font-weight: 700;
+  color: #409eff;
+}
+
+.platform-cost-label {
+  font-weight: 600;
+}
+
+.platform-cost {
+  font-size: 16px;
+  font-weight: 700;
+  color: #67c23a;
+}
+
+.profit-label {
+  font-weight: 600;
+}
+
+.profit-amount {
+  font-size: 18px;
+  font-weight: 700;
+  color: #67c23a;
+}
+
+.net-profit-label {
+  font-weight: 600;
+}
+
+.net-profit-amount {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e6a23c;
 }
 
 .action-buttons {

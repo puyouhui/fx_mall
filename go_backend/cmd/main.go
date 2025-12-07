@@ -68,6 +68,8 @@ func main() {
 			miniAppProtectedGroup.GET("/addresses/default", api.GetMiniAppDefaultAddress)     // 获取用户的默认地址
 			miniAppProtectedGroup.DELETE("/addresses/:id", api.DeleteMiniAppAddress)          // 删除地址
 			miniAppProtectedGroup.PUT("/addresses/:id/default", api.SetDefaultMiniAppAddress) // 设置默认地址
+			miniAppProtectedGroup.POST("/addresses/geocode", api.GeocodeAddress)              // 地址解析（将地址文本转换为经纬度）
+			miniAppProtectedGroup.POST("/addresses/reverse-geocode", api.ReverseGeocode)      // 逆地理编码（将经纬度转换为地址）
 
 			// 采购单接口
 			miniAppProtectedGroup.GET("/purchase-list", api.GetPurchaseListItems)
@@ -108,6 +110,12 @@ func main() {
 			{
 				protectedGroup.GET("/info", api.GetAdminInfo)       // 获取管理员信息
 				protectedGroup.PUT("/password", api.ChangePassword) // 修改管理员密码
+
+				// 系统设置接口
+				protectedGroup.GET("/settings", api.GetSystemSettings)     // 获取所有系统设置
+				protectedGroup.PUT("/settings", api.UpdateSystemSettings)  // 更新系统设置
+				protectedGroup.GET("/settings/map", api.GetMapSettings)    // 获取地图设置
+				protectedGroup.PUT("/settings/map", api.UpdateMapSettings) // 更新地图设置
 
 				// 分类管理接口
 				protectedGroup.GET("/categories", api.GetAllCategoriesForAdmin)    // 获取所有商品分类（后台管理）
@@ -161,6 +169,9 @@ func main() {
 				protectedGroup.POST("/mini-app/users/:id/avatar", api.UploadMiniAppUserAvatarByAdmin) // 管理员上传用户头像
 				protectedGroup.GET("/mini-app/addresses/:id", api.GetAdminAddressByID)                // 管理员获取地址详情
 				protectedGroup.PUT("/mini-app/addresses/:id", api.UpdateAdminAddress)                 // 管理员更新地址
+				protectedGroup.POST("/mini-app/addresses/avatar", api.UploadAddressAvatarByAdmin)     // 管理员上传地址头像（门头照片）
+				protectedGroup.POST("/mini-app/addresses/geocode", api.GeocodeAddress)                // 地址解析（将地址文本转换为经纬度）
+				protectedGroup.POST("/mini-app/addresses/reverse-geocode", api.ReverseGeocode)        // 逆地理编码（将经纬度转换为地址）
 
 				// 员工管理
 				protectedGroup.GET("/employees", api.GetEmployees)            // 获取员工列表
@@ -181,9 +192,10 @@ func main() {
 				protectedGroup.GET("/coupons/usages", api.GetCouponUsageLogs) // 优惠券使用记录列表
 
 				// 订单管理
-				protectedGroup.GET("/orders", api.GetAllOrdersForAdmin)         // 获取所有订单（后台管理）
-				protectedGroup.GET("/orders/:id", api.GetOrderByIDForAdmin)     // 获取订单详情（后台管理）
-				protectedGroup.PUT("/orders/:id/status", api.UpdateOrderStatus) // 更新订单状态（后台管理）
+				protectedGroup.GET("/orders", api.GetAllOrdersForAdmin)                       // 获取所有订单（后台管理）
+				protectedGroup.GET("/orders/:id", api.GetOrderByIDForAdmin)                   // 获取订单详情（后台管理）
+				protectedGroup.PUT("/orders/:id/status", api.UpdateOrderStatus)               // 更新订单状态（后台管理）
+				protectedGroup.GET("/orders/:id/delivery-fee", api.GetDeliveryFeeCalculation) // 获取配送费计算结果（管理员）
 			}
 		}
 
@@ -215,11 +227,13 @@ func main() {
 				employeeProtectedGroup.GET("/dashboard", api.GetEmployeeDashboard) // 员工首页概览
 
 				// 配送员相关接口
-				employeeProtectedGroup.GET("/delivery/orders", api.GetDeliveryOrders)                  // 获取待配送订单列表
-				employeeProtectedGroup.GET("/delivery/orders/:id", api.GetDeliveryOrderDetail)         // 获取订单详情
-				employeeProtectedGroup.PUT("/delivery/orders/:id/accept", api.AcceptDeliveryOrder)     // 接单
-				employeeProtectedGroup.PUT("/delivery/orders/:id/complete", api.CompleteDeliveryOrder) // 完成配送
-				employeeProtectedGroup.GET("/delivery/my-orders", api.GetDeliveryOrders)               // 获取我的配送订单（通过status参数筛选）
+				employeeProtectedGroup.GET("/delivery/orders", api.GetDeliveryOrders)                                  // 获取待配送订单列表
+				employeeProtectedGroup.GET("/delivery/orders/:id", api.GetDeliveryOrderDetail)                         // 获取订单详情
+				employeeProtectedGroup.GET("/delivery/orders/:id/delivery-fee", api.GetDeliveryFeeCalculationForRider) // 获取配送费计算结果（配送员）
+				employeeProtectedGroup.PUT("/delivery/orders/:id/accept", api.AcceptDeliveryOrder)                     // 接单
+				employeeProtectedGroup.PUT("/delivery/orders/:id/complete", api.CompleteDeliveryOrder)                 // 完成配送
+				employeeProtectedGroup.POST("/delivery/orders/:id/report", api.ReportOrderIssue)                       // 问题上报
+				employeeProtectedGroup.GET("/delivery/my-orders", api.GetDeliveryOrders)                               // 获取我的配送订单（通过status参数筛选）
 
 				// 销售员相关接口
 				employeeProtectedGroup.GET("/sales/customers", api.GetSalesCustomers)                                            // 获取我的客户列表

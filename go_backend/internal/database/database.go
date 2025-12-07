@@ -695,6 +695,8 @@ func InitDB() error {
 		    delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '配送费',
 		    points_discount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '积分抵扣金额',
 		    coupon_discount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '优惠券抵扣金额',
+		    is_urgent TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否加急订单',
+		    urgent_fee DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '加急费用',
 		    total_amount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '实际应付金额',
 		    remark VARCHAR(500) DEFAULT '' COMMENT '备注',
 		    out_of_stock_strategy VARCHAR(20) NOT NULL DEFAULT 'contact_me' COMMENT '缺货处理策略',
@@ -702,11 +704,19 @@ func InitDB() error {
 		    hide_price TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否隐藏价格',
 		    require_phone_contact TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否要求配送时电话联系',
 		    expected_delivery_at DATETIME DEFAULT NULL COMMENT '预计送达时间',
+		    weather_info JSON DEFAULT NULL COMMENT '天气信息（JSON格式，存储温度、天气状况等）',
+		    is_isolated TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否孤立订单（8公里内无其他订单）',
+		    delivery_fee_calculation JSON DEFAULT NULL COMMENT '配送费计算结果（JSON格式，存储基础配送费、补贴、利润分成等）',
+		    order_profit DECIMAL(10,2) DEFAULT NULL COMMENT '订单总利润（商品金额-商品成本）',
+		    net_profit DECIMAL(10,2) DEFAULT NULL COMMENT '净利润（总利润-配送费成本）',
 		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 		    KEY idx_user_id (user_id),
 		    KEY idx_status (status),
-		    KEY idx_order_number (order_number)
+		    KEY idx_order_number (order_number),
+		    KEY idx_is_urgent (is_urgent),
+		    KEY idx_is_isolated (is_isolated),
+		    KEY idx_status_urgent_isolated (status, is_urgent, is_isolated) COMMENT '复合索引：用于订单池筛选'
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单主表';
 		`
 
@@ -715,9 +725,184 @@ func InitDB() error {
 			return
 		}
 
+		// 检查并添加缺失的字段（用于表已存在的情况）
+		// 检查 is_urgent 字段
+		var isUrgentExists int
+		checkIsUrgentQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'is_urgent'`
+		if err := DB.QueryRow(checkIsUrgentQuery).Scan(&isUrgentExists); err == nil && isUrgentExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN is_urgent TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否加急订单'`); err != nil {
+				log.Printf("添加is_urgent字段失败: %v", err)
+			} else {
+				log.Println("已添加is_urgent字段到orders表")
+			}
+		}
+
+		// 检查 urgent_fee 字段
+		var urgentFeeExists int
+		checkUrgentFeeQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'urgent_fee'`
+		if err := DB.QueryRow(checkUrgentFeeQuery).Scan(&urgentFeeExists); err == nil && urgentFeeExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN urgent_fee DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '加急费用'`); err != nil {
+				log.Printf("添加urgent_fee字段失败: %v", err)
+			} else {
+				log.Println("已添加urgent_fee字段到orders表")
+			}
+		}
+
+		// 检查 weather_info 字段
+		var weatherInfoExists int
+		checkWeatherInfoQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'weather_info'`
+		if err := DB.QueryRow(checkWeatherInfoQuery).Scan(&weatherInfoExists); err == nil && weatherInfoExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN weather_info JSON DEFAULT NULL COMMENT '天气信息（JSON格式，存储温度、天气状况等）'`); err != nil {
+				log.Printf("添加weather_info字段失败: %v", err)
+			} else {
+				log.Println("已添加weather_info字段到orders表")
+			}
+		}
+
+		// 检查 is_isolated 字段
+		var isIsolatedExists int
+		checkIsIsolatedQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'is_isolated'`
+		if err := DB.QueryRow(checkIsIsolatedQuery).Scan(&isIsolatedExists); err == nil && isIsolatedExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN is_isolated TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否孤立订单（8公里内无其他订单）'`); err != nil {
+				log.Printf("添加is_isolated字段失败: %v", err)
+			} else {
+				log.Println("已添加is_isolated字段到orders表")
+			}
+		}
+
+		// 检查 delivery_fee_calculation 字段
+		var deliveryFeeCalcExists int
+		checkDeliveryFeeCalcQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'delivery_fee_calculation'`
+		if err := DB.QueryRow(checkDeliveryFeeCalcQuery).Scan(&deliveryFeeCalcExists); err == nil && deliveryFeeCalcExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN delivery_fee_calculation JSON DEFAULT NULL COMMENT '配送费计算结果（JSON格式，存储基础配送费、补贴、利润分成等）'`); err != nil {
+				log.Printf("添加delivery_fee_calculation字段失败: %v", err)
+			} else {
+				log.Println("已添加delivery_fee_calculation字段到orders表")
+			}
+		}
+
+		// 检查 order_profit 字段
+		var orderProfitExists int
+		checkOrderProfitQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'order_profit'`
+		if err := DB.QueryRow(checkOrderProfitQuery).Scan(&orderProfitExists); err == nil && orderProfitExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN order_profit DECIMAL(10,2) DEFAULT NULL COMMENT '订单总利润（商品金额-商品成本）'`); err != nil {
+				log.Printf("添加order_profit字段失败: %v", err)
+			} else {
+				log.Println("已添加order_profit字段到orders表")
+			}
+		}
+
+		// 检查 net_profit 字段
+		var netProfitExists int
+		checkNetProfitQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'net_profit'`
+		if err := DB.QueryRow(checkNetProfitQuery).Scan(&netProfitExists); err == nil && netProfitExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN net_profit DECIMAL(10,2) DEFAULT NULL COMMENT '净利润（总利润-配送费成本）'`); err != nil {
+				log.Printf("添加net_profit字段失败: %v", err)
+			} else {
+				log.Println("已添加net_profit字段到orders表")
+			}
+		}
+
+		// 检查并添加索引
+		// 检查 idx_is_urgent 索引
+		var idxIsUrgentExists int
+		checkIdxIsUrgentQuery := `SELECT COUNT(*) FROM information_schema.STATISTICS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND INDEX_NAME = 'idx_is_urgent'`
+		if err := DB.QueryRow(checkIdxIsUrgentQuery).Scan(&idxIsUrgentExists); err == nil && idxIsUrgentExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD INDEX idx_is_urgent (is_urgent)`); err != nil {
+				log.Printf("添加idx_is_urgent索引失败: %v", err)
+			}
+		}
+
+		// 检查 idx_is_isolated 索引
+		var idxIsIsolatedExists int
+		checkIdxIsIsolatedQuery := `SELECT COUNT(*) FROM information_schema.STATISTICS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND INDEX_NAME = 'idx_is_isolated'`
+		if err := DB.QueryRow(checkIdxIsIsolatedQuery).Scan(&idxIsIsolatedExists); err == nil && idxIsIsolatedExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD INDEX idx_is_isolated (is_isolated)`); err != nil {
+				log.Printf("添加idx_is_isolated索引失败: %v", err)
+			}
+		}
+
+		// 检查 idx_status_urgent_isolated 复合索引
+		var idxStatusUrgentIsolatedExists int
+		checkIdxStatusUrgentIsolatedQuery := `SELECT COUNT(*) FROM information_schema.STATISTICS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND INDEX_NAME = 'idx_status_urgent_isolated'`
+		if err := DB.QueryRow(checkIdxStatusUrgentIsolatedQuery).Scan(&idxStatusUrgentIsolatedExists); err == nil && idxStatusUrgentIsolatedExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD INDEX idx_status_urgent_isolated (status, is_urgent, is_isolated) COMMENT '复合索引：用于订单池筛选'`); err != nil {
+				log.Printf("添加idx_status_urgent_isolated索引失败: %v", err)
+			}
+		}
+
 		// 统一历史状态：将旧状态 pending 归一为 pending_delivery
 		if _, err = DB.Exec(`UPDATE orders SET status = 'pending_delivery' WHERE status = 'pending'`); err != nil {
 			log.Printf("归一化订单状态(pending -> pending_delivery)失败: %v", err)
+		}
+
+		// 创建系统设置表
+		createSystemSettingsTableSQL := `
+		CREATE TABLE IF NOT EXISTS system_settings (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    setting_key VARCHAR(100) NOT NULL UNIQUE COMMENT '设置键名',
+		    setting_value TEXT DEFAULT NULL COMMENT '设置值',
+		    description VARCHAR(255) DEFAULT '' COMMENT '设置说明',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    INDEX idx_setting_key (setting_key)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统设置表';
+		`
+
+		if _, err = DB.Exec(createSystemSettingsTableSQL); err != nil {
+			log.Printf("创建system_settings表失败: %v", err)
+			return
+		}
+
+		// 初始化默认系统设置
+		initSystemSettings := []struct {
+			key         string
+			value       string
+			description string
+		}{
+			{"map_amap_key", "", "高德地图API Key"},
+			{"map_tencent_key", "", "腾讯地图API Key"},
+			{"order_urgent_fee", "0", "加急订单费用（元）"},
+			// 配送费计算配置
+			{"delivery_base_fee", "4.0", "基础配送费（元）"},
+			{"delivery_isolated_distance", "8.0", "孤立订单判断距离（公里）"},
+			{"delivery_isolated_subsidy", "3.0", "孤立订单补贴（元）"},
+			{"delivery_item_threshold_low", "5", "件数补贴低阈值（件）"},
+			{"delivery_item_rate_low", "0.5", "件数补贴低档费率（元/件）"},
+			{"delivery_item_threshold_high", "10", "件数补贴高阈值（件）"},
+			{"delivery_item_rate_high", "0.6", "件数补贴高档费率（元/件）"},
+			{"delivery_item_max_count", "50", "件数补贴最大计件数"},
+			{"delivery_urgent_subsidy", "10.0", "加急订单补贴（元）"},
+			{"delivery_weather_subsidy", "1.0", "极端天气补贴（元）"},
+			{"delivery_extreme_temp", "37.0", "极端高温阈值（摄氏度）"},
+			{"delivery_profit_threshold", "25.0", "利润分成阈值（元）"},
+			{"delivery_profit_share_rate", "0.08", "利润分成比例（8%）"},
+			{"delivery_max_profit_share", "50.0", "利润分成上限（元）"},
+		}
+
+		for _, setting := range initSystemSettings {
+			var count int
+			checkQuery := `SELECT COUNT(*) FROM system_settings WHERE setting_key = ?`
+			if err := DB.QueryRow(checkQuery, setting.key).Scan(&count); err != nil {
+				log.Printf("检查系统设置 %s 失败: %v", setting.key, err)
+				continue
+			}
+			if count == 0 {
+				insertQuery := `INSERT INTO system_settings (setting_key, setting_value, description) VALUES (?, ?, ?)`
+				if _, err := DB.Exec(insertQuery, setting.key, setting.value, setting.description); err != nil {
+					log.Printf("初始化系统设置 %s 失败: %v", setting.key, err)
+				}
+			}
 		}
 
 		// 注意：如果 orders 表已存在但没有 order_number 字段，需要手动执行迁移脚本

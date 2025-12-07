@@ -67,3 +67,21 @@ export function uploadUserAvatar(userId, file) {
   })
 }
 
+// 地址解析（将地址文本转换为经纬度）
+export function geocodeAddress(address) {
+  return request({
+    url: '/admin/mini-app/addresses/geocode',
+    method: 'post',
+    data: { address }
+  })
+}
+
+// 逆地理编码（将经纬度转换为地址）
+export function reverseGeocode(longitude, latitude) {
+  return request({
+    url: '/admin/mini-app/addresses/reverse-geocode',
+    method: 'post',
+    data: { longitude, latitude }
+  })
+}
+

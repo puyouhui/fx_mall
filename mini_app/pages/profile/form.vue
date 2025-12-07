@@ -44,8 +44,12 @@
         <!-- 店铺地址 - 选择定位后显示 -->
         <view class="form-item" v-if="showAddressFields">
           <text class="form-label">店铺地址 <text class="required">(必填)</text></text>
-          <textarea v-model="formData.address" class="form-textarea" placeholder="请选择定位或手动输入详细地址" maxlength="255"
+          <textarea v-model="formData.address" class="form-textarea" placeholder="请完善详细地址信息（如：门牌号、楼层等）" maxlength="255"
             :auto-height="true" :show-confirm-bar="false" @input="onAddressInput" />
+          <view class="address-tip" v-if="showAddressFields && formData.address">
+            <uni-icons type="info" size="14" color="#909399"></uni-icons>
+            <text class="tip-text">您可以继续完善地址信息，如门牌号、楼层，以便准确送达。</text>
+          </view>
         </view>
 
         <!-- 店铺类型 - 选择定位后显示 -->
@@ -90,10 +94,15 @@
 
       <!-- 底部按钮 -->
       <view class="form-footer">
+        <!-- 编辑状态下显示删除文字 -->
+        <view class="delete-text-wrapper" v-if="formData.addressId">
+          <text class="delete-text" @click="handleDeleteAddress" v-if="!deleting">删除地址</text>
+          <text class="delete-text deleting" v-else>删除中...</text>
+        </view>
         <button class="form-btn submit-btn" :class="{ disabled: !canSubmit || submitting }" @click="handleSubmit">
           {{ submitting ? '提交中...' : '确认信息' }}
         </button>
-        <button class="form-btn import-btn" @click="importWeChatAddress">
+        <button class="form-btn import-btn" @click="importWeChatAddress" v-if="!formData.addressId">
           导入微信收货地址
         </button>
       </view>
@@ -121,7 +130,7 @@
 </template>
 
 <script>
-import { updateMiniUserProfile, uploadAddressAvatar, getMiniUserAddresses, getMiniUserDefaultAddress, getMiniUserInfo } from '../../api/index';
+    import { updateMiniUserProfile, uploadAddressAvatar, getMiniUserAddresses, getMiniUserDefaultAddress, getMiniUserInfo, geocodeAddress, deleteMiniUserAddress } from '../../api/index';
 
 export default {
   data() {
@@ -141,6 +150,7 @@ export default {
       },
       salesCodeArray: ['', '', '', '', ''],
       submitting: false,
+      deleting: false, // 删除中状态
       userToken: '',
       userInfo: null,
       userHasSalesCode: false, // 用户是否已绑定销售员
@@ -198,10 +208,8 @@ export default {
       this.formData.addressId = parseInt(options.address_id);
       this.loadAddressData(parseInt(options.address_id));
     } else {
-      // 新增模式：显示地址字段
-      this.showAddressFields = true;
-      // 检查用户是否已有默认地址，如果没有则默认选中"设置为默认地址"
-      this.checkDefaultAddress();
+      // 新增模式：不显示地址字段，需要先选择定位
+      this.showAddressFields = false;
     }
 
     // 获取当前位置
@@ -255,6 +263,14 @@ export default {
           // 延迟设置地址，确保textarea已经渲染
           this.$nextTick(() => {
             this.formData.address = res.address || res.name;
+            // 提示用户完善详细地址
+            uni.showToast({
+              title: '您可以继续完善详细地址信息',
+              icon: 'none',
+              duration: 2000
+            });
+            // 检查用户是否已有默认地址，如果没有则默认选中"设置为默认地址"
+            this.checkDefaultAddress();
           });
         },
         fail: (err) => {
@@ -506,6 +522,55 @@ export default {
         return;
       }
 
+      // 如果地址已填写但没有经纬度，尝试自动解析
+      if (this.formData.address.trim() && (!this.formData.latitude || !this.formData.longitude)) {
+        uni.showLoading({ title: '正在解析地址...', mask: true });
+        try {
+          const geocodeRes = await geocodeAddress(this.formData.address.trim(), this.userToken);
+          if (geocodeRes && geocodeRes.code === 200 && geocodeRes.data && geocodeRes.data.success) {
+            this.formData.latitude = geocodeRes.data.latitude;
+            this.formData.longitude = geocodeRes.data.longitude;
+            uni.showToast({
+              title: '地址解析成功',
+              icon: 'success',
+              duration: 1500
+            });
+          } else {
+            // 解析失败，提示用户选择定位
+            uni.hideLoading();
+            uni.showModal({
+              title: '提示',
+              content: '无法自动获取地址位置，请点击"选择店铺定位"按钮手动选择位置，以确保配送准确',
+              showCancel: false,
+              confirmText: '我知道了'
+            });
+            return;
+          }
+        } catch (error) {
+          console.error('地址解析失败:', error);
+          uni.hideLoading();
+          uni.showModal({
+            title: '提示',
+            content: '地址解析失败，请点击"选择店铺定位"按钮手动选择位置',
+            showCancel: false,
+            confirmText: '我知道了'
+          });
+          return;
+        }
+        uni.hideLoading();
+      }
+
+      // 如果仍然没有经纬度，强制要求用户选择定位
+      if (!this.formData.latitude || !this.formData.longitude) {
+        uni.showModal({
+          title: '提示',
+          content: '为了确保配送准确，请点击"选择店铺定位"按钮选择位置',
+          showCancel: false,
+          confirmText: '我知道了'
+        });
+        return;
+      }
+
       this.submitting = true;
       try {
         const submitData = {
@@ -526,6 +591,7 @@ export default {
         if (this.formData.avatar) {
           submitData.avatar = this.formData.avatar;
         }
+        // 确保经纬度已设置
         if (this.formData.latitude) {
           submitData.latitude = this.formData.latitude;
         }
@@ -553,6 +619,49 @@ export default {
       } finally {
         this.submitting = false;
       }
+    },
+    // 删除地址
+    async handleDeleteAddress() {
+      if (!this.formData.addressId) {
+        return;
+      }
+
+      uni.showModal({
+        title: '提示',
+        content: '确定要删除这个地址吗？删除后无法恢复。',
+        confirmText: '删除',
+        cancelText: '取消',
+        confirmColor: '#ff4d4f',
+        success: async (res) => {
+          if (res.confirm) {
+            this.deleting = true;
+            try {
+              const result = await deleteMiniUserAddress(this.formData.addressId, this.userToken);
+              if (result && result.code === 200) {
+                uni.showToast({
+                  title: '删除成功',
+                  icon: 'success',
+                  duration: 1500
+                });
+                // 延迟返回地址列表页面
+                setTimeout(() => {
+                  uni.navigateBack();
+                }, 1500);
+              } else {
+                throw new Error(result?.message || '删除失败');
+              }
+            } catch (error) {
+              console.error('删除地址失败:', error);
+              uni.showToast({
+                title: error?.message || '删除失败，请稍后再试',
+                icon: 'none'
+              });
+            } finally {
+              this.deleting = false;
+            }
+          }
+        }
+      });
     }
   }
 };
@@ -826,6 +935,30 @@ export default {
   color: #333;
 }
 
+.delete-text-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.delete-text {
+  font-size: 26rpx;
+  color: #ff4d4f;
+  text-decoration: none;
+  cursor: pointer;
+  padding: 8rpx 16rpx;
+}
+
+.delete-text:active {
+  opacity: 0.7;
+}
+
+.delete-text.deleting {
+  color: #ff9999;
+  cursor: not-allowed;
+}
+
 /* 店铺类型选择器弹窗 */
 .popup-overlay {
   position: fixed;
@@ -887,5 +1020,24 @@ export default {
 .popup-item.active {
   color: #20CB6B;
   background-color: #f0fdf6;
+}
+
+/* 地址提示样式 */
+.address-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8rpx;
+  margin-top: 12rpx;
+  padding: 16rpx;
+  background-color: #f0fdf6;
+  border-radius: 8rpx;
+  border-left: 4rpx solid #20CB6B;
+}
+
+.tip-text {
+  font-size: 24rpx;
+  color: #606266;
+  line-height: 1.6;
+  flex: 1;
 }
 </style>

@@ -236,6 +236,19 @@ export const getMiniUserDefaultAddress = (token) => {
 };
 
 /**
+ * 地址解析（将地址文本转换为经纬度）
+ * @param {string} address - 地址文本
+ * @param {string} token - 用户token
+ */
+export const geocodeAddress = (address, token) => {
+  return post('/mini-app/users/addresses/geocode', { address }, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
  * 获取采购单（购物车）列表
  */
 export const getPurchaseList = (token) => {

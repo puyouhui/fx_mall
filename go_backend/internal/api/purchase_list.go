@@ -289,12 +289,22 @@ func GetPurchaseListSummary(c *gin.Context) {
 		amountCouponID,
 	)
 
+	// 获取加急费用（从系统设置）
+	urgentFeeStr, _ := model.GetSystemSetting("order_urgent_fee")
+	urgentFee := 0.0
+	if urgentFeeStr != "" {
+		if fee, err := strconv.ParseFloat(urgentFeeStr, 64); err == nil && fee > 0 {
+			urgentFee = fee
+		}
+	}
+
 	result := gin.H{
 		"items":               items,
 		"summary":             summary,
 		"available_coupons":   availableCoupons,
 		"best_combination":    bestCombination,
 		"applied_combination": appliedCombination,
+		"urgent_fee":          urgentFee, // 返回加急费用供前端显示
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": result, "message": "获取成功"})
