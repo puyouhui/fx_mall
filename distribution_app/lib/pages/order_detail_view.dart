@@ -143,6 +143,14 @@ class _OrderDetailViewState extends State<OrderDetailView> {
 
       final initialPosition = await LocationService.getCurrentLocation();
       if (initialPosition != null && mounted) {
+        // 立即将初始位置发送到流中，以便 CurrentLocationLayer 能显示
+        _locationStreamController.add(
+          LocationMarkerPosition(
+            latitude: initialPosition.latitude,
+            longitude: initialPosition.longitude,
+            accuracy: initialPosition.accuracy,
+          ),
+        );
         setState(() {
           _userPosition = initialPosition;
           _isLoadingLocation = false;
@@ -383,10 +391,9 @@ class _OrderDetailViewState extends State<OrderDetailView> {
                     ],
                   ),
                 // 配送员位置标记（使用 CurrentLocationLayer）
-                if (_userPosition != null || _isLoadingLocation)
-                  CurrentLocationLayer(
-                    positionStream: _locationStreamController.stream,
-                  ),
+                CurrentLocationLayer(
+                  positionStream: _locationStreamController.stream,
+                ),
                 // 版权信息
                 RichAttributionWidget(
                   attributions: [TextSourceAttribution('天地图', onTap: () {})],

@@ -118,12 +118,12 @@ class _OrderHallViewState extends State<OrderHallView>
           ),
           // Tab栏
           Container(
-            color: const Color(0xFFF5F5F5),
+            color: Colors.transparent,
             child: TabBar(
               controller: _tabController,
-              labelColor: const Color(0xFF20CB6B),
-              unselectedLabelColor: const Color(0xFF8C92A4),
-              indicatorColor: const Color(0xFF20CB6B),
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white.withOpacity(0.7),
+              indicatorColor: Colors.white,
               indicatorWeight: 3,
               labelStyle: const TextStyle(
                 fontSize: 15,
