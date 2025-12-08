@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -412,13 +413,45 @@ func GetUserOrderDetail(c *gin.Context) {
 		}
 	}
 
+	// 获取配送员信息（如果订单已被接单）
+	var deliveryEmployeeData interface{} = nil
+	if order.DeliveryEmployeeCode != nil && *order.DeliveryEmployeeCode != "" {
+		fmt.Printf("订单 %d 的配送员员工码: %s\n", order.ID, *order.DeliveryEmployeeCode)
+		deliveryEmployee, err := model.GetEmployeeByEmployeeCode(*order.DeliveryEmployeeCode)
+		if err == nil && deliveryEmployee != nil {
+			fmt.Printf("成功获取配送员信息: ID=%d, Name=%s, Phone=%s\n", deliveryEmployee.ID, deliveryEmployee.Name, deliveryEmployee.Phone)
+			deliveryEmployeeData = map[string]interface{}{
+				"id":            deliveryEmployee.ID,
+				"employee_code": deliveryEmployee.EmployeeCode,
+				"name":          deliveryEmployee.Name,
+				"phone":         deliveryEmployee.Phone,
+			}
+		} else {
+			// 如果查询失败，记录日志但不影响返回
+			if err != nil {
+				fmt.Printf("获取配送员信息失败 (employee_code: %s): %v\n", *order.DeliveryEmployeeCode, err)
+			} else {
+				fmt.Printf("配送员不存在 (employee_code: %s)\n", *order.DeliveryEmployeeCode)
+			}
+		}
+	} else {
+		fmt.Printf("订单 %d 没有配送员员工码\n", order.ID)
+	}
+
+	// 获取地址经纬度（用于地图显示）
+	if address != nil {
+		addressData["latitude"] = address.Latitude
+		addressData["longitude"] = address.Longitude
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,
 		"data": gin.H{
-			"order":          order,
-			"order_items":    items,
-			"address":        addressData,
-			"sales_employee": salesEmployeeData,
+			"order":             order,
+			"order_items":       items,
+			"address":           addressData,
+			"sales_employee":    salesEmployeeData,
+			"delivery_employee": deliveryEmployeeData,
 		},
 		"message": "获取成功",
 	})

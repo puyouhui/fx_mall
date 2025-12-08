@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'order_list_tab.dart';
 import 'route_planning_view.dart';
+import '../utils/storage.dart';
 
 /// 接单大厅页：包含三个Tab（新任务、待取货、配送中）
 class OrderHallView extends StatefulWidget {
@@ -26,11 +27,35 @@ class _OrderHallViewState extends State<OrderHallView>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final List<GlobalKey> _tabKeys = [GlobalKey(), GlobalKey(), GlobalKey()];
+  String _employeeName = '配送员';
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadEmployeeInfo();
+  }
+
+  Future<void> _loadEmployeeInfo() async {
+    final employeeInfo = await Storage.getEmployeeInfo();
+    if (employeeInfo != null && mounted) {
+      setState(() {
+        _employeeName = employeeInfo['name'] as String? ?? '配送员';
+      });
+    }
+  }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour >= 5 && hour < 12) {
+      return '早上好';
+    } else if (hour >= 12 && hour < 18) {
+      return '下午好';
+    } else if (hour >= 18 && hour < 22) {
+      return '晚上好';
+    } else {
+      return '晚上好';
+    }
   }
 
   @override
@@ -65,20 +90,25 @@ class _OrderHallViewState extends State<OrderHallView>
           // 自定义头部：标题 + 路线规划按钮
           Container(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            color: const Color(0xFF20CB6B),
+            color: Colors.transparent,
             child: SafeArea(
               bottom: false,
               child: Column(
                 children: [
                   Row(
                     children: [
-                      const Text(
-                        '接单大厅',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${_getGreeting()}，$_employeeName',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                       const Spacer(),
                       ElevatedButton(
@@ -125,6 +155,7 @@ class _OrderHallViewState extends State<OrderHallView>
               unselectedLabelColor: Colors.white.withOpacity(0.7),
               indicatorColor: Colors.white,
               indicatorWeight: 3,
+              dividerColor: Colors.transparent,
               labelStyle: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,

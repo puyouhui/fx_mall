@@ -72,6 +72,15 @@ class ProfileView extends StatelessWidget {
             child: Column(
               children: [
                 ListTile(
+                  leading: const Icon(Icons.shopping_cart, color: Color(0xFF20CB6B)),
+                  title: const Text('批量取货'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.of(context).pushNamed('/batch-pickup');
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.history),
                   title: const Text('历史订单'),
                   trailing: const Icon(Icons.chevron_right),

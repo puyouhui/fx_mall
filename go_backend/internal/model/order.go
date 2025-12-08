@@ -13,28 +13,29 @@ import (
 // Order 订单主表
 // 目前先用于创建订单，后续可扩展状态流转、支付等逻辑
 type Order struct {
-	ID                  int        `json:"id"`
-	OrderNumber         string     `json:"order_number"` // 订单编号
-	UserID              int        `json:"user_id"`
-	AddressID           int        `json:"address_id"`
-	Status              string     `json:"status"`                 // pending_delivery/delivering/delivered/paid/cancelled
-	GoodsAmount         float64    `json:"goods_amount"`           // 商品总金额
-	DeliveryFee         float64    `json:"delivery_fee"`           // 配送费
-	PointsDiscount      float64    `json:"points_discount"`        // 积分抵扣金额
-	CouponDiscount      float64    `json:"coupon_discount"`        // 优惠券抵扣金额
-	IsUrgent            bool       `json:"is_urgent"`              // 是否加急订单
-	UrgentFee           float64    `json:"urgent_fee"`             // 加急费用
-	TotalAmount         float64    `json:"total_amount"`           // 实际应付金额
-	Remark              string     `json:"remark"`                 // 备注
-	OutOfStockStrategy  string     `json:"out_of_stock_strategy"`  // 缺货处理：cancel_item/ship_available/contact_me
-	TrustReceipt        bool       `json:"trust_receipt"`          // 是否信任签收
-	HidePrice           bool       `json:"hide_price"`             // 是否隐藏价格
-	RequirePhoneContact bool       `json:"require_phone_contact"`  // 是否要求配送时电话联系
-	ExpectedDeliveryAt  *time.Time `json:"expected_delivery_at"`   // 预计送达时间（可为空）
-	WeatherInfo         *string    `json:"weather_info,omitempty"` // 天气信息（JSON格式）
-	IsIsolated          bool       `json:"is_isolated"`            // 是否孤立订单（8公里内无其他订单）
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
+	ID                   int        `json:"id"`
+	OrderNumber          string     `json:"order_number"` // 订单编号
+	UserID               int        `json:"user_id"`
+	AddressID            int        `json:"address_id"`
+	Status               string     `json:"status"`                           // pending_delivery/delivering/delivered/paid/cancelled
+	DeliveryEmployeeCode *string    `json:"delivery_employee_code,omitempty"` // 配送员员工码（接单时记录）
+	GoodsAmount          float64    `json:"goods_amount"`                     // 商品总金额
+	DeliveryFee          float64    `json:"delivery_fee"`                     // 配送费
+	PointsDiscount       float64    `json:"points_discount"`                  // 积分抵扣金额
+	CouponDiscount       float64    `json:"coupon_discount"`                  // 优惠券抵扣金额
+	IsUrgent             bool       `json:"is_urgent"`                        // 是否加急订单
+	UrgentFee            float64    `json:"urgent_fee"`                       // 加急费用
+	TotalAmount          float64    `json:"total_amount"`                     // 实际应付金额
+	Remark               string     `json:"remark"`                           // 备注
+	OutOfStockStrategy   string     `json:"out_of_stock_strategy"`            // 缺货处理：cancel_item/ship_available/contact_me
+	TrustReceipt         bool       `json:"trust_receipt"`                    // 是否信任签收
+	HidePrice            bool       `json:"hide_price"`                       // 是否隐藏价格
+	RequirePhoneContact  bool       `json:"require_phone_contact"`            // 是否要求配送时电话联系
+	ExpectedDeliveryAt   *time.Time `json:"expected_delivery_at"`             // 预计送达时间（可为空）
+	WeatherInfo          *string    `json:"weather_info,omitempty"`           // 天气信息（JSON格式）
+	IsIsolated           bool       `json:"is_isolated"`                      // 是否孤立订单（8公里内无其他订单）
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
 // OrderItem 订单明细
@@ -48,6 +49,7 @@ type OrderItem struct {
 	UnitPrice   float64 `json:"unit_price"` // 成交单价
 	Subtotal    float64 `json:"subtotal"`   // 小计
 	Image       string  `json:"image"`
+	IsPicked    bool    `json:"is_picked"` // 是否已取货
 }
 
 // OrderCreationOptions 创建订单时的附加参数
@@ -414,14 +416,15 @@ func GetOrderByID(id int) (*Order, error) {
 	var weatherInfo sql.NullString
 
 	query := `
-		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
+		SELECT id, order_number, user_id, address_id, status, delivery_employee_code, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
 		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, created_at, updated_at
 		FROM orders WHERE id = ?
 	`
 	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
+	var deliveryEmployeeCode sql.NullString
 	err := database.DB.QueryRow(query, id).Scan(
-		&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
+		&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &deliveryEmployeeCode, &order.GoodsAmount, &order.DeliveryFee,
 		&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
 		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
 		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &order.CreatedAt, &order.UpdatedAt,
@@ -444,6 +447,9 @@ func GetOrderByID(id int) (*Order, error) {
 	if weatherInfo.Valid {
 		order.WeatherInfo = &weatherInfo.String
 	}
+	if deliveryEmployeeCode.Valid {
+		order.DeliveryEmployeeCode = &deliveryEmployeeCode.String
+	}
 
 	return &order, nil
 }
@@ -453,7 +459,7 @@ func GetOrderItemsByOrderID(orderID int) ([]OrderItem, error) {
 	var items []OrderItem
 
 	query := `
-		SELECT id, order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image
+		SELECT id, order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image, is_picked
 		FROM order_items WHERE order_id = ? ORDER BY id
 	`
 	rows, err := database.DB.Query(query, orderID)
@@ -464,13 +470,15 @@ func GetOrderItemsByOrderID(orderID int) ([]OrderItem, error) {
 
 	for rows.Next() {
 		var item OrderItem
+		var isPickedTinyInt int
 		err := rows.Scan(
 			&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.SpecName,
-			&item.Quantity, &item.UnitPrice, &item.Subtotal, &item.Image,
+			&item.Quantity, &item.UnitPrice, &item.Subtotal, &item.Image, &isPickedTinyInt,
 		)
 		if err != nil {
 			return nil, err
 		}
+		item.IsPicked = isPickedTinyInt == 1
 		items = append(items, item)
 	}
 
@@ -705,15 +713,18 @@ func GetPendingOrdersBySalesCode(employeeCode string, pageNum, pageSize int) ([]
 	return orders, total, nil
 }
 
-// GetOrderItemCountByOrderID 根据订单ID获取订单商品数量
+// GetOrderItemCountByOrderID 根据订单ID获取订单商品数量（总件数）
 func GetOrderItemCountByOrderID(orderID int) (int, error) {
-	var count int
-	query := `SELECT COUNT(*) FROM order_items WHERE order_id = ?`
+	var count sql.NullInt64
+	query := `SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = ?`
 	err := database.DB.QueryRow(query, orderID).Scan(&count)
 	if err != nil {
 		return 0, err
 	}
-	return count, nil
+	if !count.Valid {
+		return 0, nil
+	}
+	return int(count.Int64), nil
 }
 
 // GetOrderItemCountsByOrderIDs 批量获取订单商品数量
@@ -731,7 +742,7 @@ func GetOrderItemCountsByOrderIDs(orderIDs []int) (map[int]int, error) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT order_id, COUNT(*) as count
+		SELECT order_id, COALESCE(SUM(quantity), 0) as count
 		FROM order_items
 		WHERE order_id IN (%s)
 		GROUP BY order_id`, strings.Join(placeholders, ","))
@@ -834,6 +845,22 @@ func GetRecentOrdersByUserID(userID int, limit int) ([]map[string]interface{}, e
 func UpdateOrderStatus(orderID int, newStatus string) error {
 	query := "UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?"
 	_, err := database.DB.Exec(query, newStatus, orderID)
+	if err != nil {
+		return err
+	}
+
+	// 更新订单状态后，重新计算配送费和利润（异步执行，避免阻塞）
+	go func() {
+		_ = CalculateAndStoreOrderProfit(orderID)
+	}()
+
+	return nil
+}
+
+// UpdateOrderStatusWithDeliveryEmployee 更新订单状态并记录配送员信息
+func UpdateOrderStatusWithDeliveryEmployee(orderID int, newStatus string, deliveryEmployeeCode string) error {
+	query := "UPDATE orders SET status = ?, delivery_employee_code = ?, updated_at = NOW() WHERE id = ?"
+	_, err := database.DB.Exec(query, newStatus, deliveryEmployeeCode, orderID)
 	if err != nil {
 		return err
 	}

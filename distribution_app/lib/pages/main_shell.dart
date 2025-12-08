@@ -129,28 +129,71 @@ class _MainShellState extends State<MainShell> {
           ProfileView(courierPhone: widget.courierPhone),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        backgroundColor: Colors.white,
-        indicatorColor: const Color(0xFF20CB6B).withOpacity(0.1),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.list_alt_outlined),
-            selectedIcon: Icon(Icons.list_alt),
-            label: '接单大厅',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: '我的',
-          ),
-        ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 12,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: NavigationBar(
+          selectedIndex: _currentIndex,
+          onDestinationSelected: (index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          },
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          indicatorColor: const Color(0xFF20CB6B).withOpacity(0.15),
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          labelTextStyle: MaterialStateProperty.resolveWith((states) {
+            if (states.contains(MaterialState.selected)) {
+              return const TextStyle(
+                color: Color(0xFF20CB6B),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              );
+            }
+            return const TextStyle(
+              color: Color(0xFF8C92A4),
+              fontSize: 12,
+              fontWeight: FontWeight.normal,
+            );
+          }),
+          destinations: [
+            NavigationDestination(
+              icon: const Icon(
+                Icons.list_alt_outlined,
+                color: Color(0xFF8C92A4),
+                size: 24,
+              ),
+              selectedIcon: const Icon(
+                Icons.list_alt,
+                color: Color(0xFF20CB6B),
+                size: 24,
+              ),
+              label: '接单大厅',
+            ),
+            NavigationDestination(
+              icon: const Icon(
+                Icons.person_outline,
+                color: Color(0xFF8C92A4),
+                size: 24,
+              ),
+              selectedIcon: const Icon(
+                Icons.person,
+                color: Color(0xFF20CB6B),
+                size: 24,
+              ),
+              label: '我的',
+            ),
+          ],
+        ),
       ),
     );
   }

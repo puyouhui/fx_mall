@@ -50,6 +50,9 @@ dependencies:
   latlong2: ^0.9.1
   flutter_map_location_marker: ^10.0.2
 
+  # 地图导航（打开第三方地图应用）
+  map_launcher: ^3.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

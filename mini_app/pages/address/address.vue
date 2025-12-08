@@ -11,7 +11,7 @@
             <uni-icons type="left" size="20" color="#333"></uni-icons>
           </view>
           <view class="navbar-title">
-            <text class="navbar-title-text">我的收货地址</text>
+            <text class="navbar-title-text">{{ selectMode ? '选择收货地址' : '我的收货地址' }}</text>
           </view>
           <view class="navbar-right">
             <uni-icons type="more-filled" size="20" color="#333" style="margin-right: 20rpx;"></uni-icons>
@@ -31,6 +31,7 @@
         v-for="(address, index) in addressList" 
         :key="index"
         :class="{ 'default-address': address.is_default }"
+        @click="handleSelectAddress(address)"
       >
         <view class="address-content">
           <view class="address-header">
@@ -42,11 +43,14 @@
           <text class="address-detail">{{ address.address }}</text>
           <text class="address-contact">{{ address.contact }} {{ address.phone }}</text>
         </view>
-        <view class="address-actions">
+        <view class="address-actions" v-if="!selectMode">
           <view class="address-action" @click.stop="handleEdit(address)">
             <uni-icons type="compose" size="22" color="#20CB6B"></uni-icons>
             <text class="action-text">编辑</text>
           </view>
+        </view>
+        <view class="address-actions" v-if="selectMode">
+          <uni-icons type="checkmarkempty" size="24" color="#20CB6B" v-if="false"></uni-icons>
         </view>
       </view>
       
@@ -75,10 +79,15 @@ export default {
       statusBarHeight: 20, // 状态栏高度（默认值）
       navBarHeight: 45, // 导航栏高度（默认值）
       addressList: [],
-      userToken: ''
+      userToken: '',
+      selectMode: false // 是否为选择模式
     };
   },
-  onLoad() {
+  onLoad(options) {
+    // 判断是否为选择模式
+    if (options && options.selectMode === 'true') {
+      this.selectMode = true;
+    }
     // 获取设备信息
     const info = uni.getSystemInfoSync();
     // 设置状态栏高度
@@ -160,7 +169,31 @@ export default {
       });
     },
     
-    
+    // 选择地址（选择模式）
+    handleSelectAddress(address) {
+      if (!this.selectMode) {
+        return;
+      }
+      
+      // 显示确认切换弹框
+      uni.showModal({
+        title: '切换地址',
+        content: `确定要切换到"${address.name}"吗？`,
+        confirmText: '切换',
+        cancelText: '取消',
+        confirmColor: '#20CB6B',
+        success: (res) => {
+          if (res.confirm) {
+            // 用户确认切换，通过事件总线传递选中的地址
+            uni.$emit('addressSelected', address);
+            // 返回上一页
+            uni.navigateBack({
+              delta: 1
+            });
+          }
+        }
+      });
+    }
   }
 };
 </script>
@@ -243,6 +276,7 @@ export default {
   box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.06);
   border: 1rpx solid #f0f0f0;
   transition: all 0.3s ease;
+  cursor: pointer;
 }
 
 .address-item:active {

@@ -278,6 +278,8 @@ export default {
     }
   },
   onLoad(options) {
+    // 监听地址选择事件
+    uni.$on('addressSelected', this.onAddressSelected);
     this.token = uni.getStorageSync('miniUserToken') || ''
     const miniUserInfo = uni.getStorageSync('miniUserInfo')
     if (miniUserInfo && miniUserInfo.user_type) {
@@ -388,7 +390,7 @@ export default {
       return retail || wholesale || Number(snapshot.cost || 0)
     },
     goSelectAddress() {
-      uni.navigateTo({ url: '/pages/address/address' })
+      uni.navigateTo({ url: '/pages/address/address?selectMode=true' })
     },
     onOutOfStockChange(e) {
       this.outOfStockStrategy = e.detail.value
@@ -452,7 +454,17 @@ export default {
       } finally {
         this.submitting = false
       }
+    },
+    // 地址选择回调
+    onAddressSelected(address) {
+      this.defaultAddress = address
+      // 重新加载采购单汇总（地址变化可能影响配送费）
+      this.loadPurchaseSummary()
     }
+  },
+  onUnload() {
+    // 页面卸载时移除事件监听
+    uni.$off('addressSelected', this.onAddressSelected)
   }
 }
 </script>

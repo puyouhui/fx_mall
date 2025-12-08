@@ -129,5 +129,54 @@ class OrderApi {
       data: response.data,
     );
   }
+
+  // 获取待取货供应商列表
+  static Future<ApiResponse<List<dynamic>>> getPickupSuppliers() async {
+    final response = await Request.get<List<dynamic>>(
+      '/employee/delivery/pickup/suppliers',
+      parser: (data) => data as List<dynamic>,
+    );
+
+    return ApiResponse<List<dynamic>>(
+      code: response.code,
+      message: response.message,
+      data: response.data,
+    );
+  }
+
+  // 获取供应商的待取货商品列表
+  static Future<ApiResponse<List<dynamic>>> getPickupItemsBySupplier(
+    int supplierId,
+  ) async {
+    final response = await Request.get<List<dynamic>>(
+      '/employee/delivery/pickup/suppliers/$supplierId/items',
+      parser: (data) => data as List<dynamic>,
+    );
+
+    return ApiResponse<List<dynamic>>(
+      code: response.code,
+      message: response.message,
+      data: response.data,
+    );
+  }
+
+  // 标记商品已取货
+  static Future<ApiResponse<Map<String, dynamic>>> markItemsAsPicked(
+    List<int> itemIds,
+  ) async {
+    final response = await Request.post<Map<String, dynamic>>(
+      '/employee/delivery/pickup/mark-picked',
+      body: {
+        'item_ids': itemIds,
+      },
+      parser: (data) => data as Map<String, dynamic>,
+    );
+
+    return ApiResponse<Map<String, dynamic>>(
+      code: response.code,
+      message: response.message,
+      data: response.data,
+    );
+  }
 }
 

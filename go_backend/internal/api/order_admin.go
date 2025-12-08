@@ -385,10 +385,11 @@ func UpdateOrderStatus(c *gin.Context) {
 	// 验证状态值
 	validStatuses := map[string]bool{
 		"pending_delivery": true,
-		"delivering":        true,
-		"delivered":         true,
-		"paid":              true,
-		"cancelled":         true,
+		"pending_pickup":   true,
+		"delivering":       true,
+		"delivered":        true,
+		"paid":             true,
+		"cancelled":        true,
 	}
 	if !validStatuses[req.Status] {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的订单状态"})
@@ -426,8 +427,8 @@ func UpdateOrderStatus(c *gin.Context) {
 }
 
 // isValidStatusTransition 验证状态流转是否合法
-// 流程：pending_delivery -> delivering -> delivered -> paid
-// 可以取消：pending_delivery, delivering -> cancelled
+// 流程：pending_delivery -> pending_pickup -> delivering -> delivered -> paid
+// 可以取消：pending_delivery, pending_pickup, delivering -> cancelled
 // 兼容旧状态：pending 视为 pending_delivery
 func isValidStatusTransition(currentStatus, newStatus string) bool {
 	// 将旧状态 pending 转换为新状态 pending_delivery
@@ -437,7 +438,8 @@ func isValidStatusTransition(currentStatus, newStatus string) bool {
 	
 	// 允许的状态流转
 	transitions := map[string][]string{
-		"pending_delivery": {"delivering", "cancelled"},
+		"pending_delivery": {"pending_pickup", "cancelled"},
+		"pending_pickup":   {"delivering", "cancelled"},
 		"delivering":       {"delivered", "cancelled"},
 		"delivered":        {"paid"},
 		"shipped":          {"paid"}, // 兼容旧状态 shipped -> paid

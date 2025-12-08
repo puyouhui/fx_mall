@@ -227,13 +227,17 @@ func main() {
 				employeeProtectedGroup.GET("/dashboard", api.GetEmployeeDashboard) // 员工首页概览
 
 				// 配送员相关接口
-				employeeProtectedGroup.GET("/delivery/orders", api.GetDeliveryOrders)                                  // 获取待配送订单列表
-				employeeProtectedGroup.GET("/delivery/orders/:id", api.GetDeliveryOrderDetail)                         // 获取订单详情
-				employeeProtectedGroup.GET("/delivery/orders/:id/delivery-fee", api.GetDeliveryFeeCalculationForRider) // 获取配送费计算结果（配送员）
-				employeeProtectedGroup.PUT("/delivery/orders/:id/accept", api.AcceptDeliveryOrder)                     // 接单
-				employeeProtectedGroup.PUT("/delivery/orders/:id/complete", api.CompleteDeliveryOrder)                 // 完成配送
-				employeeProtectedGroup.POST("/delivery/orders/:id/report", api.ReportOrderIssue)                       // 问题上报
-				employeeProtectedGroup.GET("/delivery/my-orders", api.GetDeliveryOrders)                               // 获取我的配送订单（通过status参数筛选）
+				employeeProtectedGroup.GET("/delivery/orders", api.GetDeliveryOrders)                                    // 获取待配送订单列表
+				employeeProtectedGroup.GET("/delivery/orders/:id", api.GetDeliveryOrderDetail)                           // 获取订单详情
+				employeeProtectedGroup.GET("/delivery/orders/:id/delivery-fee", api.GetDeliveryFeeCalculationForRider)   // 获取配送费计算结果（配送员）
+				employeeProtectedGroup.PUT("/delivery/orders/:id/accept", api.AcceptDeliveryOrder)                       // 接单
+				employeeProtectedGroup.PUT("/delivery/orders/:id/start", api.StartDeliveryOrder)                         // 开始配送
+				employeeProtectedGroup.PUT("/delivery/orders/:id/complete", api.CompleteDeliveryOrder)                   // 完成配送
+				employeeProtectedGroup.POST("/delivery/orders/:id/report", api.ReportOrderIssue)                         // 问题上报
+				employeeProtectedGroup.GET("/delivery/my-orders", api.GetDeliveryOrders)                                 // 获取我的配送订单（通过status参数筛选）
+				employeeProtectedGroup.GET("/delivery/pickup/suppliers", api.GetPickupSuppliers)                         // 获取待取货供应商列表
+				employeeProtectedGroup.GET("/delivery/pickup/suppliers/:supplierId/items", api.GetPickupItemsBySupplier) // 获取供应商的待取货商品
+				employeeProtectedGroup.POST("/delivery/pickup/mark-picked", api.MarkItemsAsPicked)                       // 标记商品已取货
 
 				// 销售员相关接口
 				employeeProtectedGroup.GET("/sales/customers", api.GetSalesCustomers)                                            // 获取我的客户列表

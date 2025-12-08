@@ -42,3 +42,12 @@ export function deleteSupplier(id) {
   })
 }
 
+// 逆地理编码（将经纬度转换为地址）
+export function reverseGeocode(longitude, latitude) {
+  return request({
+    url: '/admin/mini-app/addresses/reverse-geocode',
+    method: 'post',
+    data: { longitude, latitude }
+  })
+}
+

@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_location_marker/flutter_map_location_marker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:map_launcher/map_launcher.dart';
 import 'dart:async';
 import '../api/order_api.dart';
 import '../utils/location_service.dart';
@@ -26,7 +27,6 @@ class _OrderDetailViewState extends State<OrderDetailView> {
   // 地图相关
   final MapController _mapController = MapController();
   Position? _userPosition;
-  bool _isLoadingLocation = false;
   final StreamController<LocationMarkerPosition?> _locationStreamController =
       StreamController<LocationMarkerPosition?>.broadcast();
   StreamSubscription<Position>? _positionStreamSubscription;
@@ -68,29 +68,13 @@ class _OrderDetailViewState extends State<OrderDetailView> {
   }
 
   Future<void> _startLocationTracking() async {
-    if (mounted) {
-      setState(() {
-        _isLoadingLocation = true;
-      });
-    }
-
     final hasPermission = await LocationService.checkAndRequestPermission();
     if (!hasPermission) {
-      if (mounted) {
-        setState(() {
-          _isLoadingLocation = false;
-        });
-      }
       return;
     }
 
     final serviceEnabled = await LocationService.checkLocationServiceEnabled();
     if (!serviceEnabled) {
-      if (mounted) {
-        setState(() {
-          _isLoadingLocation = false;
-        });
-      }
       return;
     }
 
@@ -114,7 +98,6 @@ class _OrderDetailViewState extends State<OrderDetailView> {
               if (mounted) {
                 setState(() {
                   _userPosition = position;
-                  _isLoadingLocation = false;
                 });
               }
 
@@ -133,11 +116,7 @@ class _OrderDetailViewState extends State<OrderDetailView> {
               }
             },
             onError: (error) {
-              if (mounted) {
-                setState(() {
-                  _isLoadingLocation = false;
-                });
-              }
+              // 错误处理
             },
           );
 
@@ -153,15 +132,10 @@ class _OrderDetailViewState extends State<OrderDetailView> {
         );
         setState(() {
           _userPosition = initialPosition;
-          _isLoadingLocation = false;
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoadingLocation = false;
-        });
-      }
+      // 错误处理
     }
   }
 
@@ -283,12 +257,22 @@ class _OrderDetailViewState extends State<OrderDetailView> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // 待取货状态时，供应商列表优先显示在地图下面
+                              if (_isPendingPickup()) ...[
+                                _buildSuppliersCard(),
+                                const SizedBox(height: 12),
+                              ],
                               // 地址信息
                               _buildAddressCard(),
                               const SizedBox(height: 12),
                               // 商品列表
                               _buildItemsCard(),
                               const SizedBox(height: 12),
+                              // 非待取货状态时，供应商列表显示在商品列表下面
+                              if (!_isPendingPickup()) ...[
+                                _buildSuppliersCard(),
+                                const SizedBox(height: 12),
+                              ],
                               // 配送费信息
                               _buildDeliveryFeeCard(),
                               const SizedBox(height: 12),
@@ -322,6 +306,13 @@ class _OrderDetailViewState extends State<OrderDetailView> {
     final addressData = _orderData?['address'] as Map<String, dynamic>?;
     final customerLat = addressData?['latitude'] as num?;
     final customerLng = addressData?['longitude'] as num?;
+
+    // 获取供应商列表（仅在待取货状态时）
+    final suppliers = _isPendingPickup()
+        ? (_orderData?['suppliers'] as List<dynamic>?)
+                  ?.cast<Map<String, dynamic>>() ??
+              []
+        : [];
 
     // 确定地图初始中心点
     LatLng initialCenter = const LatLng(39.90864, 116.39750); // 默认北京
@@ -380,15 +371,156 @@ class _OrderDetailViewState extends State<OrderDetailView> {
                           customerLat.toDouble(),
                           customerLng.toDouble(),
                         ),
-                        width: 40,
-                        height: 40,
-                        child: const Icon(
-                          Icons.location_on,
-                          color: Color(0xFFFF6B6B),
-                          size: 40,
+                        width: 120,
+                        height: 65,
+                        alignment: Alignment.topCenter,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            // 文本标签
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF6B6B),
+                                borderRadius: BorderRadius.circular(4),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Text(
+                                '客户',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            // 图标
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF6B6B),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 3,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.location_on,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
+                  ),
+                // 供应商位置标记（仅在待取货状态时显示）
+                if (_isPendingPickup() && suppliers.isNotEmpty)
+                  MarkerLayer(
+                    markers: suppliers
+                        .where((supplier) {
+                          final lat = supplier['latitude'] as num?;
+                          final lng = supplier['longitude'] as num?;
+                          return lat != null && lng != null;
+                        })
+                        .map((supplier) {
+                          final lat = supplier['latitude'] as num?;
+                          final lng = supplier['longitude'] as num?;
+                          final name = supplier['name'] as String? ?? '';
+                          return Marker(
+                            point: LatLng(lat!.toDouble(), lng!.toDouble()),
+                            width: 120,
+                            height: 65,
+                            alignment: Alignment.topCenter,
+                            child: Tooltip(
+                              message: name,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.start,
+                                children: [
+                                  // 文本标签
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFF5722),
+                                      borderRadius: BorderRadius.circular(4),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.2),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Text(
+                                      name.length > 6
+                                          ? '${name.substring(0, 6)}...'
+                                          : name,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  // 图标（确保居中）
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFF5722),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 3,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.3),
+                                          blurRadius: 6,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.warehouse,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        })
+                        .toList(),
                   ),
                 // 配送员位置标记（使用 CurrentLocationLayer）
                 CurrentLocationLayer(
@@ -423,6 +555,31 @@ class _OrderDetailViewState extends State<OrderDetailView> {
                       '客户',
                       style: TextStyle(fontSize: 12, color: Color(0xFF20253A)),
                     ),
+                    // 待取货状态时显示供应商图例
+                    if (_isPendingPickup() && suppliers.isNotEmpty) ...[
+                      const SizedBox(width: 12),
+                      Container(
+                        width: 16,
+                        height: 16,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFF5722),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.warehouse,
+                          size: 10,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Text(
+                        '供应商',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF20253A),
+                        ),
+                      ),
+                    ],
                     const SizedBox(width: 12),
                     const Icon(
                       Icons.my_location,
@@ -700,14 +857,25 @@ class _OrderDetailViewState extends State<OrderDetailView> {
     final spec = item['spec_name'] as String? ?? '';
     final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
     final image = item['image'] as String? ?? '';
+    final isPicked = (item['is_picked'] as bool?) ?? false;
+    final status = _orderData?['status'] as String? ?? '';
+    final showPickupStatus =
+        status == 'pending_pickup' || status == 'delivering';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
+        color: isPicked && showPickupStatus
+            ? const Color(0xFFE8F8F0).withOpacity(0.5)
+            : const Color(0xFFF8F9FA),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+        border: Border.all(
+          color: isPicked && showPickupStatus
+              ? const Color(0xFF20CB6B).withOpacity(0.3)
+              : const Color(0xFFE5E7EB),
+          width: isPicked && showPickupStatus ? 2 : 1,
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -854,6 +1022,39 @@ class _OrderDetailViewState extends State<OrderDetailView> {
                         ],
                       ),
                     ),
+                    // 取货状态标签（仅在待取货或配送中状态显示）
+                    if (showPickupStatus && isPicked) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF20CB6B).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.check_circle_outline,
+                              size: 14,
+                              color: Color(0xFF20CB6B),
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              '已取货',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF20CB6B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -862,6 +1063,383 @@ class _OrderDetailViewState extends State<OrderDetailView> {
         ],
       ),
     );
+  }
+
+  Widget _buildSuppliersCard() {
+    final suppliers =
+        (_orderData?['suppliers'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
+
+    if (suppliers.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.store_outlined, size: 18, color: Color(0xFF20CB6B)),
+              SizedBox(width: 6),
+              Text(
+                '取货地址',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF20253A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...suppliers.map((supplier) => _buildSupplierRow(supplier)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSupplierRow(Map<String, dynamic> supplier) {
+    final name = supplier['name'] as String? ?? '';
+    final address = supplier['address'] as String? ?? '';
+    final contact = supplier['contact'] as String? ?? '';
+    final phone = supplier['phone'] as String? ?? '';
+    final latitude = supplier['latitude'] as double?;
+    final longitude = supplier['longitude'] as double?;
+    final items =
+        (supplier['items'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+        [];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 供应商名称和导航图标
+          Row(
+            children: [
+              const Icon(Icons.business, size: 16, color: Color(0xFF20CB6B)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF20253A),
+                  ),
+                ),
+              ),
+              // 导航图标（如果有经纬度）
+              if (latitude != null && longitude != null)
+                InkWell(
+                  onTap: () => _navigateToSupplier(latitude, longitude, name),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF20CB6B).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.navigation,
+                      size: 18,
+                      color: Color(0xFF20CB6B),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          // 地址
+          if (address.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.location_on_outlined,
+                  size: 14,
+                  color: Color(0xFF8C92A4),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    address,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF40475C),
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          // 联系人和电话
+          if (contact.isNotEmpty || phone.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(
+                  Icons.phone_outlined,
+                  size: 14,
+                  color: Color(0xFF8C92A4),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  contact.isNotEmpty && phone.isNotEmpty
+                      ? '$contact $phone'
+                      : contact.isNotEmpty
+                      ? contact
+                      : phone,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF8C92A4),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          // 取货商品列表
+          if (items.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(
+                        Icons.shopping_bag_outlined,
+                        size: 14,
+                        color: Color(0xFF20CB6B),
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        '取货商品',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF20253A),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ...items.map((item) => _buildSupplierItemRow(item)),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // 构建供应商商品行
+  Widget _buildSupplierItemRow(Map<String, dynamic> item) {
+    final productName = item['product_name'] as String? ?? '';
+    final specName = item['spec_name'] as String? ?? '';
+    final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+    final isPicked = (item['is_picked'] as bool?) ?? false;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: isPicked
+            ? const Color(0xFFE8F8F0).withOpacity(0.5)
+            : const Color(0xFFF8F9FA),
+        borderRadius: BorderRadius.circular(4),
+        border: isPicked
+            ? Border.all(
+                color: const Color(0xFF20CB6B).withOpacity(0.3),
+                width: 1,
+              )
+            : null,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 商品名称
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        productName,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: isPicked
+                              ? const Color(0xFF20CB6B)
+                              : const Color(0xFF20253A),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (isPicked) ...[
+                      const SizedBox(width: 6),
+                      const Icon(
+                        Icons.check_circle,
+                        size: 16,
+                        color: Color(0xFF20CB6B),
+                      ),
+                    ],
+                  ],
+                ),
+                // 规格和数量
+                if (specName.isNotEmpty || quantity > 0) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      // 规格
+                      if (specName.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF20CB6B).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            specName,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF20CB6B),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      // 数量
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF40475C).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '数量: $quantity',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF40475C),
+                          ),
+                        ),
+                      ),
+                      // 取货状态
+                      if (isPicked) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF20CB6B).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            '已取货',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF20CB6B),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 导航到供应商位置
+  Future<void> _navigateToSupplier(
+    double latitude,
+    double longitude,
+    String name,
+  ) async {
+    try {
+      // 检查是否安装了高德地图
+      final isAmapAvailable = await MapLauncher.isMapAvailable(MapType.amap);
+      if (isAmapAvailable == true) {
+        // 使用高德地图导航
+        await MapLauncher.showDirections(
+          mapType: MapType.amap,
+          destination: Coords(latitude, longitude),
+          destinationTitle: name,
+        );
+      } else {
+        // 如果没有高德地图，检查其他可用的地图应用
+        final availableMaps = await MapLauncher.installedMaps;
+        if (availableMaps.isNotEmpty) {
+          // 使用第一个可用的地图应用
+          await availableMaps.first.showDirections(
+            destination: Coords(latitude, longitude),
+            destinationTitle: name,
+          );
+        } else {
+          // 如果没有安装任何地图应用，显示提示
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('未安装地图应用，请先安装高德地图'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('打开导航失败: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildDeliveryFeeCard() {
@@ -1063,6 +1641,12 @@ class _OrderDetailViewState extends State<OrderDetailView> {
     );
   }
 
+  bool _isPendingPickup() {
+    final order = _orderData?['order'] as Map<String, dynamic>?;
+    final status = order?['status'] as String? ?? '';
+    return status == 'pending_pickup';
+  }
+
   bool _isUrgent() {
     final order = _orderData?['order'] as Map<String, dynamic>?;
     return (order?['is_urgent'] as bool?) ?? false;
@@ -1091,6 +1675,8 @@ class _OrderDetailViewState extends State<OrderDetailView> {
       case 'pending_delivery':
       case 'pending':
         return '待配送';
+      case 'pending_pickup':
+        return '待取货';
       case 'delivering':
         return '配送中';
       case 'delivered':
@@ -1099,6 +1685,8 @@ class _OrderDetailViewState extends State<OrderDetailView> {
       case 'paid':
       case 'completed':
         return '已收款';
+      case 'cancelled':
+        return '已取消';
       default:
         return status;
     }
@@ -1127,6 +1715,8 @@ class _OrderDetailViewState extends State<OrderDetailView> {
       case 'pending_delivery':
       case 'pending':
         return '待接单';
+      case 'pending_pickup':
+        return '待取货';
       case 'delivering':
         return '配送中';
       case 'delivered':
@@ -1135,6 +1725,8 @@ class _OrderDetailViewState extends State<OrderDetailView> {
       case 'paid':
       case 'completed':
         return '已收款';
+      case 'cancelled':
+        return '已取消';
       default:
         return status;
     }

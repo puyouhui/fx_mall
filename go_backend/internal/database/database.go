@@ -206,6 +206,8 @@ func InitDB() error {
 		    phone VARCHAR(20) COMMENT '联系电话',
 		    email VARCHAR(100) COMMENT '邮箱',
 		    address VARCHAR(255) COMMENT '地址',
+		    latitude DECIMAL(10, 6) COMMENT '纬度',
+		    longitude DECIMAL(10, 6) COMMENT '经度',
 		    username VARCHAR(50) NOT NULL COMMENT '登录账号',
 		    password VARCHAR(255) NOT NULL COMMENT '密码（加密存储）',
 		    status TINYINT DEFAULT 1 COMMENT '状态：1-启用，0-禁用',
@@ -219,6 +221,18 @@ func InitDB() error {
 		if err != nil {
 			log.Printf("创建suppliers表失败: %v", err)
 			return
+		}
+
+		// 检查并添加经纬度字段（如果不存在，用于兼容旧表）
+		var latitudeExists int
+		err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'suppliers' AND column_name = 'latitude'", cfg.DBName).Scan(&latitudeExists)
+		if err == nil && latitudeExists == 0 {
+			_, err = DB.Exec("ALTER TABLE suppliers ADD COLUMN latitude DECIMAL(10, 6) COMMENT '纬度' AFTER address, ADD COLUMN longitude DECIMAL(10, 6) COMMENT '经度' AFTER latitude")
+			if err != nil {
+				log.Printf("添加经纬度字段失败: %v", err)
+			} else {
+				log.Println("已添加经纬度字段到suppliers表")
+			}
 		}
 
 		// 检查供应商表是否有数据，如果没有则插入默认"自营"供应商
@@ -238,13 +252,13 @@ func InitDB() error {
 				return
 			}
 
-			// 插入默认"自营"供应商
+			// 插入默认"自营"供应商（昆明市中心坐标：纬度 25.040609，经度 102.712251）
 			insertSupplierSQL := `
-			INSERT INTO suppliers (name, contact, phone, email, address, username, password, status, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW());
+			INSERT INTO suppliers (name, contact, phone, email, address, latitude, longitude, username, password, status, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW());
 			`
 
-			_, err = DB.Exec(insertSupplierSQL, "自营", "系统管理员", "", "", "", "self_operated", hashedPassword)
+			_, err = DB.Exec(insertSupplierSQL, "自营", "系统管理员", "", "", "云南省昆明市", 25.040609, 102.712251, "self_operated", hashedPassword)
 			if err != nil {
 				log.Printf("插入默认供应商失败: %v", err)
 				return
@@ -807,6 +821,30 @@ func InitDB() error {
 				log.Printf("添加net_profit字段失败: %v", err)
 			} else {
 				log.Println("已添加net_profit字段到orders表")
+			}
+		}
+
+		// 检查 delivery_employee_code 字段
+		var deliveryEmployeeCodeExists int
+		checkDeliveryEmployeeCodeQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'delivery_employee_code'`
+		if err := DB.QueryRow(checkDeliveryEmployeeCodeQuery).Scan(&deliveryEmployeeCodeExists); err == nil && deliveryEmployeeCodeExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN delivery_employee_code VARCHAR(10) DEFAULT NULL COMMENT '配送员员工码（接单时记录）' AFTER status, ADD KEY idx_delivery_employee_code (delivery_employee_code)`); err != nil {
+				log.Printf("添加delivery_employee_code字段失败: %v", err)
+			} else {
+				log.Println("已添加delivery_employee_code字段到orders表")
+			}
+		}
+
+		// 检查 order_items 表的 is_picked 字段
+		var isPickedExists int
+		checkIsPickedQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'is_picked'`
+		if err := DB.QueryRow(checkIsPickedQuery).Scan(&isPickedExists); err == nil && isPickedExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE order_items ADD COLUMN is_picked TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已取货' AFTER image, ADD KEY idx_is_picked (is_picked)`); err != nil {
+				log.Printf("添加is_picked字段失败: %v", err)
+			} else {
+				log.Println("已添加is_picked字段到order_items表")
 			}
 		}
 

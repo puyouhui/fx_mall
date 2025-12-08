@@ -63,7 +63,7 @@ func GetAllSuppliers(c *gin.Context) {
 	// 不返回密码字段
 	var suppliersList []map[string]interface{}
 	for _, supplier := range suppliers {
-		suppliersList = append(suppliersList, map[string]interface{}{
+		supplierInfo := map[string]interface{}{
 			"id":         supplier.ID,
 			"name":       supplier.Name,
 			"contact":    supplier.Contact,
@@ -74,7 +74,14 @@ func GetAllSuppliers(c *gin.Context) {
 			"status":     supplier.Status,
 			"created_at": supplier.CreatedAt,
 			"updated_at": supplier.UpdatedAt,
-		})
+		}
+		if supplier.Latitude != nil {
+			supplierInfo["latitude"] = *supplier.Latitude
+		}
+		if supplier.Longitude != nil {
+			supplierInfo["longitude"] = *supplier.Longitude
+		}
+		suppliersList = append(suppliersList, supplierInfo)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": suppliersList, "message": "success"})
@@ -113,6 +120,12 @@ func GetSupplierByID(c *gin.Context) {
 		"created_at": supplier.CreatedAt,
 		"updated_at": supplier.UpdatedAt,
 	}
+	if supplier.Latitude != nil {
+		supplierInfo["latitude"] = *supplier.Latitude
+	}
+	if supplier.Longitude != nil {
+		supplierInfo["longitude"] = *supplier.Longitude
+	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": supplierInfo, "message": "success"})
 }
@@ -120,14 +133,16 @@ func GetSupplierByID(c *gin.Context) {
 // CreateSupplier 创建供应商
 func CreateSupplier(c *gin.Context) {
 	var supplierData struct {
-		Name     string `json:"name" binding:"required"`
-		Contact  string `json:"contact"`
-		Phone    string `json:"phone"`
-		Email    string `json:"email"`
-		Address  string `json:"address"`
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required,min=6"`
-		Status   int    `json:"status"`
+		Name      string   `json:"name" binding:"required"`
+		Contact   string   `json:"contact"`
+		Phone     string   `json:"phone"`
+		Email     string   `json:"email"`
+		Address   string   `json:"address"`
+		Latitude  *float64 `json:"latitude"`
+		Longitude *float64 `json:"longitude"`
+		Username  string   `json:"username" binding:"required"`
+		Password  string   `json:"password" binding:"required,min=6"`
+		Status    int      `json:"status"`
 	}
 
 	if err := c.ShouldBindJSON(&supplierData); err != nil {
@@ -154,14 +169,16 @@ func CreateSupplier(c *gin.Context) {
 	}
 
 	supplier := &model.Supplier{
-		Name:     supplierData.Name,
-		Contact:  supplierData.Contact,
-		Phone:    supplierData.Phone,
-		Email:    supplierData.Email,
-		Address:  supplierData.Address,
-		Username: supplierData.Username,
-		Password: hashedPassword,
-		Status:   1, // 默认启用
+		Name:      supplierData.Name,
+		Contact:   supplierData.Contact,
+		Phone:     supplierData.Phone,
+		Email:     supplierData.Email,
+		Address:   supplierData.Address,
+		Latitude:  supplierData.Latitude,
+		Longitude: supplierData.Longitude,
+		Username:  supplierData.Username,
+		Password:  hashedPassword,
+		Status:    1, // 默认启用
 	}
 
 	if supplierData.Status > 0 {
@@ -186,6 +203,12 @@ func CreateSupplier(c *gin.Context) {
 		"created_at": supplier.CreatedAt,
 		"updated_at": supplier.UpdatedAt,
 	}
+	if supplier.Latitude != nil {
+		supplierInfo["latitude"] = *supplier.Latitude
+	}
+	if supplier.Longitude != nil {
+		supplierInfo["longitude"] = *supplier.Longitude
+	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": supplierInfo, "message": "创建成功"})
 }
@@ -200,13 +223,15 @@ func UpdateSupplier(c *gin.Context) {
 	}
 
 	var updateData struct {
-		Name     string `json:"name" binding:"required"`
-		Contact  string `json:"contact"`
-		Phone    string `json:"phone"`
-		Email    string `json:"email"`
-		Address  string `json:"address"`
-		Username string `json:"username" binding:"required"`
-		Status   int    `json:"status"`
+		Name      string   `json:"name" binding:"required"`
+		Contact   string   `json:"contact"`
+		Phone     string   `json:"phone"`
+		Email     string   `json:"email"`
+		Address   string   `json:"address"`
+		Latitude  *float64 `json:"latitude"`
+		Longitude *float64 `json:"longitude"`
+		Username  string   `json:"username" binding:"required"`
+		Status    int      `json:"status"`
 	}
 
 	if err := c.ShouldBindJSON(&updateData); err != nil {
@@ -245,6 +270,8 @@ func UpdateSupplier(c *gin.Context) {
 	supplier.Phone = updateData.Phone
 	supplier.Email = updateData.Email
 	supplier.Address = updateData.Address
+	supplier.Latitude = updateData.Latitude
+	supplier.Longitude = updateData.Longitude
 	supplier.Username = updateData.Username
 	supplier.Status = updateData.Status
 
@@ -265,6 +292,12 @@ func UpdateSupplier(c *gin.Context) {
 		"status":     supplier.Status,
 		"created_at": supplier.CreatedAt,
 		"updated_at": supplier.UpdatedAt,
+	}
+	if supplier.Latitude != nil {
+		supplierInfo["latitude"] = *supplier.Latitude
+	}
+	if supplier.Longitude != nil {
+		supplierInfo["longitude"] = *supplier.Longitude
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": supplierInfo, "message": "更新成功"})

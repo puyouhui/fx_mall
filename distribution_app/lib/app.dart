@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'pages/login_page.dart';
 import 'pages/main_shell.dart';
+import 'pages/batch_pickup_view.dart';
 import 'utils/storage.dart';
 
 /// 根组件：定义路由与主题，启动时检查登录状态，自动登录
@@ -29,7 +30,7 @@ class _DistributionAppState extends State<DistributionApp> {
       // 有token，尝试获取员工信息
       final employeeInfo = await Storage.getEmployeeInfo();
       final phone = employeeInfo?['phone'] as String? ?? '';
-      
+
       if (mounted) {
         setState(() {
           _initialRoute = '/main';
@@ -50,7 +51,9 @@ class _DistributionAppState extends State<DistributionApp> {
 
   Widget _buildHome() {
     if (_initialRoute == '/main') {
-      return MainShell(courierPhone: _courierPhone.isNotEmpty ? _courierPhone : '配送员');
+      return MainShell(
+        courierPhone: _courierPhone.isNotEmpty ? _courierPhone : '配送员',
+      );
     }
     return const LoginPage();
   }
@@ -92,9 +95,13 @@ class _DistributionAppState extends State<DistributionApp> {
             // 优先使用传入的参数，否则使用存储的phone
             final phone = (settings.arguments as String?) ?? _courierPhone;
             return MaterialPageRoute(
-              builder: (_) => MainShell(
-                courierPhone: phone.isNotEmpty ? phone : '配送员',
-              ),
+              builder: (_) =>
+                  MainShell(courierPhone: phone.isNotEmpty ? phone : '配送员'),
+              settings: settings,
+            );
+          case '/batch-pickup':
+            return MaterialPageRoute(
+              builder: (_) => const BatchPickupView(),
               settings: settings,
             );
           default:
@@ -107,5 +114,3 @@ class _DistributionAppState extends State<DistributionApp> {
     );
   }
 }
-
-
