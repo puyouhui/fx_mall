@@ -22,6 +22,7 @@
             @change="handleSearch"
           >
             <el-option label="待配送" value="pending_delivery" />
+            <el-option label="待取货" value="pending_pickup" />
             <el-option label="配送中" value="delivering" />
             <el-option label="已送达" value="delivered" />
             <el-option label="已收款" value="paid" />
@@ -498,6 +499,7 @@ const formatStatus = (status) => {
   const statusMap = {
     'pending': '待配送',           // 兼容旧状态
     'pending_delivery': '待配送',
+    'pending_pickup': '待取货',
     'delivering': '配送中',
     'delivered': '已送达',
     'paid': '已收款',
@@ -512,6 +514,7 @@ const getStatusType = (status) => {
   const typeMap = {
     'pending': 'danger',             // 兼容旧状态 - 待配送 - 红色
     'pending_delivery': 'danger',    // 待配送 - 红色
+    'pending_pickup': 'warning',     // 待取货 - 橙色
     'delivering': 'primary',         // 配送中 - 蓝色
     'delivered': 'warning',          // 已送达 - 橙色
     'shipped': 'warning',            // 兼容旧状态 - 已送达 - 橙色

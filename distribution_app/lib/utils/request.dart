@@ -139,6 +139,51 @@ class Request {
     }
   }
 
+  // 多文件上传（multipart/form-data）
+  static Future<ApiResponse<T>> postMultipart<T>(
+    String path, {
+    Map<String, File>? files,
+    Map<String, String>? fields,
+    bool needAuth = true,
+    T Function(dynamic)? parser,
+  }) async {
+    try {
+      final uri = Uri.parse('${Config.apiBaseUrl}$path');
+      final request = http.MultipartRequest('POST', uri);
+
+      if (needAuth) {
+        final token = await Storage.getToken();
+        if (token != null && token.isNotEmpty) {
+          request.headers['Authorization'] = 'Bearer $token';
+        }
+      }
+      request.headers['Accept'] = 'application/json';
+
+      // 添加文件
+      if (files != null) {
+        for (final entry in files.entries) {
+          request.files.add(
+            await http.MultipartFile.fromPath(entry.key, entry.value.path),
+          );
+        }
+      }
+
+      // 添加字段
+      if (fields != null) {
+        request.fields.addAll(fields);
+      }
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      return _handleResponse<T>(response, parser: parser);
+    } catch (e) {
+      return ApiResponse<T>(
+        code: 500,
+        message: '文件上传失败: ${e.toString()}',
+      );
+    }
+  }
+
   // 处理响应
   static ApiResponse<T> _handleResponse<T>(
     http.Response response, {

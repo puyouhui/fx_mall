@@ -234,9 +234,9 @@ func GetUserOrders(c *gin.Context) {
 
 	// 状态筛选（兼容旧状态）
 	if status != "" {
-		// 兼容旧状态：pending_delivery 也包含 pending
+		// 兼容旧状态：pending_delivery 也包含 pending 和 pending_pickup（待取货也显示在待配送中）
 		if status == "pending_delivery" {
-			where += " AND (status = ? OR status = 'pending')"
+			where += " AND (status = ? OR status = 'pending' OR status = 'pending_pickup')"
 			args = append(args, status)
 		} else if status == "delivered" {
 			// 兼容旧状态：delivered 也包含 shipped

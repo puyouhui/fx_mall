@@ -110,115 +110,169 @@ class LocationService {
 
   /// 获取当前位置（即使定位服务未启用也尝试获取，某些设备可能仍能获取到网络定位）
   static Future<Position?> getCurrentLocationDirect() async {
-    try {
-      print('[LocationService] 直接获取定位（不检查服务状态）...');
+    print('[LocationService] 直接获取定位（不检查服务状态，优先网络定位）...');
 
-      // 检查并请求权限
-      bool hasPermission = await checkAndRequestPermission();
-      if (!hasPermission) {
-        print('[LocationService] 没有定位权限，无法获取位置');
-        return null;
-      }
-
-      print('[LocationService] 正在获取位置信息（使用最低精度，优先网络定位）...');
-      // 尝试获取当前位置，即使定位服务可能未启用
-      // 使用最低精度，优先使用网络定位（NETWORK_PROVIDER），在室内也能工作
-      // 强制使用 Android 原生 LocationManager，避免依赖 Google Location Service
-      // 网络定位通常很快，设置较短的超时时间
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.lowest, // 使用最低精度，优先网络定位
-        timeLimit: const Duration(seconds: 15), // 网络定位通常很快，15秒足够
-        forceAndroidLocationManager: true, // 强制使用 Android 原生 LocationManager
-      );
-
-      print(
-        '[LocationService] 直接定位成功: ${position.latitude}, ${position.longitude}, 精度: ${position.accuracy}米',
-      );
-      return position;
-    } catch (e) {
-      print('[LocationService] 直接获取定位失败: $e');
-      print('[LocationService] 异常类型: ${e.runtimeType}');
-      print('[LocationService] 异常详情: ${e.toString()}');
-
-      // 如果第一次尝试失败，可能是网络定位不可用，尝试等待更长时间
-      // 但通常如果网络定位可用，第一次就应该成功
-      print('[LocationService] 网络定位失败，可能是定位服务未启用或网络不可用');
-
+    // 检查并请求权限
+    bool hasPermission = await checkAndRequestPermission();
+    if (!hasPermission) {
+      print('[LocationService] 没有定位权限，无法获取位置');
       return null;
     }
-  }
 
-  /// 获取当前位置
-  static Future<Position?> getCurrentLocation() async {
-    try {
-      print('[LocationService] 开始获取定位...');
+    // 尝试从低精度到最低精度，每种精度重试2次
+    final accuracyLevels = [
+      LocationAccuracy.low,
+      LocationAccuracy.lowest,
+    ];
 
-      // 先检查定位服务是否启用
-      bool serviceEnabled = await checkLocationServiceEnabled();
-      print('[LocationService] 定位服务状态: $serviceEnabled');
-
-      // 如果定位服务未启用，尝试直接获取（某些设备可能仍能获取到网络定位）
-      if (!serviceEnabled) {
-        print('[LocationService] 定位服务未启用，尝试直接获取位置（网络定位）...');
-        final position = await getCurrentLocationDirect();
-        if (position != null) {
-          print('[LocationService] 即使定位服务未启用，仍成功获取到位置（可能是网络定位）');
-          return position;
-        }
-        print('[LocationService] 定位服务未启用且无法获取位置');
-        return null;
-      }
-
-      // 检查并请求权限
-      bool hasPermission = await checkAndRequestPermission();
-      if (!hasPermission) {
-        print('[LocationService] 没有定位权限，无法获取位置');
-        // 再次检查 Geolocator 的权限状态
-        final geolocatorPermission = await Geolocator.checkPermission();
-        print('[LocationService] Geolocator 权限状态: $geolocatorPermission');
-        return null;
-      }
-
-      print('[LocationService] 正在获取位置信息...');
-      // 获取当前位置
-      // 强制使用 Android 原生 LocationManager，避免依赖 Google Location Service
-      // 这样可以确保在国内没有 Google 服务的情况下也能正常定位
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 20),
-        forceAndroidLocationManager: true, // 强制使用 Android 原生 LocationManager
-      );
-
-      print(
-        '[LocationService] 定位成功: ${position.latitude}, ${position.longitude}, 精度: ${position.accuracy}米',
-      );
-      return position;
-    } catch (e) {
-      print('[LocationService] 获取定位失败: $e');
-      print('[LocationService] 异常类型: ${e.runtimeType}');
-      print('[LocationService] 异常堆栈: ${StackTrace.current}');
-
-      // 如果是超时错误，尝试使用低精度定位
-      if (e.toString().contains('timeout') ||
-          e.toString().contains('TimeoutException')) {
-        print('[LocationService] 高精度定位超时，尝试使用低精度定位...');
+    for (int level = 0; level < accuracyLevels.length; level++) {
+      final accuracy = accuracyLevels[level];
+      
+      // 每种精度重试2次
+      for (int retry = 0; retry < 2; retry++) {
         try {
+          print('[LocationService] 尝试网络定位 - 精度: $accuracy, 重试: ${retry + 1}/2');
+          
+          // 尝试获取当前位置，即使定位服务可能未启用
+          // 使用低精度，优先使用网络定位（NETWORK_PROVIDER），在室内也能工作
+          // 强制使用 Android 原生 LocationManager，避免依赖 Google Location Service
           Position position = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.low,
-            timeLimit: const Duration(seconds: 10),
+            desiredAccuracy: accuracy,
+            timeLimit: const Duration(seconds: 15), // 网络定位通常很快，15秒足够
             forceAndroidLocationManager: true, // 强制使用 Android 原生 LocationManager
           );
+
           print(
-            '[LocationService] 低精度定位成功: ${position.latitude}, ${position.longitude}',
+            '[LocationService] 直接定位成功: ${position.latitude}, ${position.longitude}, 精度: ${position.accuracy}米',
           );
           return position;
-        } catch (e2) {
-          print('[LocationService] 低精度定位也失败: $e2');
+        } catch (e) {
+          final errorStr = e.toString();
+          print('[LocationService] 网络定位失败 (精度: $accuracy, 重试: ${retry + 1}/2): $e');
+          
+          // 如果是权限错误，直接返回
+          if (errorStr.contains('permission') || 
+              errorStr.contains('Permission') ||
+              errorStr.contains('权限')) {
+            print('[LocationService] 权限错误，停止尝试');
+            return null;
+          }
+          
+          // 如果是最后一次重试，继续下一级精度
+          if (retry == 1) {
+            print('[LocationService] 当前精度级别失败，降级到下一级精度');
+            break;
+          }
+          
+          // 等待一下再重试
+          await Future.delayed(const Duration(milliseconds: 500));
         }
       }
+    }
 
+    print('[LocationService] 网络定位失败，可能是定位服务未启用或网络不可用');
+    return null;
+  }
+
+  /// 获取当前位置（带多级降级策略和重试机制）
+  static Future<Position?> getCurrentLocation() async {
+    // 先检查并请求权限
+    bool hasPermission = await checkAndRequestPermission();
+    if (!hasPermission) {
+      print('[LocationService] 没有定位权限，无法获取位置');
+      // 再次检查 Geolocator 的权限状态
+      final geolocatorPermission = await Geolocator.checkPermission();
+      print('[LocationService] Geolocator 权限状态: $geolocatorPermission');
       return null;
     }
+
+    // 检查定位服务是否启用
+    bool serviceEnabled = await checkLocationServiceEnabled();
+    print('[LocationService] 定位服务状态: $serviceEnabled');
+
+    // 如果定位服务未启用，尝试直接获取（某些设备可能仍能获取到网络定位）
+    if (!serviceEnabled) {
+      print('[LocationService] 定位服务未启用，尝试直接获取位置（网络定位）...');
+      final position = await getCurrentLocationDirect();
+      if (position != null) {
+        print('[LocationService] 即使定位服务未启用，仍成功获取到位置（可能是网络定位）');
+        return position;
+      }
+      print('[LocationService] 定位服务未启用且无法获取位置');
+      // 即使定位服务未启用，也继续尝试多级降级策略
+    }
+
+    // 多级降级策略：优先使用网络定位（低精度），在中国更可靠
+    // 从低精度到高精度，优先网络定位，GPS作为备选
+    final accuracyLevels = [
+      LocationAccuracy.low,        // 优先：网络定位（WiFi + 基站）
+      LocationAccuracy.lowest,     // 备选：最低精度网络定位
+      LocationAccuracy.medium,     // 备选：中等精度（GPS + 网络）
+      LocationAccuracy.high,       // 最后：高精度GPS（在中国可能失败）
+    ];
+
+    final timeLimits = [
+      const Duration(seconds: 15), // 网络定位通常很快，15秒足够
+      const Duration(seconds: 10), // 最低精度10秒
+      const Duration(seconds: 20), // 中等精度20秒
+      const Duration(seconds: 30), // 高精度GPS给30秒（可能超时）
+    ];
+
+    for (int level = 0; level < accuracyLevels.length; level++) {
+      final accuracy = accuracyLevels[level];
+      final timeLimit = timeLimits[level];
+      
+      // 每种精度重试2次
+      for (int retry = 0; retry < 2; retry++) {
+        try {
+          print('[LocationService] 尝试获取定位 - 精度: $accuracy, 超时: ${timeLimit.inSeconds}秒, 重试: ${retry + 1}/2');
+          
+          Position position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: accuracy,
+            timeLimit: timeLimit,
+            forceAndroidLocationManager: true, // 强制使用 Android 原生 LocationManager
+          );
+
+          print(
+            '[LocationService] 定位成功: ${position.latitude}, ${position.longitude}, 精度: ${position.accuracy}米, 使用精度级别: $accuracy',
+          );
+          return position;
+        } catch (e) {
+          final errorStr = e.toString();
+          print('[LocationService] 定位失败 (精度: $accuracy, 重试: ${retry + 1}/2): $e');
+          
+          // 如果是权限错误，直接返回，不需要继续尝试
+          if (errorStr.contains('permission') || 
+              errorStr.contains('Permission') ||
+              errorStr.contains('权限')) {
+            print('[LocationService] 权限错误，停止尝试');
+            return null;
+          }
+          
+          // 如果是超时错误，继续下一级精度或重试
+          if (errorStr.contains('timeout') || 
+              errorStr.contains('TimeoutException') ||
+              errorStr.contains('超时')) {
+            print('[LocationService] 定位超时，继续尝试...');
+            // 如果是最后一次重试，继续下一级精度
+            if (retry == 1) {
+              print('[LocationService] 当前精度级别失败，降级到下一级精度');
+              break; // 跳出重试循环，继续下一级精度
+            }
+            // 否则等待一下再重试
+            await Future.delayed(const Duration(milliseconds: 500));
+            continue;
+          }
+          
+          // 其他错误，也尝试下一级精度
+          print('[LocationService] 其他错误，降级到下一级精度');
+          break; // 跳出重试循环，继续下一级精度
+        }
+      }
+    }
+
+    print('[LocationService] 所有精度级别都失败，定位失败');
+    return null;
   }
 
   /// 获取位置信息字符串

@@ -196,6 +196,11 @@ func main() {
 				protectedGroup.GET("/orders/:id", api.GetOrderByIDForAdmin)                   // 获取订单详情（后台管理）
 				protectedGroup.PUT("/orders/:id/status", api.UpdateOrderStatus)               // 更新订单状态（后台管理）
 				protectedGroup.GET("/orders/:id/delivery-fee", api.GetDeliveryFeeCalculation) // 获取配送费计算结果（管理员）
+
+				// 配送记录管理
+				protectedGroup.GET("/delivery-records", api.GetAllDeliveryRecordsForAdmin)                     // 获取所有配送记录（后台管理）
+				protectedGroup.GET("/delivery-records/:id", api.GetDeliveryRecordByIDForAdmin)                 // 获取配送记录详情（后台管理）
+				protectedGroup.GET("/delivery-records/order/:orderId", api.GetDeliveryRecordByOrderIDForAdmin) // 根据订单ID获取配送记录（后台管理）
 			}
 		}
 
@@ -232,12 +237,13 @@ func main() {
 				employeeProtectedGroup.GET("/delivery/orders/:id/delivery-fee", api.GetDeliveryFeeCalculationForRider)   // 获取配送费计算结果（配送员）
 				employeeProtectedGroup.PUT("/delivery/orders/:id/accept", api.AcceptDeliveryOrder)                       // 接单
 				employeeProtectedGroup.PUT("/delivery/orders/:id/start", api.StartDeliveryOrder)                         // 开始配送
-				employeeProtectedGroup.PUT("/delivery/orders/:id/complete", api.CompleteDeliveryOrder)                   // 完成配送
+				employeeProtectedGroup.POST("/delivery/orders/:id/complete", api.CompleteDeliveryOrder)                  // 完成配送（支持上传图片）
 				employeeProtectedGroup.POST("/delivery/orders/:id/report", api.ReportOrderIssue)                         // 问题上报
 				employeeProtectedGroup.GET("/delivery/my-orders", api.GetDeliveryOrders)                                 // 获取我的配送订单（通过status参数筛选）
 				employeeProtectedGroup.GET("/delivery/pickup/suppliers", api.GetPickupSuppliers)                         // 获取待取货供应商列表
 				employeeProtectedGroup.GET("/delivery/pickup/suppliers/:supplierId/items", api.GetPickupItemsBySupplier) // 获取供应商的待取货商品
 				employeeProtectedGroup.POST("/delivery/pickup/mark-picked", api.MarkItemsAsPicked)                       // 标记商品已取货
+				employeeProtectedGroup.POST("/delivery/route/plan", api.PlanDeliveryRoute)                               // 规划配送路线
 
 				// 销售员相关接口
 				employeeProtectedGroup.GET("/sales/customers", api.GetSalesCustomers)                                            // 获取我的客户列表

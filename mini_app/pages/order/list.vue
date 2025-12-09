@@ -211,6 +211,7 @@ export default {
       const statusMap = {
         'pending': '待配送',
         'pending_delivery': '待配送',
+        'pending_pickup': '待配送',
         'delivering': '配送中',
         'delivered': '已送达',
         'shipped': '已送达',
@@ -224,6 +225,7 @@ export default {
       const classMap = {
         'pending': 'status-pending',
         'pending_delivery': 'status-pending',
+        'pending_pickup': 'status-pending',
         'delivering': 'status-delivering',
         'delivered': 'status-delivered',
         'shipped': 'status-delivered',

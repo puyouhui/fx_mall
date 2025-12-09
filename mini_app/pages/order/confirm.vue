@@ -434,17 +434,27 @@ export default {
         }
         const res = await createOrder(payload, this.token)
         if (res && res.code === 200) {
-          const orderNumber = res.data?.order?.order_number || ''
+          const orderData = res.data?.order || {}
+          const orderId = orderData.id || orderData.order_id
+          const orderNumber = orderData.order_number || ''
           const successMsg = orderNumber ? `下单成功！订单编号：${orderNumber}` : '下单成功'
           uni.showToast({ 
             title: successMsg, 
             icon: 'success',
-            duration: orderNumber ? 3000 : 2000
+            duration: 1500
           })
-          // 下单成功后返回采购单页面或跳转到订单详情（预留）
+          // 下单成功后跳转到订单详情页面
           setTimeout(() => {
+            if (orderId) {
+              uni.redirectTo({ 
+                url: `/pages/order/detail?id=${orderId}` 
+              })
+            } else {
+              // 如果没有订单ID，则返回购物车页面（降级处理）
+              console.warn('订单创建成功但未获取到订单ID，返回购物车页面')
             uni.switchTab({ url: '/pages/cart/cart' })
-          }, orderNumber ? 3000 : 800)
+            }
+          }, 1500)
         } else {
           uni.showToast({ title: res.message || '下单失败', icon: 'none' })
         }

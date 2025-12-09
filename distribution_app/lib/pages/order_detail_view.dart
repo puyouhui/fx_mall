@@ -70,20 +70,116 @@ class _OrderDetailViewState extends State<OrderDetailView> {
   Future<void> _startLocationTracking() async {
     final hasPermission = await LocationService.checkAndRequestPermission();
     if (!hasPermission) {
+      print('[OrderDetailView] 没有定位权限，无法启动位置跟踪');
       return;
     }
 
     final serviceEnabled = await LocationService.checkLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return;
-    }
 
     try {
+      // 即使定位服务未启用，也尝试使用网络定位
+      if (!serviceEnabled) {
+        print('[OrderDetailView] 定位服务未启用，尝试使用网络定位...');
+        final networkPosition = await LocationService.getCurrentLocation();
+        if (networkPosition != null && mounted) {
+          print('[OrderDetailView] 网络定位成功，继续使用网络定位');
+          // 立即将初始位置发送到流中，以便 CurrentLocationLayer 能显示
+          _locationStreamController.add(
+            LocationMarkerPosition(
+              latitude: networkPosition.latitude,
+              longitude: networkPosition.longitude,
+              accuracy: networkPosition.accuracy,
+            ),
+          );
+          setState(() {
+            _userPosition = networkPosition;
+          });
+          // 网络定位成功，启动定位流（使用低精度）
+          _startPositionStreamWithFallback();
+          return;
+        } else {
+          print('[OrderDetailView] 网络定位也失败，无法启动位置跟踪');
+          return;
+        }
+      }
+
+      // 定位服务已启用，正常启动定位流
+      // 使用多级精度策略启动定位流，从高精度开始，如果失败则降级
+      _startPositionStreamWithFallback();
+
+      final initialPosition = await LocationService.getCurrentLocation();
+      if (initialPosition != null && mounted) {
+        // 立即将初始位置发送到流中，以便 CurrentLocationLayer 能显示
+        _locationStreamController.add(
+          LocationMarkerPosition(
+            latitude: initialPosition.latitude,
+            longitude: initialPosition.longitude,
+            accuracy: initialPosition.accuracy,
+          ),
+        );
+        setState(() {
+          _userPosition = initialPosition;
+        });
+      }
+    } catch (e) {
+      print('[OrderDetailView] 启动位置跟踪失败: $e');
+      // 错误处理：尝试使用低精度重新启动
+      if (mounted) {
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            _startPositionStreamWithFallback();
+          }
+        });
+      }
+    }
+  }
+
+  /// 启动定位流（带降级策略，优先网络定位）
+  void _startPositionStreamWithFallback() {
+    // 优先使用网络定位（低精度），在中国更可靠
+    _tryStartPositionStream(LocationAccuracy.low, () {
+      // 如果低精度失败，尝试最低精度
+      print('[OrderDetailView] 网络定位流失败，尝试最低精度');
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted) {
+          _tryStartPositionStream(LocationAccuracy.lowest, () {
+            // 如果最低精度也失败，尝试中等精度（GPS + 网络）
+            print('[OrderDetailView] 最低精度定位流失败，尝试中等精度（GPS+网络）');
+            Future.delayed(const Duration(seconds: 1), () {
+              if (mounted) {
+                _tryStartPositionStream(LocationAccuracy.medium, () {
+                  // 最后尝试高精度GPS（在中国可能失败）
+                  print('[OrderDetailView] 中等精度定位流失败，尝试高精度GPS');
+                  Future.delayed(const Duration(seconds: 1), () {
+                    if (mounted) {
+                      _tryStartPositionStream(LocationAccuracy.high, () {
+                        print('[OrderDetailView] 所有精度级别都失败，定位流无法启动');
+                      });
+                    }
+                  });
+                });
+              }
+            });
+          });
+        }
+      });
+    });
+  }
+
+  /// 尝试启动指定精度的定位流
+  void _tryStartPositionStream(
+    LocationAccuracy accuracy,
+    VoidCallback onError,
+  ) {
+    try {
+      _positionStreamSubscription?.cancel();
       _positionStreamSubscription =
           Geolocator.getPositionStream(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
+            locationSettings: LocationSettings(
+              accuracy: accuracy,
               distanceFilter: 10,
+              // 注意：LocationSettings 不支持 forceAndroidLocationManager 参数
+              // 但可以通过其他方式优化
             ),
           ).listen(
             (Position position) {
@@ -116,26 +212,16 @@ class _OrderDetailViewState extends State<OrderDetailView> {
               }
             },
             onError: (error) {
-              // 错误处理
+              print('[OrderDetailView] 定位流错误 (精度: $accuracy): $error');
+              // 如果当前精度失败，尝试降级
+              onError();
             },
+            cancelOnError: false, // 不因错误而取消流
           );
-
-      final initialPosition = await LocationService.getCurrentLocation();
-      if (initialPosition != null && mounted) {
-        // 立即将初始位置发送到流中，以便 CurrentLocationLayer 能显示
-        _locationStreamController.add(
-          LocationMarkerPosition(
-            latitude: initialPosition.latitude,
-            longitude: initialPosition.longitude,
-            accuracy: initialPosition.accuracy,
-          ),
-        );
-        setState(() {
-          _userPosition = initialPosition;
-        });
-      }
+      print('[OrderDetailView] 定位流启动成功 (精度: $accuracy)');
     } catch (e) {
-      // 错误处理
+      print('[OrderDetailView] 启动定位流失败 (精度: $accuracy): $e');
+      onError();
     }
   }
 
@@ -1807,62 +1893,117 @@ class _OrderDetailViewState extends State<OrderDetailView> {
           top: false,
           child: Row(
             children: [
-              // 问题上报按钮（左侧，小一些）
+              // 问题上报按钮（左侧）
               Expanded(
                 flex: 2,
-                child: OutlinedButton(
-                  onPressed: _isProcessing ? null : _handleReportIssue,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF40475C),
-                    side: const BorderSide(color: Color(0xFFE5E7EB)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  height: 50, // 固定高度，与配送完成按钮一致
+                  child: OutlinedButton(
+                    onPressed: _isProcessing ? null : _handleReportIssue,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF40475C),
+                      side: const BorderSide(color: Color(0xFFE5E7EB)),
+                      padding: EdgeInsets.zero, // 移除padding，使用固定高度
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                  ),
-                  child: const Text(
-                    '问题上报',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    child: const Text(
+                      '问题上报',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-              // 配送完成按钮（右侧，大一些）
+              // 配送完成按钮（右侧）
               Expanded(
                 flex: 3,
-                child: ElevatedButton(
-                  onPressed: _isProcessing ? null : _handleCompleteDelivery,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF20CB6B),
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFF9EDFB9),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  height: 50, // 固定高度，与问题上报按钮一致
+                  child: ElevatedButton(
+                    onPressed: _isProcessing ? null : _handleCompleteDelivery,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF20CB6B),
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: const Color(0xFF9EDFB9),
+                      padding: EdgeInsets.zero, // 移除padding，使用固定高度
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
                     ),
-                    elevation: 0,
-                  ),
-                  child: _isProcessing
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
+                    child: _isProcessing
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : const Text(
+                            '配送完成',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        )
-                      : const Text(
-                          '配送完成',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                  ),
                 ),
               ),
             ],
+          ),
+        ),
+      );
+    }
+
+    // 待取货订单：显示批量取货按钮
+    if (status == 'pending_pickup') {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _handleGoToBatchPickup,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF20CB6B),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.inventory_2, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    '批量取货',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       );
@@ -1913,69 +2054,34 @@ class _OrderDetailViewState extends State<OrderDetailView> {
     }
   }
 
-  // 处理配送完成
+  // 处理配送完成 - 跳转到配送完成页面
   Future<void> _handleCompleteDelivery() async {
     if (_isProcessing) return;
 
-    // 确认对话框
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('确认完成配送'),
-        content: const Text('确定已完成配送吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF20CB6B),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
-    );
+    // 跳转到配送完成页面
+    final result = await Navigator.of(
+      context,
+    ).pushNamed('/complete-delivery', arguments: {'orderId': widget.orderId});
 
-    if (confirmed != true) return;
-
-    setState(() {
-      _isProcessing = true;
-    });
-
-    final response = await OrderApi.completeOrder(widget.orderId);
-
-    if (!mounted) return;
-
-    if (response.isSuccess) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('配送完成'),
-          backgroundColor: Color(0xFF20CB6B),
-        ),
-      );
-      // 重新加载订单详情
+    // 如果返回true，表示配送完成成功，刷新订单详情并返回true通知列表刷新
+    if (result == true && mounted) {
       await _loadOrderDetail();
-      // 返回上一页
+      // 返回true，通知列表页面刷新
       Navigator.of(context).pop(true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            response.message.isNotEmpty ? response.message : '操作失败，请稍后重试',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
     }
+  }
 
-    if (mounted) {
-      setState(() {
-        _isProcessing = false;
-      });
+  // 跳转到批量取货页面
+  Future<void> _handleGoToBatchPickup() async {
+    final result = await Navigator.of(context).pushNamed('/batch-pickup');
+    // 如果返回值为true，表示完成了取货操作，需要刷新订单详情
+    if (result == true && mounted) {
+      await _loadOrderDetail();
+      // 如果订单状态变为配送中，返回true通知列表刷新
+      final status = _orderData?['status'] as String?;
+      if (status == 'delivering') {
+        Navigator.of(context).pop(true);
+      }
     }
   }
 

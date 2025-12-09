@@ -53,6 +53,9 @@ dependencies:
   # 地图导航（打开第三方地图应用）
   map_launcher: ^3.0.2
 
+  # 图片选择器（拍照和选择图片）
+  image_picker: ^1.0.7
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

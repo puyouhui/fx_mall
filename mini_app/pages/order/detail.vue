@@ -31,7 +31,7 @@
         <text class="order-number">订单编号：{{ orderDetail.order?.order_number }}</text>
       </view>
 
-      <!-- 地图（仅在待取货或配送中状态显示） -->
+      <!-- 地图（仅在配送中状态显示，配送员取货后才显示） -->
       <view class="section map-section" v-if="showMap">
         <view class="section-title">配送地图</view>
         <map
@@ -197,7 +197,8 @@ export default {
   computed: {
     showMap() {
       const status = this.orderDetail?.order?.status
-      return status === 'pending_pickup' || status === 'delivering'
+      // 地图只在配送中状态显示（配送员取货后才显示）
+      return status === 'delivering'
     }
   },
   onLoad(options) {
@@ -341,7 +342,7 @@ export default {
       const statusMap = {
         'pending': '订单正在中心仓库分拣，请耐心等待',
         'pending_delivery': '订单正在中心仓库分拣，请耐心等待',
-        'pending_pickup': '待取货',
+        'pending_pickup': '中心分拣完成，待配送',
         'delivering': '配送中',
         'delivered': '已送达',
         'shipped': '已送达',

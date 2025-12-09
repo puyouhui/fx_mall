@@ -884,6 +884,54 @@ func InitDB() error {
 			log.Printf("归一化订单状态(pending -> pending_delivery)失败: %v", err)
 		}
 
+		// 创建配送记录表（记录配送完成时的照片等信息）
+		createDeliveryRecordsTableSQL := `
+		CREATE TABLE IF NOT EXISTS delivery_records (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    order_id INT NOT NULL COMMENT '订单ID',
+		    delivery_employee_code VARCHAR(10) NOT NULL COMMENT '配送员员工码',
+		    product_image_url VARCHAR(500) DEFAULT NULL COMMENT '货物照片URL',
+		    doorplate_image_url VARCHAR(500) DEFAULT NULL COMMENT '门牌照片URL',
+		    completed_at DATETIME NOT NULL COMMENT '完成时间',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    KEY idx_order_id (order_id),
+		    KEY idx_delivery_employee_code (delivery_employee_code),
+		    KEY idx_completed_at (completed_at),
+		    UNIQUE KEY uk_order_id (order_id) COMMENT '一个订单只能有一条配送记录'
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='配送记录表（配送完成时的照片等信息）';
+		`
+
+		if _, err = DB.Exec(createDeliveryRecordsTableSQL); err != nil {
+			log.Printf("创建delivery_records表失败: %v", err)
+		} else {
+			log.Println("配送记录表初始化成功")
+		}
+
+		// 创建配送流程日志表（记录配送的整个流程：创建、接单、取货、配送、完成）
+		createDeliveryLogsTableSQL := `
+		CREATE TABLE IF NOT EXISTS delivery_logs (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    order_id INT NOT NULL COMMENT '订单ID',
+		    action VARCHAR(50) NOT NULL COMMENT '操作类型：created-订单创建, accepted-接单, pickup_started-开始取货, pickup_completed-取货完成, delivering_started-开始配送, delivering_completed-配送完成',
+		    delivery_employee_code VARCHAR(10) DEFAULT NULL COMMENT '配送员员工码（接单、取货、配送时记录）',
+		    action_time DATETIME NOT NULL COMMENT '操作时间',
+		    remark VARCHAR(500) DEFAULT NULL COMMENT '备注信息',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    KEY idx_order_id (order_id),
+		    KEY idx_delivery_employee_code (delivery_employee_code),
+		    KEY idx_action (action),
+		    KEY idx_action_time (action_time),
+		    KEY idx_order_action (order_id, action) COMMENT '复合索引：用于查询订单的某个操作'
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='配送流程日志表（记录配送的整个流程）';
+		`
+
+		if _, err = DB.Exec(createDeliveryLogsTableSQL); err != nil {
+			log.Printf("创建delivery_logs表失败: %v", err)
+		} else {
+			log.Println("配送流程日志表初始化成功")
+		}
+
 		// 创建系统设置表
 		createSystemSettingsTableSQL := `
 		CREATE TABLE IF NOT EXISTS system_settings (

@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"go_backend/internal/database"
 	"go_backend/internal/model"
+	"go_backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -486,6 +488,15 @@ func AcceptDeliveryOrder(c *gin.Context) {
 		return
 	}
 
+	// 记录配送流程日志：接单
+	deliveryLog := &model.DeliveryLog{
+		OrderID:             id,
+		Action:              model.DeliveryLogActionAccepted,
+		DeliveryEmployeeCode: &employee.EmployeeCode,
+		ActionTime:          time.Now(),
+	}
+	_ = model.CreateDeliveryLog(deliveryLog) // 记录日志失败不影响主流程
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "接单成功",
@@ -535,13 +546,22 @@ func StartDeliveryOrder(c *gin.Context) {
 		return
 	}
 
+	// 记录配送流程日志：开始配送
+	deliveryLog := &model.DeliveryLog{
+		OrderID:             id,
+		Action:              model.DeliveryLogActionDeliveringStarted,
+		DeliveryEmployeeCode: &employee.EmployeeCode,
+		ActionTime:          time.Now(),
+	}
+	_ = model.CreateDeliveryLog(deliveryLog) // 记录日志失败不影响主流程
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "开始配送成功",
 	})
 }
 
-// CompleteDeliveryOrder 完成配送
+// CompleteDeliveryOrder 完成配送（支持上传图片）
 func CompleteDeliveryOrder(c *gin.Context) {
 	employee, ok := getEmployeeFromContext(c)
 	if !ok {
@@ -577,16 +597,96 @@ func CompleteDeliveryOrder(c *gin.Context) {
 		return
 	}
 
-	// 更新订单状态为已送达
-	err = model.UpdateOrderStatus(id, "delivered")
+	// 验证配送员是否匹配
+	if order.DeliveryEmployeeCode == nil || *order.DeliveryEmployeeCode != employee.EmployeeCode {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您无权完成此订单的配送"})
+		return
+	}
+
+	var productImageURL, doorplateImageURL *string
+
+	// 上传货物照片
+	if _, _, err := c.Request.FormFile("product_image"); err == nil {
+		url, uploadErr := utils.UploadFileByFieldName("product_image", "delivery_product", c.Request)
+		if uploadErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "上传货物照片失败: " + uploadErr.Error()})
+			return
+		}
+		productImageURL = &url
+	}
+
+	// 上传门牌照片
+	if _, _, err := c.Request.FormFile("doorplate_image"); err == nil {
+		url, uploadErr := utils.UploadFileByFieldName("doorplate_image", "delivery_doorplate", c.Request)
+		if uploadErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "上传门牌照片失败: " + uploadErr.Error()})
+			return
+		}
+		doorplateImageURL = &url
+	}
+
+	// 开始事务
+	tx, err := database.DB.Begin()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "完成配送失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "开启事务失败: " + err.Error()})
+		return
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// 更新订单状态为已送达
+	_, err = tx.Exec("UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新订单状态失败: " + err.Error()})
+		return
+	}
+
+	// 创建配送记录
+	deliveryRecord := &model.DeliveryRecord{
+		OrderID:             id,
+		DeliveryEmployeeCode: employee.EmployeeCode,
+		ProductImageURL:     productImageURL,
+		DoorplateImageURL:   doorplateImageURL,
+		CompletedAt:         time.Now(),
+	}
+
+	// 记录配送流程日志：配送完成
+	remark := "配送完成，已上传货物照片和门牌照片"
+	deliveryLog := &model.DeliveryLog{
+		OrderID:             id,
+		Action:              model.DeliveryLogActionDeliveringCompleted,
+		DeliveryEmployeeCode: &employee.EmployeeCode,
+		ActionTime:          time.Now(),
+		Remark:              &remark,
+	}
+	_ = model.CreateDeliveryLog(deliveryLog) // 记录日志失败不影响主流程
+
+	_, err = tx.Exec(`
+		INSERT INTO delivery_records (
+			order_id, delivery_employee_code, product_image_url, doorplate_image_url, completed_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+	`, deliveryRecord.OrderID, deliveryRecord.DeliveryEmployeeCode,
+		deliveryRecord.ProductImageURL, deliveryRecord.DoorplateImageURL, deliveryRecord.CompletedAt)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建配送记录失败: " + err.Error()})
+		return
+	}
+
+	// 提交事务
+	if err = tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "提交事务失败: " + err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "配送完成",
+		"data": gin.H{
+			"delivery_record": deliveryRecord,
+		},
 	})
 }
 
@@ -923,13 +1023,32 @@ func MarkItemsAsPicked(c *gin.Context) {
 		if totalItems > 0 && totalItems == pickedItems {
 			// 先检查订单状态是否为 pending_pickup
 			var currentStatus string
-			err := database.DB.QueryRow("SELECT status FROM orders WHERE id = ?", orderID).Scan(&currentStatus)
+			var deliveryEmployeeCode sql.NullString
+			err := database.DB.QueryRow("SELECT status, delivery_employee_code FROM orders WHERE id = ?", orderID).Scan(&currentStatus, &deliveryEmployeeCode)
 			if err == nil && currentStatus == "pending_pickup" {
-				// 更新订单状态为 delivering
-				_, err = database.DB.Exec("UPDATE orders SET status = 'delivering' WHERE id = ?", orderID)
+				// 更新订单状态为 delivering，同时更新 updated_at
+				_, err = database.DB.Exec("UPDATE orders SET status = 'delivering', updated_at = NOW() WHERE id = ?", orderID)
 				if err != nil {
 					// 记录错误但不影响整体流程
 					fmt.Printf("更新订单 %d 状态失败: %v\n", orderID, err)
+				} else {
+					// 记录配送流程日志：取货完成
+					if deliveryEmployeeCode.Valid {
+						remark := "所有商品已取货，自动转为配送中"
+						deliveryLog := &model.DeliveryLog{
+							OrderID:             orderID,
+							Action:              model.DeliveryLogActionPickupCompleted,
+							DeliveryEmployeeCode: &deliveryEmployeeCode.String,
+							ActionTime:          time.Now(),
+							Remark:              &remark,
+						}
+						_ = model.CreateDeliveryLog(deliveryLog) // 记录日志失败不影响主流程
+					}
+
+					// 订单状态更新后，重新计算配送费和利润（异步执行，避免阻塞）
+					go func(orderID int) {
+						_ = model.CalculateAndStoreOrderProfit(orderID)
+					}(orderID)
 				}
 			}
 		}
@@ -938,5 +1057,305 @@ func MarkItemsAsPicked(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "标记取货成功",
+	})
+}
+
+// PlanDeliveryRoute 规划配送路线
+func PlanDeliveryRoute(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+
+	if !employee.IsDelivery {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是配送员，无权访问此功能"})
+		return
+	}
+
+	// 获取请求参数：配送员当前位置
+	var req struct {
+		OriginLatitude  float64 `json:"origin_latitude" binding:"required"`  // 起点纬度
+		OriginLongitude float64 `json:"origin_longitude" binding:"required"` // 起点经度
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fmt.Printf("[PlanDeliveryRoute] 请求参数错误: %v\n", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	fmt.Printf("[PlanDeliveryRoute] 收到路线规划请求 - 配送员: %s, 起点: %.6f,%.6f\n", employee.EmployeeCode, req.OriginLatitude, req.OriginLongitude)
+
+	// 获取高德地图API Key
+	mapSettings, err := model.GetMapSettings()
+	if err != nil {
+		fmt.Printf("[PlanDeliveryRoute] 获取地图配置失败: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取地图配置失败: " + err.Error(),
+		})
+		return
+	}
+
+	amapKey := mapSettings["amap_key"]
+	if amapKey == "" {
+		fmt.Printf("[PlanDeliveryRoute] 未配置高德地图API Key\n")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "未配置高德地图API Key，无法进行路线规划",
+		})
+		return
+	}
+	fmt.Printf("[PlanDeliveryRoute] 高德地图API Key已配置（长度: %d）\n", len(amapKey))
+
+	// 查询该配送员所有配送中的订单
+	query := `
+		SELECT o.id, o.order_number, o.address_id, a.latitude, a.longitude, a.address, a.name
+		FROM orders o
+		INNER JOIN mini_app_addresses a ON o.address_id = a.id
+		WHERE o.delivery_employee_code = ? 
+		  AND o.status = 'delivering'
+		  AND a.latitude IS NOT NULL 
+		  AND a.longitude IS NOT NULL
+		ORDER BY o.created_at ASC
+	`
+
+	fmt.Printf("[PlanDeliveryRoute] 查询配送订单 - SQL: %s, 配送员: %s\n", query, employee.EmployeeCode)
+	rows, err := database.DB.Query(query, employee.EmployeeCode)
+	if err != nil {
+		fmt.Printf("[PlanDeliveryRoute] 查询配送订单失败: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "查询配送订单失败: " + err.Error(),
+		})
+		return
+	}
+	defer rows.Close()
+
+	// 收集所有客户位置
+	type CustomerLocation struct {
+		OrderID   int
+		OrderNumber string
+		Latitude  float64
+		Longitude float64
+		Address   string
+		Name      string
+	}
+
+	customers := make([]CustomerLocation, 0)
+	customerCount := 0
+	for rows.Next() {
+		customerCount++
+		var customer CustomerLocation
+		var latitude, longitude sql.NullFloat64
+		var address, name sql.NullString
+
+		err := rows.Scan(
+			&customer.OrderID,
+			&customer.OrderNumber,
+			&sql.NullInt64{}, // address_id
+			&latitude,
+			&longitude,
+			&address,
+			&name,
+		)
+		if err != nil {
+			fmt.Printf("[PlanDeliveryRoute] 扫描订单数据失败 (第%d条): %v\n", customerCount, err)
+			continue
+		}
+		
+		if !latitude.Valid || !longitude.Valid {
+			fmt.Printf("[PlanDeliveryRoute] 订单 %d (订单号: %s) 缺少经纬度信息\n", customer.OrderID, customer.OrderNumber)
+			continue
+		}
+		
+		customer.Latitude = latitude.Float64
+		customer.Longitude = longitude.Float64
+		if address.Valid {
+			customer.Address = address.String
+		}
+		if name.Valid {
+			customer.Name = name.String
+		}
+		customers = append(customers, customer)
+		fmt.Printf("[PlanDeliveryRoute] 找到客户 - 订单ID: %d, 订单号: %s, 地址: %s, 坐标: %.6f,%.6f\n", 
+			customer.OrderID, customer.OrderNumber, customer.Address, customer.Latitude, customer.Longitude)
+	}
+
+	fmt.Printf("[PlanDeliveryRoute] 共查询到 %d 条订单记录，有效客户 %d 个\n", customerCount, len(customers))
+
+	if len(customers) == 0 {
+		fmt.Printf("[PlanDeliveryRoute] 没有有效的配送订单（所有订单都缺少经纬度）\n")
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "暂无配送订单",
+			"data":    nil,
+		})
+		return
+	}
+
+	// 计算起点到每个客户的距离，找到最远的客户作为目的地
+	origin := utils.Coordinate{
+		Latitude:  req.OriginLatitude,
+		Longitude: req.OriginLongitude,
+	}
+
+	fmt.Printf("[PlanDeliveryRoute] 起点坐标: %.6f,%.6f\n", origin.Latitude, origin.Longitude)
+
+	var farthestCustomer CustomerLocation
+	var maxDistance float64
+
+	for _, customer := range customers {
+		// 计算距离（使用简单的欧几里得距离，实际应该使用地理距离）
+		latDiff := customer.Latitude - origin.Latitude
+		lngDiff := customer.Longitude - origin.Longitude
+		distance := latDiff*latDiff + lngDiff*lngDiff
+
+		if distance > maxDistance {
+			maxDistance = distance
+			farthestCustomer = customer
+		}
+	}
+
+	fmt.Printf("[PlanDeliveryRoute] 最远客户 - 订单ID: %d, 订单号: %s, 坐标: %.6f,%.6f\n", 
+		farthestCustomer.OrderID, farthestCustomer.OrderNumber, farthestCustomer.Latitude, farthestCustomer.Longitude)
+
+	// 构建途经点列表（排除目的地）
+	waypoints := make([]utils.Coordinate, 0)
+	for _, customer := range customers {
+		if customer.OrderID != farthestCustomer.OrderID {
+			waypoints = append(waypoints, utils.Coordinate{
+				Latitude:  customer.Latitude,
+				Longitude: customer.Longitude,
+			})
+		}
+	}
+
+	fmt.Printf("[PlanDeliveryRoute] 途经点数量: %d\n", len(waypoints))
+	for i, wp := range waypoints {
+		fmt.Printf("[PlanDeliveryRoute] 途经点 %d: %.6f,%.6f\n", i+1, wp.Latitude, wp.Longitude)
+	}
+
+	// 目的地：最远的客户位置
+	destination := utils.Coordinate{
+		Latitude:  farthestCustomer.Latitude,
+		Longitude: farthestCustomer.Longitude,
+	}
+
+	fmt.Printf("[PlanDeliveryRoute] 目的地坐标: %.6f,%.6f\n", destination.Latitude, destination.Longitude)
+	fmt.Printf("[PlanDeliveryRoute] 开始调用高德地图路线规划API...\n")
+
+	// 调用路线规划API
+	routeResult, err := utils.PlanRoute(origin, destination, waypoints, amapKey)
+	if err != nil {
+		fmt.Printf("[PlanDeliveryRoute] 路线规划API调用失败: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "路线规划失败: " + err.Error(),
+		})
+		return
+	}
+
+	if !routeResult.Success {
+		fmt.Printf("[PlanDeliveryRoute] 路线规划失败: %s\n", routeResult.Message)
+		c.JSON(http.StatusOK, gin.H{
+			"code":    400,
+			"message": routeResult.Message,
+			"data":    nil,
+		})
+		return
+	}
+
+	fmt.Printf("[PlanDeliveryRoute] 路线规划成功 - 距离: %d米, 耗时: %d秒, 坐标点数: %d\n", 
+		routeResult.Distance, routeResult.Duration, len(strings.Split(routeResult.Polyline, ";")))
+
+	// 构建返回数据
+	responseData := map[string]interface{}{
+		"route": map[string]interface{}{
+			"distance": routeResult.Distance,
+			"duration": routeResult.Duration,
+			"polyline": routeResult.Polyline,
+			"steps":    routeResult.Steps,
+		},
+		"destination": map[string]interface{}{
+			"order_id":     farthestCustomer.OrderID,
+			"order_number": farthestCustomer.OrderNumber,
+			"latitude":     farthestCustomer.Latitude,
+			"longitude":    farthestCustomer.Longitude,
+			"address":      farthestCustomer.Address,
+			"name":         farthestCustomer.Name,
+		},
+		"waypoints": make([]map[string]interface{}, 0),
+	}
+
+	// 添加途经点信息（使用API返回的优化后的顺序，如果API返回了的话）
+	// 如果API返回了优化后的途经点顺序，使用API返回的顺序；否则使用原始顺序
+	if routeResult.Waypoints != nil && len(routeResult.Waypoints) > 0 {
+		// 使用API返回的优化后的途经点顺序
+		fmt.Printf("[PlanDeliveryRoute] 使用API返回的优化后的途经点顺序，数量: %d\n", len(routeResult.Waypoints))
+		for i, wpInfo := range routeResult.Waypoints {
+			// 解析途经点坐标
+			coords := strings.Split(wpInfo.Location, ",")
+			if len(coords) == 2 {
+				var wpLng, wpLat float64
+				if _, err := fmt.Sscanf(coords[0], "%f", &wpLng); err == nil {
+					if _, err := fmt.Sscanf(coords[1], "%f", &wpLat); err == nil {
+						// 找到对应的客户信息
+						for _, customer := range customers {
+							// 允许小的坐标误差（0.0001度，约11米）
+							latDiff := customer.Latitude - wpLat
+							lngDiff := customer.Longitude - wpLng
+							if latDiff < 0 {
+								latDiff = -latDiff
+							}
+							if lngDiff < 0 {
+								lngDiff = -lngDiff
+							}
+							if lngDiff < 0.0001 && latDiff < 0.0001 {
+								responseData["waypoints"] = append(responseData["waypoints"].([]map[string]interface{}), map[string]interface{}{
+									"order_id":     customer.OrderID,
+									"order_number": customer.OrderNumber,
+									"latitude":     customer.Latitude,
+									"longitude":    customer.Longitude,
+									"address":      customer.Address,
+									"name":         customer.Name,
+									"index":        i + 1, // 途经点序号（优化后的顺序）
+								})
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+	} else {
+		// 使用原始途经点顺序
+		fmt.Printf("[PlanDeliveryRoute] 使用原始途经点顺序，数量: %d\n", len(waypoints))
+		for i, wp := range waypoints {
+			// 找到对应的客户信息
+			for _, customer := range customers {
+				if customer.Latitude == wp.Latitude && customer.Longitude == wp.Longitude {
+					responseData["waypoints"] = append(responseData["waypoints"].([]map[string]interface{}), map[string]interface{}{
+						"order_id":     customer.OrderID,
+						"order_number": customer.OrderNumber,
+						"latitude":     customer.Latitude,
+						"longitude":    customer.Longitude,
+						"address":      customer.Address,
+						"name":         customer.Name,
+						"index":        i + 1, // 途经点序号
+					})
+					break
+				}
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "路线规划成功",
+		"data":    responseData,
 	})
 }

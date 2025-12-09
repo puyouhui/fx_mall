@@ -8,13 +8,34 @@ class OrderListTab extends StatefulWidget {
     super.key,
     required this.status,
     required this.onOrderAccepted,
+    this.onOrderCountChanged,
   });
 
   final String? status; // 订单状态：null=新任务, 'pending_pickup'=待取货, 'delivering'=配送中
   final VoidCallback onOrderAccepted; // 接单成功回调
+  final VoidCallback? onOrderCountChanged; // 订单数量变化回调
 
   @override
   State<OrderListTab> createState() => _OrderListTabState();
+}
+
+/// 用于刷新订单列表的GlobalKey
+typedef OrderListTabKey = GlobalKey<_OrderListTabState>;
+
+extension OrderListTabKeyExtension on OrderListTabKey {
+  Future<void> refresh() async {
+    await currentState?.refresh();
+  }
+
+  int getOrderCount() {
+    // 使用 API 返回的 total，而不是当前已加载的订单数
+    return currentState?._total ?? 0;
+  }
+
+  /// 等待刷新完成
+  Future<void> waitForRefresh() async {
+    await currentState?._waitForRefresh();
+  }
 }
 
 class _OrderListTabState extends State<OrderListTab> {
@@ -26,6 +47,7 @@ class _OrderListTabState extends State<OrderListTab> {
   bool _hasMore = true;
   int _pageNum = 1;
   final int _pageSize = 20;
+  int _total = 0; // 订单总数（从 API 返回）
 
   @override
   void initState() {
@@ -38,6 +60,21 @@ class _OrderListTabState extends State<OrderListTab> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// 刷新订单列表（供外部调用）
+  Future<void> refresh() async {
+    await _loadOrders(reset: true);
+  }
+
+  /// 等待刷新完成
+  Future<void> _waitForRefresh() async {
+    if (_isLoading) {
+      // 如果正在加载，等待加载完成
+      while (_isLoading && mounted) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+    }
   }
 
   void _onScroll() {
@@ -78,6 +115,7 @@ class _OrderListTabState extends State<OrderListTab> {
       final data = response.data!;
       final List<dynamic> list = (data['list'] as List<dynamic>? ?? []);
       final orders = list.cast<Map<String, dynamic>>();
+      final total = data['total'] as int? ?? 0;
 
       setState(() {
         if (reset) {
@@ -87,12 +125,21 @@ class _OrderListTabState extends State<OrderListTab> {
         } else {
           _orders.addAll(orders);
         }
-        final total = data['total'] as int? ?? _orders.length;
+        _total = total; // 更新总数
         _hasMore = _orders.length < total;
         if (_hasMore) {
           _pageNum++;
         }
       });
+      // 每次加载完成后都通知订单数量变化（确保数量及时更新）
+      if (widget.onOrderCountChanged != null) {
+        // 使用微任务确保 setState 完成后再触发回调
+        Future.microtask(() {
+          if (mounted && widget.onOrderCountChanged != null) {
+            widget.onOrderCountChanged!();
+          }
+        });
+      }
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -131,14 +178,9 @@ class _OrderListTabState extends State<OrderListTab> {
           backgroundColor: Color(0xFF20CB6B),
         ),
       );
-      // 从列表中移除已接单的订单
-      setState(() {
-        _orders.removeWhere(
-          (order) => (order['id'] as num?)?.toInt() == orderId,
-        );
-        _acceptingOrders.remove(orderId);
-      });
-      // 通知父组件刷新
+      // 刷新列表（因为接单后订单状态会变化，需要重新加载）
+      _loadOrders(reset: true);
+      // 通知父组件刷新其他Tab
       widget.onOrderAccepted();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -150,15 +192,20 @@ class _OrderListTabState extends State<OrderListTab> {
     }
   }
 
-  void _viewOrderItems(Map<String, dynamic> order) {
+  void _viewOrderItems(Map<String, dynamic> order) async {
     final orderId = (order['id'] as num?)?.toInt();
 
     if (orderId == null) return;
 
-    // 跳转到订单详情页面
-    Navigator.of(context).push(
+    // 跳转到订单详情页面，并等待返回结果
+    final result = await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => OrderDetailView(orderId: orderId)),
     );
+
+    // 从详情页面返回后，刷新列表（如果订单状态可能发生变化）
+    if (mounted && result == true) {
+      _loadOrders(reset: true);
+    }
   }
 
   @override

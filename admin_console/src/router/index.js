@@ -102,6 +102,14 @@ const routes = [
         meta: {
           title: '订单管理'
         }
+      },
+      {
+        path: 'delivery-records',
+        name: 'DeliveryRecords',
+        component: () => import('../views/DeliveryRecords.vue'),
+        meta: {
+          title: '配送记录'
+        }
       }
     ]
   },

@@ -1,3 +1,4 @@
+import 'dart:io';
 import '../utils/request.dart';
 
 class OrderApi {
@@ -89,7 +90,30 @@ class OrderApi {
     );
   }
 
-  // 完成配送
+  // 完成配送（带图片上传）
+  static Future<ApiResponse<Map<String, dynamic>>> completeOrderWithImages({
+    required int orderId,
+    required File productImage,
+    required File doorplateImage,
+  }) async {
+    // 使用 multipart/form-data 上传图片
+    final response = await Request.postMultipart<Map<String, dynamic>>(
+      '/employee/delivery/orders/$orderId/complete',
+      files: {
+        'product_image': productImage,
+        'doorplate_image': doorplateImage,
+      },
+      parser: (data) => data as Map<String, dynamic>,
+    );
+
+    return ApiResponse<Map<String, dynamic>>(
+      code: response.code,
+      message: response.message,
+      data: response.data,
+    );
+  }
+
+  // 完成配送（旧接口，保留兼容性）
   static Future<ApiResponse<Map<String, dynamic>>> completeOrder(
     int orderId,
   ) async {
@@ -168,6 +192,27 @@ class OrderApi {
       '/employee/delivery/pickup/mark-picked',
       body: {
         'item_ids': itemIds,
+      },
+      parser: (data) => data as Map<String, dynamic>,
+    );
+
+    return ApiResponse<Map<String, dynamic>>(
+      code: response.code,
+      message: response.message,
+      data: response.data,
+    );
+  }
+
+  // 规划配送路线
+  static Future<ApiResponse<Map<String, dynamic>>> planDeliveryRoute({
+    required double originLatitude,
+    required double originLongitude,
+  }) async {
+    final response = await Request.post<Map<String, dynamic>>(
+      '/employee/delivery/route/plan',
+      body: {
+        'origin_latitude': originLatitude,
+        'origin_longitude': originLongitude,
       },
       parser: (data) => data as Map<String, dynamic>,
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'pages/login_page.dart';
 import 'pages/main_shell.dart';
 import 'pages/batch_pickup_view.dart';
+import 'pages/complete_delivery_view.dart';
 import 'utils/storage.dart';
 
 /// 根组件：定义路由与主题，启动时检查登录状态，自动登录
@@ -102,6 +103,11 @@ class _DistributionAppState extends State<DistributionApp> {
           case '/batch-pickup':
             return MaterialPageRoute(
               builder: (_) => const BatchPickupView(),
+              settings: settings,
+            );
+          case '/complete-delivery':
+            return MaterialPageRoute(
+              builder: (_) => const CompleteDeliveryView(),
               settings: settings,
             );
           default:
