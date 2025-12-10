@@ -321,6 +321,65 @@ class _LoginPageState extends State<LoginPage> {
         password: _passwordController.text,
       );
 
+      // 检查是否是账号被禁用（403错误）
+      if (response.code == 403) {
+        setState(() {
+          _isLoading = false;
+        });
+        // 显示弹框提示
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: const Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: Color(0xFFEB5757),
+                      size: 24,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      '账号已被禁用',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF20253A),
+                      ),
+                    ),
+                  ],
+                ),
+                content: const Text(
+                  '员工账号已被禁用，请联系管理员',
+                  style: TextStyle(fontSize: 15, color: Color(0xFF40475C)),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text(
+                      '确定',
+                      style: TextStyle(
+                        color: Color(0xFF20CB6B),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              );
+            },
+          );
+        }
+        return;
+      }
+
       if (response.isSuccess && response.data != null) {
         final employee = response.data!.employee;
 

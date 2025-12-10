@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'config.dart';
 import 'storage.dart';
@@ -67,11 +68,15 @@ class Request {
   static Future<ApiResponse<T>> post<T>(
     String path, {
     Map<String, dynamic>? body,
+    Map<String, String>? queryParams,
     bool needAuth = true,
     T Function(dynamic)? parser,
   }) async {
     try {
-      final uri = Uri.parse('${Config.apiBaseUrl}$path');
+      var uri = Uri.parse('${Config.apiBaseUrl}$path');
+      if (queryParams != null && queryParams.isNotEmpty) {
+        uri = uri.replace(queryParameters: queryParams);
+      }
       final response = await http.post(
         uri,
         headers: await _getHeaders(needAuth: needAuth),
@@ -88,11 +93,15 @@ class Request {
   static Future<ApiResponse<T>> put<T>(
     String path, {
     Map<String, dynamic>? body,
+    Map<String, String>? queryParams,
     bool needAuth = true,
     T Function(dynamic)? parser,
   }) async {
     try {
-      final uri = Uri.parse('${Config.apiBaseUrl}$path');
+      var uri = Uri.parse('${Config.apiBaseUrl}$path');
+      if (queryParams != null && queryParams.isNotEmpty) {
+        uri = uri.replace(queryParameters: queryParams);
+      }
       final response = await http.put(
         uri,
         headers: await _getHeaders(needAuth: needAuth),
@@ -177,10 +186,7 @@ class Request {
       final response = await http.Response.fromStream(streamed);
       return _handleResponse<T>(response, parser: parser);
     } catch (e) {
-      return ApiResponse<T>(
-        code: 500,
-        message: '文件上传失败: ${e.toString()}',
-      );
+      return ApiResponse<T>(code: 500, message: '文件上传失败: ${e.toString()}');
     }
   }
 
@@ -198,6 +204,11 @@ class Request {
       if (code == 401) {
         // Token 失效，清除本地存储
         Storage.clearAll();
+      } else if (code == 403) {
+        // 账号被禁用或其他状态导致不能使用，清除本地存储并跳转登录页
+        Storage.clearAll();
+        // 使用全局导航键跳转到登录页
+        _navigateToLogin();
       }
 
       T? parsedData;
@@ -215,7 +226,22 @@ class Request {
       );
     }
   }
+
+  // 全局导航键（用于在请求拦截器中跳转）
+  static GlobalKey<NavigatorState>? navigatorKey;
+
+  // 设置全局导航键
+  static void setNavigatorKey(GlobalKey<NavigatorState> key) {
+    navigatorKey = key;
+  }
+
+  // 跳转到登录页
+  static void _navigateToLogin() {
+    if (navigatorKey?.currentState != null) {
+      navigatorKey!.currentState!.pushNamedAndRemoveUntil(
+        '/login',
+        (route) => false,
+      );
+    }
+  }
 }
-
-
-

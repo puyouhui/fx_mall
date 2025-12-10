@@ -7,6 +7,7 @@ import 'package:map_launcher/map_launcher.dart';
 import 'dart:async';
 import '../api/order_api.dart';
 import '../utils/location_service.dart';
+import '../utils/coordinate_transform.dart';
 
 /// 订单详情页面：显示订单的完整信息，包括配送费、加急状态等
 class OrderDetailView extends StatefulWidget {
@@ -31,12 +32,16 @@ class _OrderDetailViewState extends State<OrderDetailView> {
       StreamController<LocationMarkerPosition?>.broadcast();
   StreamSubscription<Position>? _positionStreamSubscription;
 
-  // 天地图瓦片服务 URL 模板（Web墨卡托投影 vec_w，因为 flutter_map 对经纬度投影支持有限）
-  // 使用 Web 墨卡托投影，与路线规划页面保持一致，确保地图能正常显示
+  // 天地图瓦片服务 URL 模板（Web墨卡托投影）
+  // 使用WMTS格式，与路线规划页面保持一致
+  // 影像底图（img_w）：Web墨卡托投影的影像底图
   static const String _tiandituTileUrlTemplate =
-      'https://t{s}.tianditu.gov.cn/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL={x}&TILEROW={y}&TILEMATRIX={z}&tk=d95864378581051adb04fe26acb13ecf';
+      'https://t{s}.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL={x}&TILEROW={y}&TILEMATRIX={z}&tk=d95864378581051adb04fe26acb13ecf';
+
+  // 天地图影像标注图层（可选，叠加在底图上）
+  // 使用Web墨卡托投影的影像标注图层
   static const String _tiandituLabelUrlTemplate =
-      'https://t{s}.tianditu.gov.cn/cva_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL={x}&TILEROW={y}&TILEMATRIX={z}&tk=d95864378581051adb04fe26acb13ecf';
+      'https://t{s}.tianditu.gov.cn/cia_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL={x}&TILEROW={y}&TILEMATRIX={z}&tk=d95864378581051adb04fe26acb13ecf';
 
   static TileProvider createTiandituTileProvider() {
     return NetworkTileProvider(
@@ -205,8 +210,13 @@ class _OrderDetailViewState extends State<OrderDetailView> {
               if (customerLat != null &&
                   customerLng != null &&
                   _userPosition != null) {
+                // 将GCJ-02坐标转换为WGS84坐标（天地图使用WGS84）
+                final customerWgs84 = CoordinateTransform.gcj02ToWgs84(
+                  customerLat.toDouble(),
+                  customerLng.toDouble(),
+                );
                 _adjustMapBounds(
-                  LatLng(customerLat.toDouble(), customerLng.toDouble()),
+                  customerWgs84,
                   LatLng(_userPosition!.latitude, _userPosition!.longitude),
                 );
               }
@@ -400,10 +410,15 @@ class _OrderDetailViewState extends State<OrderDetailView> {
               []
         : [];
 
-    // 确定地图初始中心点
+    // 确定地图初始中心点（使用WGS84坐标）
     LatLng initialCenter = const LatLng(39.90864, 116.39750); // 默认北京
     if (customerLat != null && customerLng != null) {
-      initialCenter = LatLng(customerLat.toDouble(), customerLng.toDouble());
+      // 将GCJ-02坐标转换为WGS84坐标（天地图使用WGS84）
+      final wgs84Point = CoordinateTransform.gcj02ToWgs84(
+        customerLat.toDouble(),
+        customerLng.toDouble(),
+      );
+      initialCenter = wgs84Point;
     } else if (_userPosition != null) {
       initialCenter = LatLng(_userPosition!.latitude, _userPosition!.longitude);
     }
@@ -453,7 +468,7 @@ class _OrderDetailViewState extends State<OrderDetailView> {
                   MarkerLayer(
                     markers: [
                       Marker(
-                        point: LatLng(
+                        point: CoordinateTransform.gcj02ToWgs84(
                           customerLat.toDouble(),
                           customerLng.toDouble(),
                         ),
@@ -482,7 +497,7 @@ class _OrderDetailViewState extends State<OrderDetailView> {
                                 ],
                               ),
                               child: const Text(
-                                '客户',
+                                '客户位置',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -493,8 +508,8 @@ class _OrderDetailViewState extends State<OrderDetailView> {
                             const SizedBox(height: 2),
                             // 图标
                             Container(
-                              width: 40,
-                              height: 40,
+                              width: 27,
+                              height: 27,
                               decoration: BoxDecoration(
                                 color: const Color(0xFFFF6B6B),
                                 shape: BoxShape.circle,
@@ -513,7 +528,7 @@ class _OrderDetailViewState extends State<OrderDetailView> {
                               child: const Icon(
                                 Icons.location_on,
                                 color: Colors.white,
-                                size: 24,
+                                size: 16,
                               ),
                             ),
                           ],
@@ -534,8 +549,13 @@ class _OrderDetailViewState extends State<OrderDetailView> {
                           final lat = supplier['latitude'] as num?;
                           final lng = supplier['longitude'] as num?;
                           final name = supplier['name'] as String? ?? '';
+                          // 将GCJ-02坐标转换为WGS84坐标（天地图使用WGS84）
+                          final wgs84Point = CoordinateTransform.gcj02ToWgs84(
+                            lat!.toDouble(),
+                            lng!.toDouble(),
+                          );
                           return Marker(
-                            point: LatLng(lat!.toDouble(), lng!.toDouble()),
+                            point: wgs84Point,
                             width: 120,
                             height: 65,
                             alignment: Alignment.topCenter,
@@ -789,12 +809,13 @@ class _OrderDetailViewState extends State<OrderDetailView> {
     // 点击地址卡片时，放大地图并移动到客户位置
     void _onAddressCardTap() {
       if (customerLat != null && customerLng != null) {
-        final customerLocation = LatLng(
+        // 将GCJ-02坐标转换为WGS84坐标（天地图使用WGS84）
+        final customerWgs84 = CoordinateTransform.gcj02ToWgs84(
           customerLat.toDouble(),
           customerLng.toDouble(),
         );
         // 移动到客户位置并放大到16级（更详细的视图）
-        _mapController.move(customerLocation, 16.0);
+        _mapController.move(customerWgs84, 16.0);
       }
     }
 
@@ -2017,40 +2038,89 @@ class _OrderDetailViewState extends State<OrderDetailView> {
   Future<void> _handleAcceptOrder() async {
     if (_isProcessing) return;
 
-    setState(() {
-      _isProcessing = true;
-    });
+    // 接单前检查位置权限和获取位置
+    try {
+      // 检查定位权限
+      final hasPermission = await LocationService.checkAndRequestPermission();
+      if (!hasPermission) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('无法获取位置信息，无法接单。请前往设置开启定位权限'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
 
-    final response = await OrderApi.acceptOrder(widget.orderId);
+      // 获取当前位置
+      final position = await LocationService.getCurrentLocation();
+      if (position == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('无法获取当前位置，请确保已开启GPS定位服务'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
 
-    if (!mounted) return;
+      setState(() {
+        _isProcessing = true;
+      });
 
-    if (response.isSuccess) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('接单成功'),
-          backgroundColor: Color(0xFF20CB6B),
-        ),
+      // 传递位置信息接单
+      final response = await OrderApi.acceptOrder(
+        widget.orderId,
+        latitude: position.latitude,
+        longitude: position.longitude,
       );
-      // 重新加载订单详情
-      await _loadOrderDetail();
-      // 返回上一页
-      Navigator.of(context).pop(true);
-    } else {
+
+      if (!mounted) return;
+
+      if (response.isSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('接单成功'),
+            backgroundColor: Color(0xFF20CB6B),
+          ),
+        );
+        // 重新加载订单详情
+        await _loadOrderDetail();
+        // 返回上一页
+        Navigator.of(context).pop(true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              response.message.isNotEmpty ? response.message : '接单失败，请稍后重试',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            response.message.isNotEmpty ? response.message : '接单失败，请稍后重试',
-          ),
+          content: Text('接单失败: ${e.toString()}'),
           backgroundColor: Colors.red,
         ),
       );
-    }
-
-    if (mounted) {
-      setState(() {
-        _isProcessing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
     }
   }
 
@@ -2074,12 +2144,15 @@ class _OrderDetailViewState extends State<OrderDetailView> {
   // 跳转到批量取货页面
   Future<void> _handleGoToBatchPickup() async {
     final result = await Navigator.of(context).pushNamed('/batch-pickup');
-    // 如果返回值为true，表示完成了取货操作，需要刷新订单详情
-    if (result == true && mounted) {
+    // 无论返回什么，都刷新订单详情（因为取货操作可能已完成）
+    if (mounted) {
       await _loadOrderDetail();
       // 如果订单状态变为配送中，返回true通知列表刷新
       final status = _orderData?['status'] as String?;
       if (status == 'delivering') {
+        Navigator.of(context).pop(true);
+      } else if (result == true) {
+        // 如果取货成功但状态未变，也返回true以触发刷新
         Navigator.of(context).pop(true);
       }
     }

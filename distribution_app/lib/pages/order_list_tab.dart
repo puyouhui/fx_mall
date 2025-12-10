@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../api/order_api.dart';
+import '../utils/location_service.dart';
 import 'order_detail_view.dart';
 
 /// 订单列表Tab组件：用于显示不同状态的订单列表
@@ -141,6 +142,14 @@ class _OrderListTabState extends State<OrderListTab> {
         });
       }
     } else {
+      // 即使API调用失败，也要通知数量变化（可能数量变为0）
+      if (widget.onOrderCountChanged != null) {
+        Future.microtask(() {
+          if (mounted && widget.onOrderCountChanged != null) {
+            widget.onOrderCountChanged!();
+          }
+        });
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -163,28 +172,78 @@ class _OrderListTabState extends State<OrderListTab> {
   Future<void> _acceptOrder(int orderId) async {
     if (_acceptingOrders[orderId] == true) return;
 
-    setState(() {
-      _acceptingOrders[orderId] = true;
-    });
+    // 接单前检查位置权限和获取位置
+    try {
+      // 检查定位权限
+      final hasPermission = await LocationService.checkAndRequestPermission();
+      if (!hasPermission) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('无法获取位置信息，无法接单。请前往设置开启定位权限'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
 
-    final response = await OrderApi.acceptOrder(orderId);
+      // 获取当前位置
+      final position = await LocationService.getCurrentLocation();
+      if (position == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('无法获取当前位置，请确保已开启GPS定位服务'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
 
-    if (!mounted) return;
+      setState(() {
+        _acceptingOrders[orderId] = true;
+      });
 
-    if (response.isSuccess) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('接单成功'),
-          backgroundColor: Color(0xFF20CB6B),
-        ),
+      // 传递位置信息接单
+      final response = await OrderApi.acceptOrder(
+        orderId,
+        latitude: position.latitude,
+        longitude: position.longitude,
       );
-      // 刷新列表（因为接单后订单状态会变化，需要重新加载）
-      _loadOrders(reset: true);
-      // 通知父组件刷新其他Tab
-      widget.onOrderAccepted();
-    } else {
+
+      if (!mounted) return;
+
+      if (response.isSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('接单成功'),
+            backgroundColor: Color(0xFF20CB6B),
+          ),
+        );
+        // 先通知父组件更新数量（接单后订单会从新任务移到待取货）
+        widget.onOrderAccepted();
+        // 然后刷新当前列表（因为接单后订单状态会变化，需要重新加载）
+        await _loadOrders(reset: true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response.message),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() {
+          _acceptingOrders.remove(orderId);
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.message), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('接单失败: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
       );
       setState(() {
         _acceptingOrders.remove(orderId);
@@ -202,9 +261,14 @@ class _OrderListTabState extends State<OrderListTab> {
       MaterialPageRoute(builder: (_) => OrderDetailView(orderId: orderId)),
     );
 
-    // 从详情页面返回后，刷新列表（如果订单状态可能发生变化）
-    if (mounted && result == true) {
+    // 从详情页面返回后，无论是否返回true，都刷新列表和角标
+    // 因为订单状态可能在任何时候发生变化
+    if (mounted) {
       _loadOrders(reset: true);
+      // 通知父组件更新角标数量
+      if (widget.onOrderCountChanged != null) {
+        widget.onOrderCountChanged!();
+      }
     }
   }
 
@@ -218,85 +282,79 @@ class _OrderListTabState extends State<OrderListTab> {
           )
         : RefreshIndicator(
             onRefresh: () => _loadOrders(reset: true),
-            child: _orders.isEmpty
-                ? LayoutBuilder(
-                    builder: (context, constraints) {
-                      return SingleChildScrollView(
-                        padding: EdgeInsets.fromLTRB(
-                          16,
-                          16,
-                          16,
-                          16 + MediaQuery.of(context).padding.bottom,
-                        ),
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minHeight:
-                                constraints.maxHeight -
-                                32 -
-                                MediaQuery.of(context).padding.bottom,
+            child: ListView.builder(
+              controller: _scrollController,
+              // 设置为始终可滚动，即使内容为空也能下拉刷新
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                0,
+                16,
+                16 + MediaQuery.of(context).padding.bottom,
+              ),
+              itemCount: _orders.isEmpty
+                  ? 1 // 空状态时显示一个空状态项
+                  : _orders.length + (_hasMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                // 空状态显示
+                if (_orders.isEmpty) {
+                  return SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.6,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.inbox_outlined,
+                            size: 42,
+                            color: Color(0xFF20CB6B),
                           ),
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(
-                                  Icons.inbox_outlined,
-                                  size: 42,
-                                  color: Color(0xFF20CB6B),
-                                ),
-                                const Text(
-                                  '暂无订单',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color.fromARGB(193, 255, 255, 255),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  widget.status == null
-                                      ? '新的订单将在这里显示'
-                                      : widget.status == 'pending_pickup'
-                                      ? '暂无待取货的订单'
-                                      : '暂无配送中的订单',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Color.fromARGB(193, 255, 255, 255),
-                                  ),
-                                ),
-                              ],
+                          const SizedBox(height: 16),
+                          const Text(
+                            '暂无订单',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Color.fromARGB(193, 255, 255, 255),
                             ),
                           ),
-                        ),
-                      );
-                    },
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      0,
-                      16,
-                      16 + MediaQuery.of(context).padding.bottom,
+                          const SizedBox(height: 8),
+                          Text(
+                            widget.status == null
+                                ? '新的订单将在这里显示'
+                                : widget.status == 'pending_pickup'
+                                ? '暂无待取货的订单'
+                                : '暂无配送中的订单',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Color.fromARGB(193, 255, 255, 255),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    itemCount: _orders.length + (_hasMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= _orders.length) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Color(0xFF20CB6B),
-                              ),
-                            ),
-                          ),
-                        );
-                      }
-                      final order = _orders[index];
-                      return _buildOrderCard(order);
-                    },
-                  ),
+                  );
+                }
+
+                // 加载更多指示器
+                if (index >= _orders.length) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF20CB6B),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                // 订单卡片
+                final order = _orders[index];
+                return _buildOrderCard(order);
+              },
+            ),
           );
   }
 

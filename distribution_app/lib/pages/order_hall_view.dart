@@ -24,6 +24,16 @@ class OrderHallView extends StatefulWidget {
   State<OrderHallView> createState() => _OrderHallViewState();
 }
 
+/// 用于刷新订单大厅的GlobalKey
+typedef OrderHallViewKey = GlobalKey<_OrderHallViewState>;
+
+extension OrderHallViewKeyExtension on OrderHallViewKey {
+  /// 刷新订单列表和角标数量
+  Future<void> refreshAll() async {
+    await currentState?._refreshAll();
+  }
+}
+
 class _OrderHallViewState extends State<OrderHallView>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
@@ -72,15 +82,28 @@ class _OrderHallViewState extends State<OrderHallView>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // 当应用从后台返回前台时，刷新所有Tab的订单列表
     if (state == AppLifecycleState.resumed) {
-      // 直接调用 API 更新数量
-      _loadAllTabCounts();
+      _refreshAll();
+    }
+  }
 
-      // 同时刷新所有 tab（不等待）
-      for (final key in _tabKeys) {
-        if (key.currentState != null) {
-          key.refresh(); // 不等待，异步刷新
-        }
+  /// 刷新所有订单列表和角标数量
+  Future<void> _refreshAll() async {
+    // 直接调用 API 更新数量
+    await _loadAllTabCounts();
+
+    // 同时刷新所有 tab
+    final refreshFutures = <Future>[];
+    for (final key in _tabKeys) {
+      if (key.currentState != null) {
+        refreshFutures.add(key.refresh());
       }
+    }
+    // 等待所有tab刷新完成
+    await Future.wait(refreshFutures);
+
+    // 刷新完成后，再次更新数量（确保数量准确）
+    if (mounted) {
+      await _loadAllTabCounts();
     }
   }
 
@@ -107,15 +130,23 @@ class _OrderHallViewState extends State<OrderHallView>
   }
 
   void _onOrderAccepted() async {
-    // 接单成功后，直接调用 API 更新所有 tab 的数量
+    // 接单成功后，立即调用 API 更新所有 tab 的数量
     await _loadAllTabCounts();
 
     // 同时刷新所有Tab（因为订单状态可能变化）
-    // 不等待刷新完成，让它们在后台加载
+    // 等待刷新完成，确保数量准确
+    final refreshFutures = <Future>[];
     for (final key in _tabKeys) {
       if (key.currentState != null) {
-        key.refresh(); // 不等待，异步刷新
+        refreshFutures.add(key.refresh());
       }
+    }
+    // 等待所有tab刷新完成
+    await Future.wait(refreshFutures);
+
+    // 刷新完成后，再次更新数量（确保数量准确）
+    if (mounted) {
+      await _loadAllTabCounts();
     }
   }
 
@@ -165,9 +196,9 @@ class _OrderHallViewState extends State<OrderHallView>
       setState(() {
         for (int i = 0; i < _tabKeys.length; i++) {
           final count = _tabKeys[i].getOrderCount();
-          // 只有当新数量 >= 当前数量时才更新，避免用 0 覆盖通过 API 获取的正确数量
-          // 如果新数量 < 当前数量，可能是 tab 还没加载完成，保持原有数量
-          if (count >= _orderCounts[i]) {
+          // 如果数量大于0，或者当前数量也是0，则更新
+          // 这样可以允许数量减少（订单状态变化），同时避免用未初始化的0覆盖正确数量
+          if (count > 0 || _orderCounts[i] == 0) {
             _orderCounts[i] = count;
           }
         }
@@ -347,8 +378,9 @@ class _OrderHallViewState extends State<OrderHallView>
                   onOrderCountChanged: () {
                     if (mounted) {
                       final count = _tabKeys[0].getOrderCount();
-                      // 只有当新数量 >= 当前数量时才更新，避免用 0 覆盖通过 API 获取的正确数量
-                      if (count >= _orderCounts[0]) {
+                      // 如果数量大于0，或者当前数量也是0，则更新
+                      // 这样可以允许数量减少（订单状态变化），同时避免用未初始化的0覆盖正确数量
+                      if (count > 0 || _orderCounts[0] == 0) {
                         setState(() {
                           _orderCounts[0] = count;
                         });
@@ -364,8 +396,9 @@ class _OrderHallViewState extends State<OrderHallView>
                   onOrderCountChanged: () {
                     if (mounted) {
                       final count = _tabKeys[1].getOrderCount();
-                      // 只有当新数量 >= 当前数量时才更新，避免用 0 覆盖通过 API 获取的正确数量
-                      if (count >= _orderCounts[1]) {
+                      // 如果数量大于0，或者当前数量也是0，则更新
+                      // 这样可以允许数量减少（订单状态变化），同时避免用未初始化的0覆盖正确数量
+                      if (count > 0 || _orderCounts[1] == 0) {
                         setState(() {
                           _orderCounts[1] = count;
                         });
@@ -381,8 +414,9 @@ class _OrderHallViewState extends State<OrderHallView>
                   onOrderCountChanged: () {
                     if (mounted) {
                       final count = _tabKeys[2].getOrderCount();
-                      // 只有当新数量 >= 当前数量时才更新，避免用 0 覆盖通过 API 获取的正确数量
-                      if (count >= _orderCounts[2]) {
+                      // 如果数量大于0，或者当前数量也是0，则更新
+                      // 这样可以允许数量减少（订单状态变化），同时避免用未初始化的0覆盖正确数量
+                      if (count > 0 || _orderCounts[2] == 0) {
                         setState(() {
                           _orderCounts[2] = count;
                         });

@@ -21,7 +21,8 @@ class RoutePlanningView extends StatefulWidget {
   State<RoutePlanningView> createState() => _RoutePlanningViewState();
 }
 
-class _RoutePlanningViewState extends State<RoutePlanningView> {
+class _RoutePlanningViewState extends State<RoutePlanningView>
+    with WidgetsBindingObserver {
   // 地图控制器
   final MapController _mapController = MapController();
 
@@ -53,14 +54,6 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
   bool _hasPendingPickup = false; // 是否有待取货订单
   bool _hasCompletedAllPickup = false; // 是否已完成全部取货
 
-  // 路线规划相关
-  // ignore: unused_field
-  Map<String, dynamic>? _routePlanResult; // 路线规划结果（保留用于调试）
-  bool _isPlanningRoute = false; // 是否正在规划路线
-  List<LatLng>? _routePolyline; // 解析后的路线坐标点
-  List<Map<String, dynamic>> _routeWaypoints = []; // 途经点列表（按顺序）
-  Map<String, dynamic>? _routeDestination; // 目的地
-
   // 天地图瓦片服务 URL 模板（Web墨卡托投影）
   // 使用WMTS格式，与您提供的正确URL格式一致
   // 影像底图（img_w）：Web墨卡托投影的影像底图
@@ -89,11 +82,21 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
   @override
   void initState() {
     super.initState();
+    // 监听应用生命周期
+    WidgetsBinding.instance.addObserver(this);
     // 页面加载时获取用户位置并开始监听位置更新
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startLocationTracking();
       _checkAndLoadPickupSuppliers();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 当应用从后台返回前台时，重新检查状态
+    if (state == AppLifecycleState.resumed) {
+      _checkAndLoadPickupSuppliers();
+    }
   }
 
   /// 检查是否有待取货订单，如果有则加载供应商列表
@@ -133,15 +136,6 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
           setState(() {
             _hasCompletedAllPickup = hasOrders;
           });
-          // 如果已完成全部取货且有用户位置，自动规划路线
-          if (hasOrders && _userPosition != null) {
-            print('[RoutePlanningView] 满足路线规划条件，开始规划');
-            _planDeliveryRoute();
-          } else {
-            print(
-              '[RoutePlanningView] 不满足路线规划条件 - 有订单: $hasOrders, 有位置: ${_userPosition != null}',
-            );
-          }
         }
       }
     } else {
@@ -155,15 +149,6 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
         setState(() {
           _hasCompletedAllPickup = hasOrders;
         });
-        // 如果已完成全部取货且有用户位置，自动规划路线
-        if (hasOrders && _userPosition != null) {
-          print('[RoutePlanningView] 满足路线规划条件（失败分支），开始规划');
-          _planDeliveryRoute();
-        } else {
-          print(
-            '[RoutePlanningView] 不满足路线规划条件（失败分支） - 有订单: $hasOrders, 有位置: ${_userPosition != null}',
-          );
-        }
       }
     }
   }
@@ -176,7 +161,11 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
       _isLoadingSuppliers = true;
     });
 
-    final response = await OrderApi.getPickupSuppliers();
+    // 传递配送员当前位置作为起点
+    final response = await OrderApi.getPickupSuppliers(
+      latitude: _userPosition?.latitude,
+      longitude: _userPosition?.longitude,
+    );
 
     if (!mounted) return;
 
@@ -184,9 +173,24 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
       List<Map<String, dynamic>> suppliers = (response.data as List<dynamic>)
           .cast<Map<String, dynamic>>();
 
-      // 如果有用户位置，计算距离并排序
+      // 后端已经按照路线优化算法排序，直接使用
+      // 如果有用户位置，计算距离（用于显示，但不改变排序）
       if (_userPosition != null) {
-        suppliers = _sortSuppliersByDistance(suppliers);
+        for (var supplier in suppliers) {
+          final lat = (supplier['latitude'] as num?)?.toDouble();
+          final lng = (supplier['longitude'] as num?)?.toDouble();
+          if (lat != null && lng != null) {
+            // 将GCJ-02坐标转换为WGS84坐标后再计算距离
+            final wgs84Point = CoordinateTransform.gcj02ToWgs84(lat, lng);
+            final distance = Geolocator.distanceBetween(
+              _userPosition!.latitude,
+              _userPosition!.longitude,
+              wgs84Point.latitude,
+              wgs84Point.longitude,
+            );
+            supplier['distance'] = distance;
+          }
+        }
       }
 
       setState(() {
@@ -306,7 +310,7 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
     }
   }
 
-  /// 加载配送中的订单
+  /// 加载配送中的订单（使用排序后的订单列表）
   Future<void> _loadDeliveringOrders() async {
     if (_isLoadingOrders) return;
 
@@ -314,319 +318,39 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
       _isLoadingOrders = true;
     });
 
-    final response = await OrderApi.getOrderPool(
-      pageNum: 1,
-      pageSize: 100, // 获取所有配送中的订单
-      status: 'delivering',
-    );
+    // 使用新的排序后订单API
+    final response = await OrderApi.getRouteOrders();
 
     if (!mounted) return;
 
     if (response.isSuccess && response.data != null) {
       final data = response.data!;
       final List<dynamic> list = (data['list'] as List<dynamic>? ?? []);
+      // 订单已经按照 route_sequence 排序，直接使用
       setState(() {
         _deliveringOrders = list.cast<Map<String, dynamic>>();
         _isLoadingOrders = false;
       });
     } else {
-      setState(() {
-        _isLoadingOrders = false;
-      });
-    }
-  }
-
-  /// 规划配送路线
-  Future<void> _planDeliveryRoute() async {
-    if (_userPosition == null || _isPlanningRoute) {
-      print(
-        '[RoutePlanningView] 跳过路线规划 - 用户位置: ${_userPosition != null}, 正在规划: $_isPlanningRoute',
+      // 如果获取排序订单失败，回退到原来的方式
+      print('[RoutePlanningView] 获取排序订单失败，使用原方式: ${response.message}');
+      final fallbackResponse = await OrderApi.getOrderPool(
+        pageNum: 1,
+        pageSize: 100,
+        status: 'delivering',
       );
-      return;
-    }
-
-    print(
-      '[RoutePlanningView] 开始规划路线 - 起点: ${_userPosition!.latitude}, ${_userPosition!.longitude}',
-    );
-    print('[RoutePlanningView] 配送中订单数量: ${_deliveringOrders.length}');
-
-    setState(() {
-      _isPlanningRoute = true;
-    });
-
-    try {
-      final response = await OrderApi.planDeliveryRoute(
-        originLatitude: _userPosition!.latitude,
-        originLongitude: _userPosition!.longitude,
-      );
-
-      if (!mounted) return;
-
-      print(
-        '[RoutePlanningView] 路线规划API响应 - 成功: ${response.isSuccess}, 消息: ${response.message}',
-      );
-
-      if (response.isSuccess && response.data != null) {
-        final data = response.data!;
-        final route = data['route'] as Map<String, dynamic>?;
-        final waypoints = data['waypoints'] as List<dynamic>?;
-        final destination = data['destination'] as Map<String, dynamic>?;
-
-        print(
-          '[RoutePlanningView] 路线规划数据 - route: ${route != null}, waypoints: ${waypoints != null ? waypoints.length : 0}, destination: ${destination != null}',
-        );
-
-        // 解析polyline坐标点串
-        List<LatLng>? polylinePoints;
-        if (route != null && route['polyline'] != null) {
-          final polylineStr = route['polyline'] as String;
-          print('[RoutePlanningView] 开始解析polyline，长度: ${polylineStr.length}');
-          polylinePoints = _parsePolyline(polylineStr);
-          print(
-            '[RoutePlanningView] polyline解析完成，坐标点数: ${polylinePoints.length}',
-          );
-        } else {
-          print('[RoutePlanningView] 警告: route或polyline为空');
-        }
-
-        // 按index排序途经点
-        List<Map<String, dynamic>> sortedWaypoints = [];
-        if (waypoints != null) {
-          print('[RoutePlanningView] 途经点数量: ${waypoints.length}');
-          sortedWaypoints = waypoints.cast<Map<String, dynamic>>().toList()
-            ..sort((a, b) {
-              final indexA = (a['index'] as num?)?.toInt() ?? 0;
-              final indexB = (b['index'] as num?)?.toInt() ?? 0;
-              return indexA.compareTo(indexB);
-            });
-          print('[RoutePlanningView] 途经点排序完成，数量: ${sortedWaypoints.length}');
-        } else {
-          print('[RoutePlanningView] 警告: waypoints为空');
-        }
-
+      if (fallbackResponse.isSuccess && fallbackResponse.data != null) {
+        final fallbackData = fallbackResponse.data!;
+        final List<dynamic> fallbackList =
+            (fallbackData['list'] as List<dynamic>? ?? []);
         setState(() {
-          _routePlanResult = data;
-          _routePolyline = polylinePoints;
-          _routeWaypoints = sortedWaypoints;
-          _routeDestination = destination;
-          _isPlanningRoute = false;
+          _deliveringOrders = fallbackList.cast<Map<String, dynamic>>();
+          _isLoadingOrders = false;
         });
-
-        // 更新地图显示
-        if (polylinePoints != null && polylinePoints.isNotEmpty) {
-          print('[RoutePlanningView] 路线解析成功，坐标点数: ${polylinePoints.length}');
-          print(
-            '[RoutePlanningView] 途经点数量: ${sortedWaypoints.length}, 目的地: ${destination != null}',
-          );
-          if (polylinePoints.isNotEmpty) {
-            print(
-              '[RoutePlanningView] 路线起点: ${polylinePoints.first.latitude}, ${polylinePoints.first.longitude}',
-            );
-            print(
-              '[RoutePlanningView] 路线终点: ${polylinePoints.last.latitude}, ${polylinePoints.last.longitude}',
-            );
-            // 检查路线是否经过途经点
-            if (sortedWaypoints.isNotEmpty) {
-              for (final wp in sortedWaypoints) {
-                final wpLat = (wp['latitude'] as num?)?.toDouble();
-                final wpLng = (wp['longitude'] as num?)?.toDouble();
-                if (wpLat != null && wpLng != null) {
-                  // 将途经点坐标转换为WGS84
-                  final wpWgs84 = CoordinateTransform.gcj02ToWgs84(
-                    wpLat,
-                    wpLng,
-                  );
-                  // 检查路线中是否有接近途经点的坐标（允许误差0.0001度，约11米）
-                  bool foundNearby = false;
-                  for (final point in polylinePoints) {
-                    final latDiff = (point.latitude - wpWgs84.latitude).abs();
-                    final lngDiff = (point.longitude - wpWgs84.longitude).abs();
-                    if (latDiff < 0.0001 && lngDiff < 0.0001) {
-                      foundNearby = true;
-                      break;
-                    }
-                  }
-                  if (foundNearby) {
-                    print(
-                      '[RoutePlanningView] 途经点[${wp['index']}] (${wpLat}, ${wpLng}) 在路线中找到',
-                    );
-                  } else {
-                    print(
-                      '[RoutePlanningView] 警告: 途经点[${wp['index']}] (${wpLat}, ${wpLng}) 在路线中未找到',
-                    );
-                  }
-                }
-              }
-            }
-          }
-          _updateMapForRoute();
-        } else {
-          print('[RoutePlanningView] 警告: polyline为空，无法显示路线');
-        }
-
-        print(
-          '[RoutePlanningView] 路线规划成功 - 途经点: ${sortedWaypoints.length}, 目的地: ${destination != null}, 路线点数: ${polylinePoints?.length ?? 0}',
-        );
       } else {
-        print('[RoutePlanningView] 路线规划失败 - 消息: ${response.message}');
-        if (mounted) {
-          setState(() {
-            _isPlanningRoute = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                response.message.isNotEmpty ? response.message : '路线规划失败',
-              ),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-      }
-    } catch (e, stackTrace) {
-      print('[RoutePlanningView] 路线规划异常: $e');
-      print('[RoutePlanningView] 堆栈跟踪: $stackTrace');
-      if (mounted) {
         setState(() {
-          _isPlanningRoute = false;
+          _isLoadingOrders = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('路线规划失败: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  /// 解析polyline坐标点串（高德地图格式：经度,纬度;经度,纬度;...）
-  List<LatLng> _parsePolyline(String polyline) {
-    final points = <LatLng>[];
-    final segments = polyline.split(';');
-    print('[RoutePlanningView] polyline分段数: ${segments.length}');
-
-    int successCount = 0;
-    int failCount = 0;
-
-    for (int i = 0; i < segments.length; i++) {
-      final segment = segments[i];
-      final coords = segment.split(',');
-      if (coords.length == 2) {
-        try {
-          final lng = double.parse(coords[0].trim());
-          final lat = double.parse(coords[1].trim());
-          // 将GCJ-02坐标转换为WGS84坐标（天地图使用WGS84）
-          final wgs84Point = CoordinateTransform.gcj02ToWgs84(lat, lng);
-          points.add(wgs84Point);
-          successCount++;
-        } catch (e) {
-          failCount++;
-          if (i < 5 || i >= segments.length - 5) {
-            // 只打印前5个和后5个错误，避免日志过多
-            print('[RoutePlanningView] 解析坐标点失败 [索引$i]: $segment, 错误: $e');
-          }
-        }
-      } else {
-        failCount++;
-        if (i < 5 || i >= segments.length - 5) {
-          print(
-            '[RoutePlanningView] 坐标格式错误 [索引$i]: $segment (期望2个值，实际${coords.length}个)',
-          );
-        }
-      }
-    }
-
-    print(
-      '[RoutePlanningView] polyline解析结果 - 成功: $successCount, 失败: $failCount, 总计: ${points.length}',
-    );
-    return points;
-  }
-
-  /// 更新地图显示路线
-  void _updateMapForRoute() {
-    if (_routePolyline == null || _routePolyline!.isEmpty) return;
-
-    // 计算路线边界
-    double minLat = _routePolyline!.first.latitude;
-    double maxLat = _routePolyline!.first.latitude;
-    double minLng = _routePolyline!.first.longitude;
-    double maxLng = _routePolyline!.first.longitude;
-
-    for (final point in _routePolyline!) {
-      if (point.latitude < minLat) minLat = point.latitude;
-      if (point.latitude > maxLat) maxLat = point.latitude;
-      if (point.longitude < minLng) minLng = point.longitude;
-      if (point.longitude > maxLng) maxLng = point.longitude;
-    }
-
-    // 添加用户位置到边界计算
-    if (_userPosition != null) {
-      if (_userPosition!.latitude < minLat) minLat = _userPosition!.latitude;
-      if (_userPosition!.latitude > maxLat) maxLat = _userPosition!.latitude;
-      if (_userPosition!.longitude < minLng) minLng = _userPosition!.longitude;
-      if (_userPosition!.longitude > maxLng) maxLng = _userPosition!.longitude;
-    }
-
-    // 计算中心点和缩放级别
-    final centerLat = (minLat + maxLat) / 2;
-    final centerLng = (minLng + maxLng) / 2;
-    final latDiff = maxLat - minLat;
-    final lngDiff = maxLng - minLng;
-    final maxDiff = latDiff > lngDiff ? latDiff : lngDiff;
-
-    double zoom = 15.0;
-    if (maxDiff > 0.1) {
-      zoom = 12.0;
-    } else if (maxDiff > 0.05) {
-      zoom = 13.0;
-    } else if (maxDiff > 0.02) {
-      zoom = 14.0;
-    }
-
-    // 移动地图到路线中心
-    _mapController.move(LatLng(centerLat, centerLng), zoom);
-  }
-
-  /// 导航到客户位置
-  Future<void> _navigateToCustomer(
-    double latitude,
-    double longitude,
-    String name,
-  ) async {
-    try {
-      // 检查是否安装了高德地图
-      final isAmapAvailable = await MapLauncher.isMapAvailable(MapType.amap);
-      if (isAmapAvailable == true) {
-        // 使用高德地图导航
-        await MapLauncher.showDirections(
-          mapType: MapType.amap,
-          destination: Coords(latitude, longitude),
-          destinationTitle: name,
-        );
-      } else {
-        // 如果没有高德地图，检查其他可用的地图应用
-        final availableMaps = await MapLauncher.installedMaps;
-        if (availableMaps.isNotEmpty) {
-          // 使用第一个可用的地图应用
-          await availableMaps.first.showDirections(
-            destination: Coords(latitude, longitude),
-            destinationTitle: name,
-          );
-        } else {
-          // 如果没有安装任何地图应用，显示提示
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('未安装地图应用，请先安装高德地图'),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导航失败: $e'), backgroundColor: Colors.red),
-        );
       }
     }
   }
@@ -682,6 +406,7 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _positionStreamSubscription?.cancel();
     _locationStreamController.close();
     _mapController.dispose();
@@ -803,13 +528,6 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
             LatLng(networkPosition.latitude, networkPosition.longitude),
             _initialZoom,
           );
-          // 如果已完成全部取货，自动规划路线
-          if (wasFirstLocation &&
-              _hasCompletedAllPickup &&
-              _deliveringOrders.isNotEmpty) {
-            print('[RoutePlanningView] 网络定位成功，触发路线规划');
-            _planDeliveryRoute();
-          }
           // 网络定位成功，启动定位流（使用低精度）
           _startPositionStreamWithFallback();
           return;
@@ -851,17 +569,12 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
           _isLoadingLocation = false;
           _locationError = null;
         });
-        // 如果已完成全部取货，自动规划路线
-        if (wasFirstLocation &&
-            _hasCompletedAllPickup &&
-            _deliveringOrders.isNotEmpty) {
-          print('[RoutePlanningView] 初始位置获取成功，触发路线规划');
-          _planDeliveryRoute();
-        }
         _mapController.move(
           LatLng(initialPosition.latitude, initialPosition.longitude),
           _initialZoom,
         );
+        // 获取到位置后，重新计算路线
+        _recalculateRoutesWithNewLocation();
       } else if (mounted) {
         // 如果获取位置失败，但定位流已启动，等待定位流更新
         setState(() {
@@ -963,25 +676,14 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
                 '[RoutePlanningView] 当前状态 - 待取货: $_hasPendingPickup, 已完成取货: $_hasCompletedAllPickup, 配送中订单: ${_deliveringOrders.length}',
               );
 
-              // 首次定位时，将地图中心移动到用户位置
+              // 首次定位时，将地图中心移动到用户位置，并重新计算路线
               if (wasFirstLocation) {
                 _mapController.move(
                   LatLng(position.latitude, position.longitude),
                   _initialZoom,
                 );
-                // 如果有待取货供应商，更新地图显示
-                if (_hasPendingPickup && _pickupSuppliers.isNotEmpty) {
-                  _updateMapForSuppliers();
-                }
-                // 如果已完成全部取货，自动规划路线
-                if (_hasCompletedAllPickup && _deliveringOrders.isNotEmpty) {
-                  print('[RoutePlanningView] 首次定位成功（位置流），触发路线规划');
-                  _planDeliveryRoute();
-                } else {
-                  print(
-                    '[RoutePlanningView] 首次定位成功（位置流），但不满足路线规划条件 - 已完成取货: $_hasCompletedAllPickup, 配送中订单: ${_deliveringOrders.length}',
-                  );
-                }
+                // 获取到位置后，重新计算路线
+                _recalculateRoutesWithNewLocation();
               } else {
                 // 位置更新后，如果有待取货供应商，重新计算距离并排序
                 if (_hasPendingPickup && _pickupSuppliers.isNotEmpty) {
@@ -992,11 +694,6 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
                       _pickupSuppliers = sorted;
                     });
                   }
-                }
-                // 如果已完成全部取货，重新规划路线
-                if (_hasCompletedAllPickup && _deliveringOrders.isNotEmpty) {
-                  print('[RoutePlanningView] 位置更新（位置流），重新规划路线');
-                  _planDeliveryRoute();
                 }
               }
             },
@@ -1100,13 +797,8 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
             print(
               '[RoutePlanningView] 当前状态 - 待取货: $_hasPendingPickup, 已完成取货: $_hasCompletedAllPickup, 配送中订单: ${_deliveringOrders.length}',
             );
-            // 如果已完成全部取货，自动规划路线
-            if (wasFirstLocation &&
-                _hasCompletedAllPickup &&
-                _deliveringOrders.isNotEmpty) {
-              print('[RoutePlanningView] 网络定位成功（_getUserLocation），触发路线规划');
-              _planDeliveryRoute();
-            }
+            // 获取到位置后，重新计算路线
+            _recalculateRoutesWithNewLocation();
           }
           return;
         } else {
@@ -1154,15 +846,41 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
             LatLng(_userPosition!.latitude, _userPosition!.longitude),
             _initialZoom,
           );
-          // 如果已完成全部取货，自动规划路线
-          if (wasFirstLocation &&
-              _hasCompletedAllPickup &&
-              _deliveringOrders.isNotEmpty) {
-            print('[RoutePlanningView] 获取位置成功（_getUserLocation），触发路线规划');
-            _planDeliveryRoute();
-          }
+          // 获取到位置后，重新计算路线
+          _recalculateRoutesWithNewLocation();
         }
       });
+    }
+  }
+
+  /// 根据新的配送员位置重新计算路线
+  Future<void> _recalculateRoutesWithNewLocation() async {
+    if (_userPosition == null) return;
+
+    print(
+      '[RoutePlanningView] 开始重新计算路线 - 配送员位置: ${_userPosition!.latitude}, ${_userPosition!.longitude}',
+    );
+
+    if (_hasPendingPickup) {
+      // 如果有待取货订单，重新加载供应商列表（会传递新位置，后端会重新计算）
+      print('[RoutePlanningView] 重新加载供应商列表（使用新位置）');
+      await _loadPickupSuppliers();
+    } else if (_hasCompletedAllPickup && _deliveringOrders.isNotEmpty) {
+      // 如果已完成全部取货且有配送中订单，重新计算配送路线
+      print('[RoutePlanningView] 重新计算配送路线（使用新位置）');
+      try {
+        // 调用后端API重新计算路线
+        await OrderApi.calculateRoute(
+          latitude: _userPosition!.latitude,
+          longitude: _userPosition!.longitude,
+        );
+        // 等待一小段时间让后端完成计算
+        await Future.delayed(const Duration(milliseconds: 500));
+        // 重新加载排序后的订单列表
+        await _loadDeliveringOrders();
+      } catch (e) {
+        print('[RoutePlanningView] 重新计算配送路线失败: $e');
+      }
     }
   }
 
@@ -1229,23 +947,42 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
               CurrentLocationLayer(
                 positionStream: _locationStreamController.stream,
               ),
-              // 配送路线（已完成取货时显示）- 先渲染线条，避免遮挡标记
+              // 配送路线（已完成取货时显示）- 按照后台排序顺序连接订单
               if (_hasCompletedAllPickup &&
-                  _routePolyline != null &&
-                  _routePolyline!.isNotEmpty)
+                  _deliveringOrders.isNotEmpty &&
+                  _userPosition != null)
                 PolylineLayer(
                   polylines: [
-                    // 白色边框（底层）
                     Polyline(
-                      points: _routePolyline!,
-                      strokeWidth: 8,
-                      color: Colors.white,
-                    ),
-                    // 绿色路线（上层）
-                    Polyline(
-                      points: _routePolyline!,
-                      strokeWidth: 5,
-                      color: const Color(0xFF20CB6B),
+                      points: [
+                        // 起点：配送员位置
+                        LatLng(
+                          _userPosition!.latitude,
+                          _userPosition!.longitude,
+                        ),
+                        // 依次连接各个订单（按照 route_sequence 排序，订单列表已经排序）
+                        ..._deliveringOrders
+                            .where(
+                              (order) =>
+                                  order['latitude'] != null &&
+                                  order['longitude'] != null,
+                            )
+                            .map((order) {
+                              final lat = (order['latitude'] as num?)
+                                  ?.toDouble();
+                              final lng = (order['longitude'] as num?)
+                                  ?.toDouble();
+                              if (lat == null || lng == null) return null;
+                              // 将GCJ-02坐标转换为WGS84坐标
+                              final wgs84Point =
+                                  CoordinateTransform.gcj02ToWgs84(lat, lng);
+                              return wgs84Point;
+                            })
+                            .where((p) => p != null)
+                            .cast<LatLng>(),
+                      ],
+                      strokeWidth: 4,
+                      color: const Color(0xFF20CB6B).withOpacity(0.7),
                     ),
                   ],
                 ),
@@ -1285,111 +1022,69 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
                     ),
                   ],
                 ),
-              // 客户位置标记（已完成取货时显示）- 后渲染标记，显示在线条上方
+              // 配送订单位置标记（已完成取货时显示）- 按照后台排序顺序显示
               if (_hasCompletedAllPickup &&
-                  (_routeWaypoints.isNotEmpty || _routeDestination != null))
+                  _deliveringOrders.isNotEmpty &&
+                  _userPosition != null)
                 MarkerLayer(
-                  markers: [
-                    // 途经点标记
-                    ..._routeWaypoints
-                        .map((waypoint) {
-                          final lat = (waypoint['latitude'] as num?)
-                              ?.toDouble();
-                          final lng = (waypoint['longitude'] as num?)
-                              ?.toDouble();
-                          if (lat == null || lng == null) return null;
-                          final wgs84Point = CoordinateTransform.gcj02ToWgs84(
-                            lat,
-                            lng,
-                          );
-                          final index =
-                              (waypoint['index'] as num?)?.toInt() ?? 0;
-                          return Marker(
-                            point: wgs84Point,
-                            width: 40,
-                            height: 40,
-                            alignment: Alignment.center,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF20CB6B),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.white,
-                                  width: 2,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.2),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
+                  markers: _deliveringOrders
+                      .where(
+                        (order) =>
+                            order['latitude'] != null &&
+                            order['longitude'] != null,
+                      )
+                      .map((order) {
+                        final lat = (order['latitude'] as num?)?.toDouble();
+                        final lng = (order['longitude'] as num?)?.toDouble();
+                        if (lat == null || lng == null) return null;
+
+                        // 将GCJ-02坐标转换为WGS84坐标（天地图使用WGS84）
+                        final wgs84Point = CoordinateTransform.gcj02ToWgs84(
+                          lat,
+                          lng,
+                        );
+
+                        // 获取排序序号（从 route_sequence 字段）
+                        final routeSequence =
+                            (order['route_sequence'] as num?)?.toInt() ?? 0;
+
+                        return Marker(
+                          point: wgs84Point,
+                          width: 27,
+                          height: 27,
+                          alignment: Alignment.center,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF20CB6B), // 绿色背景
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 1.5,
                               ),
-                              child: Center(
-                                child: Text(
-                                  '$index',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 3,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: Text(
+                                '$routeSequence',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
-                          );
-                        })
-                        .where((m) => m != null)
-                        .cast<Marker>(),
-                    // 目的地标记
-                    if (_routeDestination != null)
-                      ...[
-                        () {
-                          final lat = (_routeDestination!['latitude'] as num?)
-                              ?.toDouble();
-                          final lng = (_routeDestination!['longitude'] as num?)
-                              ?.toDouble();
-                          if (lat == null || lng == null) return null;
-                          final wgs84Point = CoordinateTransform.gcj02ToWgs84(
-                            lat,
-                            lng,
-                          );
-                          final waypointCount = _routeWaypoints.length;
-                          return Marker(
-                            point: wgs84Point,
-                            width: 40,
-                            height: 40,
-                            alignment: Alignment.center,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.red,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.white,
-                                  width: 2,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.2),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '${waypointCount + 1}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }(),
-                      ].where((m) => m != null).cast<Marker>(),
-                  ],
+                          ),
+                        );
+                      })
+                      .where((m) => m != null)
+                      .cast<Marker>()
+                      .toList(),
                 ),
               // 供应商位置标记（待取货时显示）- 后渲染标记，显示在线条上方
               if (_hasPendingPickup && _pickupSuppliers.isNotEmpty)
@@ -1408,36 +1103,39 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
                           lat!.toDouble(),
                           lng!.toDouble(),
                         );
-                        final index = _pickupSuppliers.indexOf(supplier) + 1;
+                        // 使用后端返回的 sequence 字段，如果没有则使用索引+1
+                        final sequence =
+                            (supplier['sequence'] as num?)?.toInt() ??
+                            (_pickupSuppliers.indexOf(supplier) + 1);
                         return Marker(
                           point: wgs84Point,
-                          width: 36,
-                          height: 36,
+                          width: 24,
+                          height: 24,
                           alignment: Alignment.center,
                           child: Container(
-                            width: 36,
-                            height: 36,
+                            width: 24,
+                            height: 24,
                             decoration: BoxDecoration(
                               color: const Color(0xFF20CB6B), // 绿色背景
                               shape: BoxShape.circle,
                               border: Border.all(
                                 color: Colors.white, // 白色边框
-                                width: 2,
+                                width: 1.5,
                               ),
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black.withOpacity(0.2),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
+                                  blurRadius: 3,
+                                  offset: const Offset(0, 1),
                                 ),
                               ],
                             ),
                             child: Center(
                               child: Text(
-                                '$index',
+                                '$sequence',
                                 style: const TextStyle(
                                   color: Colors.white, // 白色文字
-                                  fontSize: 16,
+                                  fontSize: 11,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -1583,8 +1281,10 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
 
   /// 构建底部悬浮框
   Widget _buildBottomFloatingBox() {
+    // 当显示配送订单列表时，增加高度
+    final maxHeight = _hasPendingPickup ? 300.0 : 400.0;
     return Container(
-      constraints: const BoxConstraints(maxHeight: 300),
+      constraints: BoxConstraints(maxHeight: maxHeight),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -1675,7 +1375,10 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
             itemCount: _pickupSuppliers.length,
             itemBuilder: (context, index) {
               final supplier = _pickupSuppliers[index];
-              return _buildSupplierListItem(supplier, index + 1);
+              // 使用后端返回的 sequence 字段，如果没有则使用索引+1
+              final sequence =
+                  (supplier['sequence'] as num?)?.toInt() ?? (index + 1);
+              return _buildSupplierListItem(supplier, sequence);
             },
           ),
         ),
@@ -1714,9 +1417,9 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
                 ),
               ),
             );
-            // 如果取货成功，刷新供应商列表
+            // 如果取货成功，重新检查状态（可能已经完成全部取货）
             if (result == true && mounted) {
-              await _loadPickupSuppliers();
+              await _checkAndLoadPickupSuppliers();
             }
           }
         },
@@ -1821,7 +1524,7 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
 
   /// 构建配送中订单列表
   Widget _buildDeliveringOrdersList() {
-    if (_isLoadingOrders || _isPlanningRoute) {
+    if (_isLoadingOrders) {
       return const Padding(
         padding: EdgeInsets.all(20),
         child: Center(
@@ -1853,10 +1556,6 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
       );
     }
 
-    // 如果有路线规划结果，显示按路线排序的客户列表
-    final hasRoutePlan =
-        _routeWaypoints.isNotEmpty || _routeDestination != null;
-
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1872,9 +1571,9 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
                 color: Color(0xFF20CB6B),
               ),
               const SizedBox(width: 8),
-              Text(
-                hasRoutePlan ? '配送客户顺序列表' : '配送订单列表',
-                style: const TextStyle(
+              const Text(
+                '推荐配送顺序',
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF20253A),
@@ -1882,220 +1581,40 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
               ),
               const Spacer(),
               Text(
-                hasRoutePlan
-                    ? '共${_routeWaypoints.length + (_routeDestination != null ? 1 : 0)}个客户'
-                    : '共${_deliveringOrders.length}个订单',
+                '共${_deliveringOrders.length}个订单',
                 style: TextStyle(fontSize: 12, color: Colors.grey[600]),
               ),
-              // 一键导航按钮（导航到第一个客户）
-              if (hasRoutePlan && _routeWaypoints.isNotEmpty)
-                InkWell(
-                  onTap: () {
-                    final firstWaypoint = _routeWaypoints[0];
-                    final lat = (firstWaypoint['latitude'] as num?)?.toDouble();
-                    final lng = (firstWaypoint['longitude'] as num?)
-                        ?.toDouble();
-                    final name = firstWaypoint['name'] as String? ?? '';
-                    final address = firstWaypoint['address'] as String? ?? '';
-                    if (lat != null && lng != null) {
-                      _navigateToCustomer(
-                        lat,
-                        lng,
-                        name.isNotEmpty ? name : address,
-                      );
-                    }
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.only(left: 12),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF20CB6B),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.navigation, size: 16, color: Colors.white),
-                        SizedBox(width: 4),
-                        Text(
-                          '一键导航',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
             ],
           ),
         ),
         // 列表内容
         Flexible(
-          child: hasRoutePlan
-              ? ListView.builder(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  itemCount:
-                      _routeWaypoints.length +
-                      (_routeDestination != null ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (index < _routeWaypoints.length) {
-                      // 途经点
-                      final waypoint = _routeWaypoints[index];
-                      return _buildCustomerListItem(waypoint, index + 1);
-                    } else {
-                      // 目的地
-                      return _buildCustomerListItem(
-                        _routeDestination!,
-                        _routeWaypoints.length + 1,
-                        isDestination: true,
-                      );
-                    }
-                  },
-                )
-              : ListView.builder(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  itemCount: _deliveringOrders.length,
-                  itemBuilder: (context, index) {
-                    final order = _deliveringOrders[index];
-                    return _buildOrderListItem(order);
-                  },
-                ),
+          child: ListView.builder(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            itemCount: _deliveringOrders.length,
+            itemBuilder: (context, index) {
+              final order = _deliveringOrders[index];
+              return _buildOrderListItem(order);
+            },
+          ),
         ),
       ],
     );
   }
 
-  /// 构建客户列表项（按路线规划顺序）
-  Widget _buildCustomerListItem(
-    Map<String, dynamic> customer,
-    int index, {
-    bool isDestination = false,
-  }) {
-    final name = customer['name'] as String? ?? '';
-    final address = customer['address'] as String? ?? '';
-    final latitude = (customer['latitude'] as num?)?.toDouble();
-    final longitude = (customer['longitude'] as num?)?.toDouble();
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDestination ? Colors.red[50] : const Color(0xFFF8F9FA),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDestination ? Colors.red[300]! : const Color(0xFFE5E7EB),
-          width: isDestination ? 2 : 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          // 序号标记
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: isDestination ? Colors.red : const Color(0xFF20CB6B),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-            ),
-            child: Center(
-              child: Text(
-                '$index',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // 客户信息
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 地址名称
-                if (name.isNotEmpty)
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF20253A),
-                    ),
-                  ),
-                if (name.isNotEmpty && address.isNotEmpty)
-                  const SizedBox(height: 4),
-                // 地址
-                if (address.isNotEmpty)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 14,
-                        color: Color(0xFF8C92A4),
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          address,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF40475C),
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-          // 导航按钮
-          if (latitude != null && longitude != null)
-            InkWell(
-              onTap: () => _navigateToCustomer(
-                latitude,
-                longitude,
-                name.isNotEmpty ? name : address,
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF20CB6B).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.navigation,
-                  size: 20,
-                  color: Color(0xFF20CB6B),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// 构建订单列表项（保留用于其他场景）
+  /// 构建订单列表项（显示排序序号）
   Widget _buildOrderListItem(Map<String, dynamic> order) {
     final orderId = (order['id'] as num?)?.toInt();
-    final orderNumber = order['order_number'] as String? ?? '';
-    final receiverName = order['receiver_name'] as String? ?? '';
-    final receiverAddress = order['receiver_address'] as String? ?? '';
-    final totalAmount = (order['total_amount'] as num?)?.toDouble() ?? 0.0;
+    final receiverName = order['name'] as String? ?? ''; // 使用 name 字段（地址名称）
+    final receiverAddress = order['address'] as String? ?? ''; // 使用 address 字段
+    final contact = order['contact'] as String? ?? ''; // 联系人
+    final phone = order['phone'] as String? ?? ''; // 联系电话
+    final itemCount = (order['item_count'] as num?)?.toInt() ?? 0; // 商品件数
     final isUrgent = (order['is_urgent'] as bool?) ?? false;
+    final routeSequence = (order['route_sequence'] as num?)?.toInt(); // 排序序号
+    final latitude = (order['latitude'] as num?)?.toDouble();
+    final longitude = (order['longitude'] as num?)?.toDouble();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -2109,123 +1628,239 @@ class _RoutePlanningViewState extends State<RoutePlanningView> {
         ),
       ),
       child: InkWell(
-        onTap: () {
+        onTap: () async {
           if (orderId != null) {
-            Navigator.of(context).push(
+            // 从订单详情返回时，刷新路线规划页面
+            final result = await Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => OrderDetailView(orderId: orderId),
               ),
             );
+            // 无论返回什么，都刷新路线规划页面
+            if (mounted && result == true) {
+              _checkAndLoadPickupSuppliers();
+            }
           }
         },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Row(
-              children: [
-                // 订单号
-                Expanded(
-                  child: Text(
-                    '订单号: $orderNumber',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF20253A),
-                    ),
-                  ),
-                ),
-                // 加急标签
-                if (isUrgent)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.orange[100],
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      '加急',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.orange[800],
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // 收货人信息
-            if (receiverName.isNotEmpty) ...[
-              Row(
-                children: [
-                  const Icon(
-                    Icons.person_outline,
-                    size: 14,
-                    color: Color(0xFF8C92A4),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    receiverName,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF40475C),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-            ],
-            // 收货地址
-            if (receiverAddress.isNotEmpty) ...[
-              Row(
+            // 左侧内容
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
-                    Icons.location_on_outlined,
-                    size: 14,
-                    color: Color(0xFF8C92A4),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      receiverAddress,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF40475C),
+                  Row(
+                    children: [
+                      // 排序序号
+                      if (routeSequence != null)
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF20CB6B),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '$routeSequence',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (routeSequence != null) const SizedBox(width: 8),
+                      // 收货人名称
+                      Expanded(
+                        child: Text(
+                          receiverName.isNotEmpty ? receiverName : '收货地址',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF20253A),
+                          ),
+                        ),
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      // 加急标签
+                      if (isUrgent)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.orange[100],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '加急',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.orange[800],
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // 联系人信息
+                  if (contact.isNotEmpty || phone.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.person_outline,
+                          size: 14,
+                          color: Color(0xFF8C92A4),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          contact.isNotEmpty ? contact : phone,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF40475C),
+                          ),
+                        ),
+                        if (contact.isNotEmpty && phone.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            phone,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF8C92A4),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
+                    const SizedBox(height: 6),
+                  ],
+                  // 收货地址
+                  if (receiverAddress.isNotEmpty)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 14,
+                          color: Color(0xFF8C92A4),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            receiverAddress,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF40475C),
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  const SizedBox(height: 6),
+                  // 商品件数
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.shopping_bag_outlined,
+                        size: 14,
+                        color: Color(0xFF8C92A4),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '商品件数: $itemCount',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF40475C),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-            ],
-            // 订单金额
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '订单金额: ¥${totalAmount.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+            ),
+            // 右侧导航按钮（垂直居中）
+            if (latitude != null && longitude != null) ...[
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: () {
+                  // 阻止事件冒泡，避免触发订单详情跳转
+                  _navigateToOrder(
+                    latitude!,
+                    longitude!,
+                    receiverName.isNotEmpty ? receiverName : receiverAddress,
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF20CB6B).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.navigation,
+                    size: 20,
                     color: Color(0xFF20CB6B),
                   ),
                 ),
-                const Icon(
-                  Icons.chevron_right,
-                  size: 18,
-                  color: Color(0xFF8C92A4),
-                ),
-              ],
-            ),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  /// 导航到订单地址
+  Future<void> _navigateToOrder(
+    double latitude,
+    double longitude,
+    String name,
+  ) async {
+    try {
+      // 优先使用高德地图
+      final isAmapAvailable = await MapLauncher.isMapAvailable(MapType.amap);
+      if (isAmapAvailable == true) {
+        await MapLauncher.showDirections(
+          mapType: MapType.amap,
+          destination: Coords(latitude, longitude),
+          destinationTitle: name,
+        );
+        return;
+      }
+
+      // 如果没有高德地图，使用其他可用地图
+      final availableMaps = await MapLauncher.installedMaps;
+      if (availableMaps.isNotEmpty) {
+        await MapLauncher.showDirections(
+          mapType: availableMaps.first.mapType,
+          destination: Coords(latitude, longitude),
+          destinationTitle: name,
+        );
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('未安装地图应用，请先安装高德地图或其他地图应用'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      print('[RoutePlanningView] 导航失败: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('导航失败: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

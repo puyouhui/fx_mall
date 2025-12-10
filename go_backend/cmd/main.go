@@ -243,7 +243,8 @@ func main() {
 				employeeProtectedGroup.GET("/delivery/pickup/suppliers", api.GetPickupSuppliers)                         // 获取待取货供应商列表
 				employeeProtectedGroup.GET("/delivery/pickup/suppliers/:supplierId/items", api.GetPickupItemsBySupplier) // 获取供应商的待取货商品
 				employeeProtectedGroup.POST("/delivery/pickup/mark-picked", api.MarkItemsAsPicked)                       // 标记商品已取货
-				employeeProtectedGroup.POST("/delivery/route/plan", api.PlanDeliveryRoute)                               // 规划配送路线
+				employeeProtectedGroup.POST("/delivery/route/calculate", api.CalculateRoute)                             // 计算路线规划
+				employeeProtectedGroup.GET("/delivery/route/orders", api.GetRouteOrders)                                 // 获取排序后的订单列表
 
 				// 销售员相关接口
 				employeeProtectedGroup.GET("/sales/customers", api.GetSalesCustomers)                                            // 获取我的客户列表

@@ -60,8 +60,6 @@ class _BatchPickupViewState extends State<BatchPickupView> {
     }
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -147,7 +145,8 @@ class _BatchPickupViewState extends State<BatchPickupView> {
                     ),
                   );
                   // 如果取货成功，刷新供应商列表
-                  if (result == true && mounted) {
+                  // 无论是否成功，都刷新列表（确保数据最新）
+                  if (mounted) {
                     _loadSuppliers();
                   }
                 },

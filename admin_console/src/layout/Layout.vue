@@ -10,6 +10,7 @@
         class="el-menu-vertical-demo" 
         router
         :default-openeds="defaultOpeneds"
+        unique-opened
       >
         <!-- 仪表盘 -->
         <el-menu-item index="/dashboard">

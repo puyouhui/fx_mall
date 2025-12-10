@@ -4,6 +4,8 @@ import 'pages/main_shell.dart';
 import 'pages/batch_pickup_view.dart';
 import 'pages/complete_delivery_view.dart';
 import 'utils/storage.dart';
+import 'utils/request.dart';
+import 'api/auth_api.dart';
 
 /// 根组件：定义路由与主题，启动时检查登录状态，自动登录
 class DistributionApp extends StatefulWidget {
@@ -17,10 +19,13 @@ class _DistributionAppState extends State<DistributionApp> {
   bool _isLoading = true;
   String _initialRoute = '/login'; // 默认值设为登录页
   String _courierPhone = '';
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
+    // 设置全局导航键
+    Request.setNavigatorKey(_navigatorKey);
     _checkLoginStatus();
   }
 
@@ -28,16 +33,62 @@ class _DistributionAppState extends State<DistributionApp> {
     // 检查是否有token
     final token = await Storage.getToken();
     if (token != null && token.isNotEmpty) {
-      // 有token，尝试获取员工信息
-      final employeeInfo = await Storage.getEmployeeInfo();
-      final phone = employeeInfo?['phone'] as String? ?? '';
-
-      if (mounted) {
-        setState(() {
-          _initialRoute = '/main';
-          _courierPhone = phone;
-          _isLoading = false;
-        });
+      // 有token，验证员工状态
+      try {
+        final response = await AuthApi.getCurrentEmployeeInfo();
+        if (response.isSuccess && response.data != null) {
+          final employee = response.data!;
+          // 检查员工状态和角色
+          if (!employee.status) {
+            // 账号被禁用，清理登录信息并跳转登录页
+            await Storage.clearAll();
+            if (mounted) {
+              setState(() {
+                _initialRoute = '/login';
+                _isLoading = false;
+              });
+            }
+            return;
+          }
+          if (!employee.isDelivery) {
+            // 不是配送员，清理登录信息并跳转登录页
+            await Storage.clearAll();
+            if (mounted) {
+              setState(() {
+                _initialRoute = '/login';
+                _isLoading = false;
+              });
+            }
+            return;
+          }
+          // 状态正常，跳转到主页面
+          final phone = employee.phone;
+          if (mounted) {
+            setState(() {
+              _initialRoute = '/main';
+              _courierPhone = phone;
+              _isLoading = false;
+            });
+          }
+        } else {
+          // API调用失败（可能是403或其他错误），清理登录信息
+          await Storage.clearAll();
+          if (mounted) {
+            setState(() {
+              _initialRoute = '/login';
+              _isLoading = false;
+            });
+          }
+        }
+      } catch (e) {
+        // 发生异常，清理登录信息
+        await Storage.clearAll();
+        if (mounted) {
+          setState(() {
+            _initialRoute = '/login';
+            _isLoading = false;
+          });
+        }
       }
     } else {
       // 没有token，跳转到登录页
@@ -79,6 +130,7 @@ class _DistributionAppState extends State<DistributionApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '配送员端',
+      navigatorKey: _navigatorKey,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),

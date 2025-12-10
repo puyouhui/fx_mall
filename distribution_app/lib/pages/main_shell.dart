@@ -20,6 +20,7 @@ class _MainShellState extends State<MainShell> {
   Position? _currentPosition;
   bool _isLoadingLocation = false;
   String? _locationError;
+  final OrderHallViewKey _orderHallViewKey = OrderHallViewKey();
 
   @override
   void initState() {
@@ -121,6 +122,7 @@ class _MainShellState extends State<MainShell> {
         index: _currentIndex,
         children: [
           OrderHallView(
+            key: _orderHallViewKey,
             currentPosition: _currentPosition,
             isLoadingLocation: _isLoadingLocation,
             locationError: _locationError,

@@ -950,6 +950,30 @@ func InitDB() error {
 			return
 		}
 
+		// 创建配送路线排序表（记录配送员已接单订单的排序）
+		createDeliveryRouteOrdersTableSQL := `
+		CREATE TABLE IF NOT EXISTS delivery_route_orders (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    delivery_employee_code VARCHAR(10) NOT NULL COMMENT '配送员员工码',
+		    order_id INT NOT NULL COMMENT '订单ID',
+		    route_sequence INT NOT NULL COMMENT '路线排序序号（从1开始）',
+		    calculated_distance DECIMAL(10,2) DEFAULT NULL COMMENT '计算的距离（公里）',
+		    calculated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '计算时间',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    UNIQUE KEY uk_employee_order (delivery_employee_code, order_id) COMMENT '同一配送员的同一订单只能有一条记录',
+		    KEY idx_delivery_employee_code (delivery_employee_code),
+		    KEY idx_order_id (order_id),
+		    KEY idx_route_sequence (delivery_employee_code, route_sequence) COMMENT '用于按排序查询'
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='配送路线排序表';
+		`
+
+		if _, err = DB.Exec(createDeliveryRouteOrdersTableSQL); err != nil {
+			log.Printf("创建delivery_route_orders表失败: %v", err)
+		} else {
+			log.Println("配送路线排序表初始化成功")
+		}
+
 		// 初始化默认系统设置
 		initSystemSettings := []struct {
 			key         string

@@ -27,10 +27,21 @@ class OrderApi {
 
   // 接单（接受配送订单）
   static Future<ApiResponse<Map<String, dynamic>>> acceptOrder(
-    int orderId,
-  ) async {
+    int orderId, {
+    double? latitude,
+    double? longitude,
+  }) async {
+    final queryParams = <String, String>{};
+    if (latitude != null) {
+      queryParams['latitude'] = latitude.toString();
+    }
+    if (longitude != null) {
+      queryParams['longitude'] = longitude.toString();
+    }
+
     final response = await Request.put<Map<String, dynamic>>(
       '/employee/delivery/orders/$orderId/accept',
+      queryParams: queryParams.isNotEmpty ? queryParams : null,
       parser: (data) => data as Map<String, dynamic>,
     );
 
@@ -67,9 +78,7 @@ class OrderApi {
     final allSuccess = results.every((r) => r['success'] == true);
     return ApiResponse<Map<String, dynamic>>(
       code: allSuccess ? 200 : 400,
-      message: allSuccess
-          ? '接单成功'
-          : (lastError ?? '部分订单接单失败'),
+      message: allSuccess ? '接单成功' : (lastError ?? '部分订单接单失败'),
       data: {'results': results},
     );
   }
@@ -90,6 +99,46 @@ class OrderApi {
     );
   }
 
+  // 获取排序后的配送订单列表（用于路线规划）
+  static Future<ApiResponse<Map<String, dynamic>>> getRouteOrders() async {
+    final response = await Request.get<Map<String, dynamic>>(
+      '/employee/delivery/route/orders',
+      parser: (data) => data as Map<String, dynamic>,
+    );
+
+    return ApiResponse<Map<String, dynamic>>(
+      code: response.code,
+      message: response.message,
+      data: response.data,
+    );
+  }
+
+  // 手动触发路线规划计算
+  static Future<ApiResponse<Map<String, dynamic>>> calculateRoute({
+    double? latitude,
+    double? longitude,
+  }) async {
+    final queryParams = <String, String>{};
+    if (latitude != null) {
+      queryParams['latitude'] = latitude.toString();
+    }
+    if (longitude != null) {
+      queryParams['longitude'] = longitude.toString();
+    }
+
+    final response = await Request.post<Map<String, dynamic>>(
+      '/employee/delivery/route/calculate',
+      queryParams: queryParams,
+      parser: (data) => data as Map<String, dynamic>,
+    );
+
+    return ApiResponse<Map<String, dynamic>>(
+      code: response.code,
+      message: response.message,
+      data: response.data,
+    );
+  }
+
   // 完成配送（带图片上传）
   static Future<ApiResponse<Map<String, dynamic>>> completeOrderWithImages({
     required int orderId,
@@ -99,10 +148,7 @@ class OrderApi {
     // 使用 multipart/form-data 上传图片
     final response = await Request.postMultipart<Map<String, dynamic>>(
       '/employee/delivery/orders/$orderId/complete',
-      files: {
-        'product_image': productImage,
-        'doorplate_image': doorplateImage,
-      },
+      files: {'product_image': productImage, 'doorplate_image': doorplateImage},
       parser: (data) => data as Map<String, dynamic>,
     );
 
@@ -155,9 +201,21 @@ class OrderApi {
   }
 
   // 获取待取货供应商列表
-  static Future<ApiResponse<List<dynamic>>> getPickupSuppliers() async {
+  static Future<ApiResponse<List<dynamic>>> getPickupSuppliers({
+    double? latitude,
+    double? longitude,
+  }) async {
+    final queryParams = <String, String>{};
+    if (latitude != null) {
+      queryParams['latitude'] = latitude.toString();
+    }
+    if (longitude != null) {
+      queryParams['longitude'] = longitude.toString();
+    }
+
     final response = await Request.get<List<dynamic>>(
       '/employee/delivery/pickup/suppliers',
+      queryParams: queryParams,
       parser: (data) => data as List<dynamic>,
     );
 
@@ -190,30 +248,7 @@ class OrderApi {
   ) async {
     final response = await Request.post<Map<String, dynamic>>(
       '/employee/delivery/pickup/mark-picked',
-      body: {
-        'item_ids': itemIds,
-      },
-      parser: (data) => data as Map<String, dynamic>,
-    );
-
-    return ApiResponse<Map<String, dynamic>>(
-      code: response.code,
-      message: response.message,
-      data: response.data,
-    );
-  }
-
-  // 规划配送路线
-  static Future<ApiResponse<Map<String, dynamic>>> planDeliveryRoute({
-    required double originLatitude,
-    required double originLongitude,
-  }) async {
-    final response = await Request.post<Map<String, dynamic>>(
-      '/employee/delivery/route/plan',
-      body: {
-        'origin_latitude': originLatitude,
-        'origin_longitude': originLongitude,
-      },
+      body: {'item_ids': itemIds},
       parser: (data) => data as Map<String, dynamic>,
     );
 
@@ -224,4 +259,3 @@ class OrderApi {
     );
   }
 }
-

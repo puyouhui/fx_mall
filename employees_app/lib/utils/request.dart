@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:employees_app/utils/storage.dart';
 import 'package:employees_app/utils/config.dart';
@@ -172,6 +173,11 @@ class Request {
       if (code == 401) {
         // Token 失效，清除本地存储
         Storage.clearAll();
+      } else if (code == 403) {
+        // 账号被禁用或其他状态导致不能使用，清除本地存储并跳转登录页
+        Storage.clearAll();
+        // 使用全局导航键跳转到登录页
+        _navigateToLogin();
       }
 
       T? parsedData;
@@ -186,6 +192,24 @@ class Request {
       return ApiResponse<T>(
         code: response.statusCode,
         message: '响应解析失败: ${e.toString()}',
+      );
+    }
+  }
+
+  // 全局导航键（用于在请求拦截器中跳转）
+  static GlobalKey<NavigatorState>? navigatorKey;
+
+  // 设置全局导航键
+  static void setNavigatorKey(GlobalKey<NavigatorState> key) {
+    navigatorKey = key;
+  }
+
+  // 跳转到登录页
+  static void _navigateToLogin() {
+    if (navigatorKey?.currentState != null) {
+      navigatorKey!.currentState!.pushNamedAndRemoveUntil(
+        '/login',
+        (route) => false,
       );
     }
   }

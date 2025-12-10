@@ -63,9 +63,68 @@ class _LoginPageState extends State<LoginPage> {
         password: _passwordController.text,
       );
 
+      // 检查是否是账号被禁用（403错误）
+      if (response.code == 403) {
+        setState(() {
+          _isLoading = false;
+        });
+        // 显示弹框提示
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: const Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: Color(0xFFEB5757),
+                      size: 24,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      '账号已被禁用',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF20253A),
+                      ),
+                    ),
+                  ],
+                ),
+                content: const Text(
+                  '员工账号已被禁用，请联系管理员',
+                  style: TextStyle(fontSize: 15, color: Color(0xFF40475C)),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text(
+                      '确定',
+                      style: TextStyle(
+                        color: Color(0xFF20CB6B),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              );
+            },
+          );
+        }
+        return;
+      }
+
       if (response.isSuccess && response.data != null) {
         final employee = response.data!.employee;
-        
+
         // 根据员工角色跳转到不同页面
         if (mounted) {
           if (employee.isDelivery) {
@@ -102,16 +161,16 @@ class _LoginPageState extends State<LoginPage> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF20CB6B),
-              Color(0xFF10B05A),
-            ],
+            colors: [Color(0xFF20CB6B), Color(0xFF10B05A)],
           ),
         ),
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24.0,
+                vertical: 32.0,
+              ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -119,10 +178,7 @@ class _LoginPageState extends State<LoginPage> {
                   // 顶部欢迎文案
                   const Text(
                     '欢迎使用',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                    ),
+                    style: TextStyle(color: Colors.white, fontSize: 18),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
@@ -140,7 +196,10 @@ class _LoginPageState extends State<LoginPage> {
 
                   // 中间白色卡片
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 24,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
@@ -193,7 +252,10 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: Color(0xFF20CB6B), width: 1.2),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFF20CB6B),
+                                  width: 1.2,
+                                ),
                               ),
                             ),
                             validator: _validatePhone,
@@ -229,7 +291,10 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: Color(0xFF20CB6B), width: 1.2),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFF20CB6B),
+                                  width: 1.2,
+                                ),
                               ),
                             ),
                             validator: _validatePassword,
@@ -255,7 +320,10 @@ class _LoginPageState extends State<LoginPage> {
                           if (_errorMessage != null)
                             Container(
                               margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFFFF1F0),
                                 borderRadius: BorderRadius.circular(8),
@@ -289,7 +357,9 @@ class _LoginPageState extends State<LoginPage> {
                               onPressed: _isLoading ? null : _handleLogin,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF20CB6B),
-                                disabledBackgroundColor: const Color(0xFF9EDFB9),
+                                disabledBackgroundColor: const Color(
+                                  0xFF9EDFB9,
+                                ),
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(24),
@@ -301,7 +371,10 @@ class _LoginPageState extends State<LoginPage> {
                                       width: 20,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
                                       ),
                                     )
                                   : const Text(
@@ -324,10 +397,7 @@ class _LoginPageState extends State<LoginPage> {
                   // 底部轻提示
                   const Text(
                     '仅限内部员工使用，如有账号问题请联系负责人',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -339,4 +409,3 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 }
-
