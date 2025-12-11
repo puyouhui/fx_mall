@@ -836,6 +836,30 @@ func InitDB() error {
 			}
 		}
 
+		// 检查 delivery_fee_settled 字段（配送费是否已结算）
+		var deliveryFeeSettledExists int
+		checkDeliveryFeeSettledQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'delivery_fee_settled'`
+		if err := DB.QueryRow(checkDeliveryFeeSettledQuery).Scan(&deliveryFeeSettledExists); err == nil && deliveryFeeSettledExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN delivery_fee_settled TINYINT(1) NOT NULL DEFAULT 0 COMMENT '配送费是否已结算' AFTER delivery_fee_calculation, ADD KEY idx_delivery_fee_settled (delivery_fee_settled)`); err != nil {
+				log.Printf("添加delivery_fee_settled字段失败: %v", err)
+			} else {
+				log.Println("已添加delivery_fee_settled字段到orders表")
+			}
+		}
+
+		// 检查 settlement_date 字段（结算日期）
+		var settlementDateExists int
+		checkSettlementDateQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'settlement_date'`
+		if err := DB.QueryRow(checkSettlementDateQuery).Scan(&settlementDateExists); err == nil && settlementDateExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN settlement_date DATETIME DEFAULT NULL COMMENT '结算日期' AFTER delivery_fee_settled, ADD KEY idx_settlement_date (settlement_date)`); err != nil {
+				log.Printf("添加settlement_date字段失败: %v", err)
+			} else {
+				log.Println("已添加settlement_date字段到orders表")
+			}
+		}
+
 		// 检查 order_items 表的 is_picked 字段
 		var isPickedExists int
 		checkIsPickedQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
@@ -955,6 +979,7 @@ func InitDB() error {
 		CREATE TABLE IF NOT EXISTS delivery_route_orders (
 		    id INT PRIMARY KEY AUTO_INCREMENT,
 		    delivery_employee_code VARCHAR(10) NOT NULL COMMENT '配送员员工码',
+		    batch_id VARCHAR(50) NOT NULL COMMENT '批次ID（用于区分不同的趟）',
 		    order_id INT NOT NULL COMMENT '订单ID',
 		    route_sequence INT NOT NULL COMMENT '路线排序序号（从1开始）',
 		    calculated_distance DECIMAL(10,2) DEFAULT NULL COMMENT '计算的距离（公里）',
@@ -963,8 +988,9 @@ func InitDB() error {
 		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 		    UNIQUE KEY uk_employee_order (delivery_employee_code, order_id) COMMENT '同一配送员的同一订单只能有一条记录',
 		    KEY idx_delivery_employee_code (delivery_employee_code),
+		    KEY idx_batch_id (delivery_employee_code, batch_id) COMMENT '用于按批次查询',
 		    KEY idx_order_id (order_id),
-		    KEY idx_route_sequence (delivery_employee_code, route_sequence) COMMENT '用于按排序查询'
+		    KEY idx_route_sequence (delivery_employee_code, batch_id, route_sequence) COMMENT '用于按批次和排序查询'
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='配送路线排序表';
 		`
 
@@ -972,6 +998,33 @@ func InitDB() error {
 			log.Printf("创建delivery_route_orders表失败: %v", err)
 		} else {
 			log.Println("配送路线排序表初始化成功")
+		}
+
+		// 为已存在的表添加 batch_id 字段（兼容旧数据）
+		// 先检查字段是否存在
+		var batchColumnExists int
+		checkBatchColumnSQL := `
+			SELECT COUNT(*) 
+			FROM INFORMATION_SCHEMA.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() 
+			AND TABLE_NAME = 'delivery_route_orders' 
+			AND COLUMN_NAME = 'batch_id'
+		`
+		if err := DB.QueryRow(checkBatchColumnSQL).Scan(&batchColumnExists); err == nil && batchColumnExists == 0 {
+			// 字段不存在，添加字段和索引
+			alterDeliveryRouteOrdersTableSQL := `
+			ALTER TABLE delivery_route_orders 
+			ADD COLUMN batch_id VARCHAR(50) NOT NULL DEFAULT '' COMMENT '批次ID（用于区分不同的趟）' AFTER delivery_employee_code,
+			ADD INDEX idx_batch_id (delivery_employee_code, batch_id) COMMENT '用于按批次查询',
+			ADD INDEX idx_route_sequence_batch (delivery_employee_code, batch_id, route_sequence) COMMENT '用于按批次和排序查询'
+			`
+			if _, alterErr := DB.Exec(alterDeliveryRouteOrdersTableSQL); alterErr != nil {
+				log.Printf("添加 batch_id 字段失败: %v", alterErr)
+			} else {
+				log.Println("为 delivery_route_orders 表添加 batch_id 字段成功")
+			}
+		} else {
+			log.Println("delivery_route_orders 表的 batch_id 字段已存在，跳过添加")
 		}
 
 		// 初始化默认系统设置

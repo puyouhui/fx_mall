@@ -35,6 +35,8 @@ type Order struct {
 	ExpectedDeliveryAt   *time.Time `json:"expected_delivery_at"`             // 预计送达时间（可为空）
 	WeatherInfo          *string    `json:"weather_info,omitempty"`           // 天气信息（JSON格式）
 	IsIsolated           bool       `json:"is_isolated"`                      // 是否孤立订单（8公里内无其他订单）
+	DeliveryFeeSettled   bool       `json:"delivery_fee_settled"`            // 配送费是否已结算
+	SettlementDate       *time.Time `json:"settlement_date,omitempty"`       // 结算日期
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 }

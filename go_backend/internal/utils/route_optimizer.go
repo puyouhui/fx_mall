@@ -116,13 +116,33 @@ func (o *DeliveryRouteOptimizer) NearestNeighbor(startIdx int) ([]int, float64) 
 	for len(unvisited) > 0 {
 		nearestIdx := -1
 		nearestDist := math.MaxFloat64
+		// 收集所有距离相同的候选点，用于稳定排序
+		candidates := make([]int, 0)
 
 		for next := range unvisited {
 			d := o.CalculateDistance(current, next)
 			if d < nearestDist {
 				nearestDist = d
 				nearestIdx = next
+				// 重置候选列表，因为找到了更近的点
+				candidates = []int{next}
+			} else if d == nearestDist && nearestDist < math.MaxFloat64 {
+				// 如果距离相同，添加到候选列表
+				candidates = append(candidates, next)
 			}
+		}
+
+		// 如果有多个距离相同的候选点，按索引排序选择最小的（稳定排序）
+		if len(candidates) > 1 {
+			// 对候选点按索引排序
+			for i := 0; i < len(candidates)-1; i++ {
+				for j := i + 1; j < len(candidates); j++ {
+					if candidates[i] > candidates[j] {
+						candidates[i], candidates[j] = candidates[j], candidates[i]
+					}
+				}
+			}
+			nearestIdx = candidates[0]
 		}
 
 		if nearestIdx == -1 {

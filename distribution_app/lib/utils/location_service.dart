@@ -3,6 +3,40 @@ import 'package:permission_handler/permission_handler.dart';
 
 /// 定位服务工具类
 class LocationService {
+  // 缓存的位置信息
+  static Position? _cachedPosition;
+  static DateTime? _cachedPositionTime;
+  static const Duration _cacheValidDuration = Duration(minutes: 5); // 缓存有效期5分钟
+
+  /// 获取缓存的位置（如果可用且未过期）
+  static Position? getCachedPosition() {
+    if (_cachedPosition != null && _cachedPositionTime != null) {
+      final age = DateTime.now().difference(_cachedPositionTime!);
+      if (age < _cacheValidDuration) {
+        print('[LocationService] 使用缓存的位置，缓存时间: ${age.inSeconds}秒前');
+        return _cachedPosition;
+      } else {
+        print('[LocationService] 缓存的位置已过期，清除缓存');
+        _cachedPosition = null;
+        _cachedPositionTime = null;
+      }
+    }
+    return null;
+  }
+
+  /// 设置缓存的位置
+  static void setCachedPosition(Position position) {
+    _cachedPosition = position;
+    _cachedPositionTime = DateTime.now();
+    print('[LocationService] 位置已缓存: ${position.latitude}, ${position.longitude}');
+  }
+
+  /// 清除缓存的位置
+  static void clearCache() {
+    _cachedPosition = null;
+    _cachedPositionTime = null;
+    print('[LocationService] 位置缓存已清除');
+  }
   /// 检查定位服务是否启用
   static Future<bool> checkLocationServiceEnabled() async {
     try {
@@ -145,6 +179,8 @@ class LocationService {
           print(
             '[LocationService] 直接定位成功: ${position.latitude}, ${position.longitude}, 精度: ${position.accuracy}米',
           );
+          // 缓存位置信息
+          setCachedPosition(position);
           return position;
         } catch (e) {
           final errorStr = e.toString();
@@ -236,6 +272,8 @@ class LocationService {
           print(
             '[LocationService] 定位成功: ${position.latitude}, ${position.longitude}, 精度: ${position.accuracy}米, 使用精度级别: $accuracy',
           );
+          // 缓存位置信息
+          setCachedPosition(position);
           return position;
         } catch (e) {
           final errorStr = e.toString();

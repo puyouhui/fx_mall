@@ -2,7 +2,7 @@
   <view class="profile-form-page">
     <!-- 地图背景 -->
     <map class="map-background" :latitude="mapLocation.latitude" :longitude="mapLocation.longitude" :scale="15"
-      :show-location="true" :enable-zoom="false" :enable-scroll="false"></map>
+      :show-location="true" :enable-zoom="false" :enable-scroll="false" :markers="markers"></map>
 
     <!-- 表单卡片 -->
     <view class="form-card">
@@ -130,7 +130,7 @@
 </template>
 
 <script>
-    import { updateMiniUserProfile, uploadAddressAvatar, getMiniUserAddresses, getMiniUserDefaultAddress, getMiniUserInfo, geocodeAddress, deleteMiniUserAddress } from '../../api/index';
+import { updateMiniUserProfile, uploadAddressAvatar, getMiniUserAddresses, getMiniUserDefaultAddress, getMiniUserInfo, geocodeAddress, deleteMiniUserAddress } from '../../api/index';
 
 export default {
   data() {
@@ -162,6 +162,7 @@ export default {
         latitude: 39.908823,
         longitude: 116.397470
       },
+      markers: [], // 地图标记点
       storeTypeOptions: [
 
         '餐饮店',
@@ -184,7 +185,7 @@ export default {
       );
     }
   },
-  onLoad(options) {
+  async onLoad(options) {
     const token = uni.getStorageSync('miniUserToken') || '';
     if (!token) {
       uni.showToast({
@@ -198,22 +199,22 @@ export default {
     }
 
     this.userToken = token;
-    
+
     // 先获取用户信息，检查是否已绑定销售员
     this.loadUserInfo();
-    
+
     // 判断是新增还是编辑（通过URL参数address_id）
     if (options.address_id) {
-      // 编辑模式：加载地址数据
+      // 编辑模式：加载地址数据（会设置经纬度）
       this.formData.addressId = parseInt(options.address_id);
-      this.loadAddressData(parseInt(options.address_id));
+      // 先加载地址数据，确保经纬度正确
+      await this.loadAddressData(parseInt(options.address_id));
     } else {
       // 新增模式：不显示地址字段，需要先选择定位
       this.showAddressFields = false;
+      // 新增模式才获取当前位置作为默认值
+      this.getCurrentLocation();
     }
-
-    // 获取当前位置
-    this.getCurrentLocation();
   },
   methods: {
     // 加载用户信息，检查是否已绑定销售员
@@ -241,11 +242,42 @@ export default {
           };
           this.formData.latitude = res.latitude;
           this.formData.longitude = res.longitude;
+          // 更新地图标记
+          this.updateMarkers();
         },
         fail: () => {
           console.log('获取位置失败');
         }
       });
+    },
+    // 更新地图标记点
+    updateMarkers() {
+      if (this.formData.latitude && this.formData.longitude) {
+        this.markers = [{
+          id: 1,
+          latitude: this.formData.latitude,
+          longitude: this.formData.longitude,
+          // 不设置iconPath，使用默认的红色标记点
+          width: 30,
+          height: 45,
+          // 不设置width和height，使用系统默认大小，避免变形
+          anchor: {
+            x: 0.5,
+            y: 1
+          },
+          callout: {
+            content: this.formData.name || '店铺位置',
+            color: '#333',
+            fontSize: 14,
+            borderRadius: 4,
+            bgColor: '#fff',
+            padding: 8,
+            display: 'BYCLICK' // 点击时显示
+          }
+        }];
+      } else {
+        this.markers = [];
+      }
     },
     // 选择店铺定位
     selectLocation() {
@@ -258,6 +290,8 @@ export default {
           };
           this.formData.latitude = res.latitude;
           this.formData.longitude = res.longitude;
+          // 更新地图标记
+          this.updateMarkers();
           // 选择定位后显示地址和店铺类型字段
           this.showAddressFields = true;
           // 延迟设置地址，确保textarea已经渲染
@@ -434,6 +468,8 @@ export default {
               this.mapLocation.longitude = address.longitude;
               this.formData.longitude = address.longitude;
             }
+            // 更新地图标记
+            this.updateMarkers();
             this.showAddressFields = true;
           }
         }
@@ -445,7 +481,7 @@ export default {
         });
       }
     },
-    
+
     // 检查用户是否已有默认地址
     async checkDefaultAddress() {
       try {
@@ -468,12 +504,12 @@ export default {
         this.formData.isDefault = true;
       }
     },
-    
+
     // 默认地址开关变化
     onDefaultAddressChange(e) {
       this.formData.isDefault = e.detail.value;
     },
-    
+
     // 导入微信收货地址
     importWeChatAddress() {
       uni.chooseAddress({
@@ -523,7 +559,21 @@ export default {
       }
 
       // 如果地址已填写但没有经纬度，尝试自动解析
+      // 注意：编辑模式下，如果用户没有重新选择定位，应该保持原有经纬度
+      // 只有在新增模式或用户修改了地址但经纬度丢失的情况下才需要解析
       if (this.formData.address.trim() && (!this.formData.latitude || !this.formData.longitude)) {
+        // 如果是编辑模式，提示用户重新选择定位，而不是自动解析（避免经纬度错误）
+        if (this.formData.addressId) {
+          uni.showModal({
+            title: '提示',
+            content: '检测到地址位置信息丢失，为了确保配送准确，请点击"选择店铺定位"按钮重新选择位置',
+            showCancel: false,
+            confirmText: '我知道了'
+          });
+          return;
+        }
+
+        // 新增模式才尝试自动解析
         uni.showLoading({ title: '正在解析地址...', mask: true });
         try {
           const geocodeRes = await geocodeAddress(this.formData.address.trim(), this.userToken);
@@ -582,12 +632,12 @@ export default {
           storeType: this.formData.storeType.trim(),
           is_default: this.formData.isDefault
         };
-        
+
         // 如果用户未绑定销售员且输入了销售员代码，则绑定到用户
         if (!this.userHasSalesCode && this.salesCodeArray.join('').trim()) {
           submitData.salesCode = this.salesCodeArray.join('');
         }
-        
+
         if (this.formData.avatar) {
           submitData.avatar = this.formData.avatar;
         }
@@ -598,7 +648,7 @@ export default {
         if (this.formData.longitude) {
           submitData.longitude = this.formData.longitude;
         }
-        
+
         const res = await updateMiniUserProfile(submitData, this.userToken);
         if (res && res.code === 200 && res.data) {
           uni.showToast({
@@ -680,7 +730,7 @@ export default {
   top: 0;
   left: 0;
   width: 100%;
-  height: 100%;
+  height: 20vh;
   z-index: 0;
 }
 

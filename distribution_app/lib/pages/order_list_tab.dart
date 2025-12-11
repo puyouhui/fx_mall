@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../api/order_api.dart';
 import '../utils/location_service.dart';
+import '../widgets/accept_order_dialog.dart';
 import 'order_detail_view.dart';
 
 /// 订单列表Tab组件：用于显示不同状态的订单列表
@@ -14,7 +16,7 @@ class OrderListTab extends StatefulWidget {
 
   final String? status; // 订单状态：null=新任务, 'pending_pickup'=待取货, 'delivering'=配送中
   final VoidCallback onOrderAccepted; // 接单成功回调
-  final VoidCallback? onOrderCountChanged; // 订单数量变化回调
+  final Future<void> Function()? onOrderCountChanged; // 订单数量变化回调
 
   @override
   State<OrderListTab> createState() => _OrderListTabState();
@@ -131,8 +133,11 @@ class _OrderListTabState extends State<OrderListTab> {
         if (_hasMore) {
           _pageNum++;
         }
+        _isLoading = false;
+        _isLoadingMore = false;
       });
       // 每次加载完成后都通知订单数量变化（确保数量及时更新）
+      // 只在成功获取到数据时才触发回调，避免在加载过程中触发导致闪烁
       if (widget.onOrderCountChanged != null) {
         // 使用微任务确保 setState 完成后再触发回调
         Future.microtask(() {
@@ -142,15 +147,12 @@ class _OrderListTabState extends State<OrderListTab> {
         });
       }
     } else {
-      // 即使API调用失败，也要通知数量变化（可能数量变为0）
-      if (widget.onOrderCountChanged != null) {
-        Future.microtask(() {
-          if (mounted && widget.onOrderCountChanged != null) {
-            widget.onOrderCountChanged!();
-          }
-        });
-      }
+      // API调用失败时，不触发数量变化回调，保持当前数量不变，避免闪烁
       if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isLoadingMore = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -160,17 +162,57 @@ class _OrderListTabState extends State<OrderListTab> {
         );
       }
     }
-
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-        _isLoadingMore = false;
-      });
-    }
   }
 
   Future<void> _acceptOrder(int orderId) async {
     if (_acceptingOrders[orderId] == true) return;
+
+    // 找到订单数据
+    Map<String, dynamic>? orderData;
+    for (var order in _orders) {
+      final id = (order['id'] as num?)?.toInt();
+      if (id == orderId) {
+        orderData = order;
+        break;
+      }
+    }
+
+    if (orderData == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('订单信息不存在'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // 提取订单信息
+    final addressData = orderData['address'] as Map<String, dynamic>?;
+    final storeName = addressData?['name'] as String? ?? '门店名称未填写';
+    final address = addressData?['address'] as String? ?? '';
+    final itemCount = (orderData['item_count'] as int?) ?? 0;
+    final totalAmount = (orderData['total_amount'] as num?)?.toDouble() ?? 0.0;
+    final isUrgent = (orderData['is_urgent'] as bool?) ?? false;
+    final deliveryFeeCalc =
+        orderData['delivery_fee_calculation'] as Map<String, dynamic>?;
+    final riderPayableFee =
+        (deliveryFeeCalc?['rider_payable_fee'] as num?)?.toDouble() ?? 0.0;
+
+    // 显示确认对话框
+    final confirmed = await AcceptOrderDialog.show(
+      context,
+      storeName: storeName,
+      address: address,
+      riderPayableFee: riderPayableFee,
+      totalAmount: totalAmount,
+      itemCount: itemCount,
+      isUrgent: isUrgent,
+    );
+
+    if (confirmed != true) {
+      return; // 用户取消接单
+    }
 
     // 接单前检查位置权限和获取位置
     try {
@@ -188,8 +230,12 @@ class _OrderListTabState extends State<OrderListTab> {
         return;
       }
 
-      // 获取当前位置
-      final position = await LocationService.getCurrentLocation();
+      // 获取当前位置（使用缓存的位置，如果可用）
+      Position? position = LocationService.getCachedPosition();
+      if (position == null) {
+        position = await LocationService.getCurrentLocation();
+      }
+      
       if (position == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -257,17 +303,20 @@ class _OrderListTabState extends State<OrderListTab> {
     if (orderId == null) return;
 
     // 跳转到订单详情页面，并等待返回结果
-    final result = await Navigator.of(context).push(
+    await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => OrderDetailView(orderId: orderId)),
     );
 
     // 从详情页面返回后，无论是否返回true，都刷新列表和角标
     // 因为订单状态可能在任何时候发生变化
     if (mounted) {
-      _loadOrders(reset: true);
-      // 通知父组件更新角标数量
+      // 先刷新列表
+      await _loadOrders(reset: true);
+      // 等待列表刷新完成后，再通知父组件更新角标数量
+      // 添加短暂延迟，确保后端已处理接单操作
+      await Future.delayed(const Duration(milliseconds: 300));
       if (widget.onOrderCountChanged != null) {
-        widget.onOrderCountChanged!();
+        await widget.onOrderCountChanged!();
       }
     }
   }
@@ -406,31 +455,31 @@ class _OrderListTabState extends State<OrderListTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 地址（第一行，突出显示）
+                  // 门店名称（地址名称，第一行，突出显示）
+                  Text(
+                    storeName,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF20253A),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  // 地址（第二行）
                   if (address.isNotEmpty)
                     Text(
                       address,
                       style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF20253A),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        color: Color(0xFF40475C),
                         height: 1.4,
                       ),
-                      maxLines: 3,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  const SizedBox(height: 12),
-                  // 门店名称
-                  Text(
-                    storeName,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF40475C),
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   // 商品数量和查看提示
                   Row(
                     children: [

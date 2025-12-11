@@ -26,6 +26,13 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
   // 地图控制器
   final MapController _mapController = MapController();
 
+  // 拖拽控制器（用于监听拖拽状态）
+  final DraggableScrollableController _draggableController =
+      DraggableScrollableController();
+
+  // 底部悬浮框是否展开（用于控制定位图标和提醒框的显示）
+  bool _isSheetExpanded = false;
+
   // 用户位置（保留用于显示状态）
   Position? _userPosition;
   // ignore: unused_field
@@ -84,11 +91,23 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
     super.initState();
     // 监听应用生命周期
     WidgetsBinding.instance.addObserver(this);
+    // 监听拖拽状态变化
+    _draggableController.addListener(_onDraggableChanged);
     // 页面加载时获取用户位置并开始监听位置更新
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startLocationTracking();
       _checkAndLoadPickupSuppliers();
     });
+  }
+
+  /// 监听拖拽状态变化
+  void _onDraggableChanged() {
+    final isExpanded = _draggableController.size > 0.5; // 超过50%认为已展开
+    if (_isSheetExpanded != isExpanded) {
+      setState(() {
+        _isSheetExpanded = isExpanded;
+      });
+    }
   }
 
   @override
@@ -326,11 +345,32 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
     if (response.isSuccess && response.data != null) {
       final data = response.data!;
       final List<dynamic> list = (data['list'] as List<dynamic>? ?? []);
-      // 订单已经按照 route_sequence 排序，直接使用
+      final orders = list.cast<Map<String, dynamic>>();
+
+      // 检查是否所有订单都是已送达状态
+      final allDelivered =
+          orders.isNotEmpty &&
+          orders.every((order) {
+            final status = order['status'] as String? ?? '';
+            return status == 'delivered' || status == 'shipped';
+          });
+
+      // 如果所有订单都是已送达，清空列表以显示"暂无配送订单"
+      // 否则，显示所有订单（包括已送达的订单，它们会被标记为"已送达"）
+      final shouldClearOrders = allDelivered;
       setState(() {
-        _deliveringOrders = list.cast<Map<String, dynamic>>();
+        _deliveringOrders = shouldClearOrders ? [] : orders;
         _isLoadingOrders = false;
       });
+
+      // 如果清空了订单列表且拖拽框是展开的，将其折叠
+      if (shouldClearOrders && _isSheetExpanded && mounted) {
+        _draggableController.animateTo(
+          0.4, // 折叠到默认高度
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     } else {
       // 如果获取排序订单失败，回退到原来的方式
       print('[RoutePlanningView] 获取排序订单失败，使用原方式: ${response.message}');
@@ -407,31 +447,116 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _draggableController.removeListener(_onDraggableChanged);
+    _draggableController.dispose();
     _positionStreamSubscription?.cancel();
     _locationStreamController.close();
     _mapController.dispose();
     super.dispose();
   }
 
-  /// 显示权限说明对话框（针对小米手机等可能不弹出系统对话框的情况）
-  Future<bool> _showPermissionDialog() async {
+  /// 显示定位服务未启用对话框
+  Future<bool> _showLocationServiceDialog() async {
     return await showDialog<bool>(
           context: context,
+          barrierDismissible: false,
           builder: (BuildContext context) {
             return AlertDialog(
-              title: const Text('需要定位权限'),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Icon(Icons.location_off, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '定位服务未启用',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
               content: const Text(
-                '为了提供路线规划服务，需要获取您的位置信息。\n\n'
-                '如果您使用的是小米手机，系统可能不会自动弹出权限请求，请点击"去设置"手动开启定位权限。',
+                '为了提供路线规划服务，需要开启系统定位服务。\n\n请点击"去设置"打开系统定位设置。',
+                style: TextStyle(fontSize: 15, color: Color(0xFF40475C)),
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('取消'),
+                  child: const Text(
+                    '取消',
+                    style: TextStyle(color: Color(0xFF8C92A4)),
+                  ),
                 ),
-                TextButton(
+                ElevatedButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('去设置'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF20CB6B),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    '去设置',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+  }
+
+  /// 显示权限说明对话框（针对小米手机等可能不弹出系统对话框的情况）
+  Future<bool> _showPermissionDialog() async {
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Icon(Icons.location_disabled, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '需要定位权限',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              content: const Text(
+                '为了提供路线规划服务，需要获取您的位置信息。\n\n请点击"去设置"手动开启定位权限。',
+                style: TextStyle(fontSize: 15, color: Color(0xFF40475C)),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text(
+                    '取消',
+                    style: TextStyle(color: Color(0xFF8C92A4)),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF20CB6B),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    '去设置',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             );
@@ -538,6 +663,15 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
               _isLoadingLocation = false;
               _locationError = '定位服务未启用，请先开启GPS';
             });
+            // 显示对话框引导用户打开系统设置
+            final shouldOpenSettings = await _showLocationServiceDialog();
+            if (shouldOpenSettings) {
+              await LocationService.openLocationSettings();
+              // 延迟一下，等待用户操作
+              await Future.delayed(const Duration(seconds: 2));
+              // 重新检查定位服务
+              _startLocationTracking();
+            }
           }
           return;
         }
@@ -814,6 +948,15 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
           _isLoadingLocation = false;
           _locationError = '定位服务未启用，请先开启GPS';
         });
+        // 显示对话框引导用户打开系统设置
+        final shouldOpenSettings = await _showLocationServiceDialog();
+        if (shouldOpenSettings) {
+          await LocationService.openLocationSettings();
+          // 延迟一下，等待用户操作
+          await Future.delayed(const Duration(seconds: 2));
+          // 重新检查定位服务
+          _getUserLocation();
+        }
       }
       return;
     }
@@ -948,6 +1091,7 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
                 positionStream: _locationStreamController.stream,
               ),
               // 配送路线（已完成取货时显示）- 按照后台排序顺序连接订单
+              // 注意：只连接未完成的订单，已送达订单只显示marker，不参与路线计算
               if (_hasCompletedAllPickup &&
                   _deliveringOrders.isNotEmpty &&
                   _userPosition != null)
@@ -960,12 +1104,18 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
                           _userPosition!.latitude,
                           _userPosition!.longitude,
                         ),
-                        // 依次连接各个订单（按照 route_sequence 排序，订单列表已经排序）
+                        // 依次连接各个未完成订单（按照 route_sequence 排序，订单列表已经排序）
+                        // 过滤掉已送达的订单（delivered 或 shipped）
                         ..._deliveringOrders
                             .where(
-                              (order) =>
-                                  order['latitude'] != null &&
-                                  order['longitude'] != null,
+                              (order) {
+                                final lat = order['latitude'] as num?;
+                                final lng = order['longitude'] as num?;
+                                if (lat == null || lng == null) return false;
+                                // 只包含未完成的订单
+                                final status = order['status'] as String? ?? '';
+                                return status != 'delivered' && status != 'shipped';
+                              },
                             )
                             .map((order) {
                               final lat = (order['latitude'] as num?)
@@ -1048,6 +1198,16 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
                         final routeSequence =
                             (order['route_sequence'] as num?)?.toInt() ?? 0;
 
+                        // 获取订单状态，判断是否为已送达
+                        final status = order['status'] as String? ?? '';
+                        final isDelivered =
+                            status == 'delivered' || status == 'shipped';
+
+                        // 已送达订单使用灰色，配送中订单使用绿色
+                        final markerColor = isDelivered
+                            ? (Colors.grey[600] ?? Colors.grey)
+                            : const Color(0xFF20CB6B);
+
                         return Marker(
                           point: wgs84Point,
                           width: 27,
@@ -1055,7 +1215,7 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
                           alignment: Alignment.center,
                           child: Container(
                             decoration: BoxDecoration(
-                              color: const Color(0xFF20CB6B), // 绿色背景
+                              color: markerColor,
                               shape: BoxShape.circle,
                               border: Border.all(
                                 color: Colors.white,
@@ -1151,44 +1311,55 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
               ),
             ],
           ),
-          // 顶部提示信息
-          if (_hasPendingPickup && _pickupSuppliers.isNotEmpty)
+          // 顶部提示信息（优化样式，展开时隐藏）
+          if (!_isSheetExpanded &&
+              _hasPendingPickup &&
+              _pickupSuppliers.isNotEmpty)
             Positioned(
-              top: 16,
+              top: 12,
               left: 16,
               right: 16,
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
+                  horizontal: 14,
+                  vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.orange[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange[200]!, width: 1),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange[300]!, width: 1.5),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+                      color: Colors.orange.withOpacity(0.15),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                      spreadRadius: 0,
                     ),
                   ],
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.info_outline,
-                      size: 18,
-                      color: Colors.orange[700],
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.info_outline,
+                        size: 20,
+                        color: Colors.orange[700],
+                      ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '请在到达第一个取货点时检查新订单，没有顺路新订单后再开始取货！！！',
+                        '请在到达第一个取货点时检查新订单，没有顺路新订单后再开始取货！',
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 14,
                           color: Colors.orange[900],
-                          fontWeight: FontWeight.w500,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
                         ),
                       ),
                     ),
@@ -1196,43 +1367,54 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
                 ),
               ),
             )
-          else if (_hasCompletedAllPickup && _deliveringOrders.isNotEmpty)
+          else if (!_isSheetExpanded &&
+              _hasCompletedAllPickup &&
+              _deliveringOrders.isNotEmpty)
             Positioned(
-              top: 16,
+              top: 12,
               left: 16,
               right: 16,
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
+                  horizontal: 14,
+                  vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.green[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green[200]!, width: 1),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green[300]!, width: 1.5),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+                      color: Colors.green.withOpacity(0.15),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                      spreadRadius: 0,
                     ),
                   ],
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.check_circle_outline,
-                      size: 18,
-                      color: Colors.green[700],
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.green[50],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.check_circle_outline,
+                        size: 20,
+                        color: Colors.green[700],
+                      ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '你已完成全部取货，配送过程中请注意行车安全！',
+                        '你已完成所有订单取货，可以开始配送，配送过程中请注意人身安全！',
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 14,
                           color: Colors.green[900],
-                          fontWeight: FontWeight.w500,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
                         ),
                       ),
                     ),
@@ -1240,70 +1422,106 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
                 ),
               ),
             ),
-          // 定位按钮（右下角，位于悬浮框上方）
-          Positioned(
-            bottom: 240, // 调整位置，避免被悬浮框遮挡
-            right: 16,
-            child: FloatingActionButton(
-              mini: true,
-              backgroundColor: Colors.white,
-              onPressed: () {
-                if (_userPosition != null) {
-                  // 移动到用户位置
-                  _mapController.move(
-                    LatLng(_userPosition!.latitude, _userPosition!.longitude),
-                    _initialZoom,
-                  );
-                } else {
-                  // 重新获取位置
-                  _getUserLocation();
-                }
-              },
-              child: Icon(
-                _userPosition != null
-                    ? Icons.my_location
-                    : Icons.location_searching,
-                color: const Color(0xFF20CB6B),
+          // 定位按钮（右上角，优化样式，避免与提示信息重叠，缩小尺寸，展开时隐藏）
+          if (!_isSheetExpanded)
+            Positioned(
+              top:
+                  (_hasPendingPickup && _pickupSuppliers.isNotEmpty) ||
+                      (_hasCompletedAllPickup && _deliveringOrders.isNotEmpty)
+                  ? 100 // 如果有提示信息，往下移动更多
+                  : 20, // 如果没有提示信息，往下移动一些
+              right: 16,
+              child: Material(
+                elevation: 4,
+                shadowColor: Colors.black.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(24),
+                child: InkWell(
+                  onTap: () {
+                    if (_userPosition != null) {
+                      // 移动到用户位置
+                      _mapController.move(
+                        LatLng(
+                          _userPosition!.latitude,
+                          _userPosition!.longitude,
+                        ),
+                        _initialZoom,
+                      );
+                    } else {
+                      // 重新获取位置
+                      _getUserLocation();
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(24),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      _userPosition != null
+                          ? Icons.my_location
+                          : Icons.location_searching,
+                      color: const Color(0xFF20CB6B),
+                      size: 22,
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-          // 底部悬浮框（显示配送订单信息）
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 16,
-            child: _buildBottomFloatingBox(),
+          // 底部悬浮框（可拖拽，显示配送订单信息）
+          DraggableScrollableSheet(
+            controller: _draggableController, // 添加控制器以监听拖拽状态
+            initialChildSize: 0.4, // 初始高度为屏幕的40%（默认展开）
+            minChildSize: 0.4, // 最小高度为屏幕的40%（与默认展开一致）
+            maxChildSize: 0.85, // 最大高度为屏幕的85%
+            snap: true, // 启用吸附效果
+            snapSizes: const [0.4, 0.85], // 吸附位置：默认/收起、完全展开
+            builder: (context, scrollController) {
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 0), // 减少边距，增加宽度
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 16,
+                      offset: const Offset(0, -4),
+                      spreadRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: _hasPendingPickup
+                          ? _buildPickupSuppliersList(scrollController)
+                          : _buildDeliveringOrdersList(scrollController),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
-    );
-  }
-
-  /// 构建底部悬浮框
-  Widget _buildBottomFloatingBox() {
-    // 当显示配送订单列表时，增加高度
-    final maxHeight = _hasPendingPickup ? 300.0 : 400.0;
-    return Container(
-      constraints: BoxConstraints(maxHeight: maxHeight),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: _hasPendingPickup
-          ? _buildPickupSuppliersList()
-          : _buildDeliveringOrdersList(),
     );
   }
 
   /// 构建待取货供应商列表
-  Widget _buildPickupSuppliersList() {
+  Widget _buildPickupSuppliersList(ScrollController scrollController) {
     if (_isLoadingSuppliers) {
       return const Padding(
         padding: EdgeInsets.all(20),
@@ -1340,38 +1558,61 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 标题
+        // 标题（优化样式）
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 14), // 减少顶部间距
           child: Row(
             children: [
-              const Icon(
-                Icons.store_outlined,
-                size: 20,
-                color: Color(0xFF20CB6B),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF20CB6B).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.store_outlined,
+                  size: 20,
+                  color: Color(0xFF20CB6B),
+                ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               const Text(
                 '取货路线规划',
                 style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
                   color: Color(0xFF20253A),
+                  letterSpacing: 0.2,
                 ),
               ),
               const Spacer(),
-              Text(
-                '共${_pickupSuppliers.length}个取货点',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF20CB6B).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '共${_pickupSuppliers.length}个',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF20CB6B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
         ),
         // 供应商列表
-        Flexible(
+        Expanded(
           child: ListView.builder(
-            shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            controller: scrollController,
+            // 不设置 physics，让 DraggableScrollableSheet 处理滚动和拖拽
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
             itemCount: _pickupSuppliers.length,
             itemBuilder: (context, index) {
               final supplier = _pickupSuppliers[index];
@@ -1395,135 +1636,180 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
     final distance = supplier['distance'] as double?;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: InkWell(
-        onTap: () async {
-          // 跳转到批量取货商品列表页面
-          final supplierId = supplier['id'] as int?;
-          if (supplierId != null) {
-            final result = await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => BatchPickupItemsView(
-                  supplierId: supplierId,
-                  supplierName: name,
-                  supplierLatitude: latitude,
-                  supplierLongitude: longitude,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () async {
+            // 跳转到批量取货商品列表页面
+            final supplierId = supplier['id'] as int?;
+            if (supplierId != null) {
+              final result = await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => BatchPickupItemsView(
+                    supplierId: supplierId,
+                    supplierName: name,
+                    supplierLatitude: latitude,
+                    supplierLongitude: longitude,
+                  ),
                 ),
-              ),
-            );
-            // 如果取货成功，重新检查状态（可能已经完成全部取货）
-            if (result == true && mounted) {
-              await _checkAndLoadPickupSuppliers();
+              );
+              // 如果取货成功，重新检查状态（可能已经完成全部取货）
+              if (result == true && mounted) {
+                await _checkAndLoadPickupSuppliers();
+              }
             }
-          }
-        },
-        child: Row(
-          children: [
-            // 序号
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: const Color(0xFF20CB6B),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '$index',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+          },
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                // 序号
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF20CB6B),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF20CB6B).withOpacity(0.3),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      '$index',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            // 供应商信息
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF20253A),
-                    ),
-                  ),
-                  if (address.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      address,
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                  if (distance != null && _userPosition != null) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on,
-                          size: 14,
-                          color: Color(0xFF20CB6B),
+                const SizedBox(width: 14),
+                // 供应商信息
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF20253A),
+                          height: 1.3,
                         ),
-                        const SizedBox(width: 4),
+                      ),
+                      if (address.isNotEmpty) ...[
+                        const SizedBox(height: 6),
                         Text(
-                          distance < 1000
-                              ? '距离: ${distance.toStringAsFixed(0)}m'
-                              : '距离: ${(distance / 1000).toStringAsFixed(2)}km',
-                          style: const TextStyle(
+                          address,
+                          style: TextStyle(
                             fontSize: 13,
-                            color: Color(0xFF20CB6B),
-                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[600],
+                            height: 1.4,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
-                    ),
-                  ] else if (_userPosition == null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      '距离: 定位中...',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            // 导航按钮
-            if (latitude != null && longitude != null)
-              InkWell(
-                onTap: () => _navigateToSupplier(latitude, longitude, name),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF20CB6B).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.navigation,
-                    size: 20,
-                    color: Color(0xFF20CB6B),
+                      if (distance != null && _userPosition != null) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.location_on,
+                              size: 16,
+                              color: Colors.green[600],
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              distance < 1000
+                                  ? '距离: ${distance.toStringAsFixed(0)}m'
+                                  : '距离: ${(distance / 1000).toStringAsFixed(2)}km',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.green[700],
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else if (_userPosition == null) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.location_searching,
+                              size: 16,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '距离: 定位中...',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[400],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-              ),
-          ],
+                // 导航按钮
+                if (latitude != null && longitude != null) ...[
+                  const SizedBox(width: 8),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () =>
+                          _navigateToSupplier(latitude, longitude, name),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF20CB6B).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.navigation,
+                          size: 22,
+                          color: Color(0xFF20CB6B),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
   /// 构建配送中订单列表
-  Widget _buildDeliveringOrdersList() {
+  Widget _buildDeliveringOrdersList(ScrollController scrollController) {
     if (_isLoadingOrders) {
       return const Padding(
         padding: EdgeInsets.all(20),
@@ -1536,22 +1822,79 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
     }
 
     if (_deliveringOrders.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.inbox_outlined, size: 48, color: Colors.grey[400]),
-            const SizedBox(height: 12),
-            Text(
-              '暂无配送订单',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[600],
+      return SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 图标
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.inbox_outlined,
+                  size: 48,
+                  color: Colors.grey[400],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              // 文字
+              Text(
+                '暂无配送订单',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '所有订单已完成配送',
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+              ),
+              const SizedBox(height: 24),
+              // 去接单按钮
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    // 导航回到首页
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF20CB6B),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_task, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        '去接单',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1560,38 +1903,61 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 标题
+        // 标题（优化样式）
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 14), // 减少顶部间距
           child: Row(
             children: [
-              const Icon(
-                Icons.local_shipping_outlined,
-                size: 20,
-                color: Color(0xFF20CB6B),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF20CB6B).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.local_shipping_outlined,
+                  size: 20,
+                  color: Color(0xFF20CB6B),
+                ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               const Text(
                 '推荐配送顺序',
                 style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
                   color: Color(0xFF20253A),
+                  letterSpacing: 0.2,
                 ),
               ),
               const Spacer(),
-              Text(
-                '共${_deliveringOrders.length}个订单',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF20CB6B).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '共${_deliveringOrders.length}个',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF20CB6B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
         ),
         // 列表内容
-        Flexible(
+        Expanded(
           child: ListView.builder(
-            shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            controller: scrollController,
+            // 不设置 physics，让 DraggableScrollableSheet 处理滚动和拖拽
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
             itemCount: _deliveringOrders.length,
             itemBuilder: (context, index) {
               final order = _deliveringOrders[index];
@@ -1616,202 +1982,273 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
     final latitude = (order['latitude'] as num?)?.toDouble();
     final longitude = (order['longitude'] as num?)?.toDouble();
 
+    // 获取订单状态，判断是否为已送达
+    final status = order['status'] as String? ?? '';
+    final isDelivered = status == 'delivered' || status == 'shipped';
+
+    // 已送达订单使用灰色，配送中订单使用绿色
+    final sequenceColor = isDelivered
+        ? (Colors.grey[600] ?? Colors.grey)
+        : const Color(0xFF20CB6B);
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isUrgent ? Colors.orange[300]! : const Color(0xFFE5E7EB),
-          width: isUrgent ? 2 : 1,
+          color: isUrgent
+              ? Colors.orange[300]!
+              : isDelivered
+              ? Colors.grey[300]!
+              : const Color(0xFFE5E7EB),
+          width: isUrgent ? 1.5 : 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: isDelivered
+                ? Colors.grey.withOpacity(0.04)
+                : Colors.black.withOpacity(0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: InkWell(
-        onTap: () async {
-          if (orderId != null) {
-            // 从订单详情返回时，刷新路线规划页面
-            final result = await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => OrderDetailView(orderId: orderId),
-              ),
-            );
-            // 无论返回什么，都刷新路线规划页面
-            if (mounted && result == true) {
-              _checkAndLoadPickupSuppliers();
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () async {
+            if (orderId != null) {
+              // 从订单详情返回时，刷新路线规划页面
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => OrderDetailView(orderId: orderId),
+                ),
+              );
+              // 无论返回什么，都刷新路线规划页面
+              if (mounted) {
+                _checkAndLoadPickupSuppliers();
+              }
             }
-          }
-        },
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // 左侧内容
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+          },
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 左侧内容
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 排序序号
-                      if (routeSequence != null)
-                        Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF20CB6B),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                          child: Center(
+                      Row(
+                        children: [
+                          // 排序序号
+                          if (routeSequence != null)
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: sequenceColor,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 2,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: sequenceColor.withOpacity(0.3),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '$routeSequence',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (routeSequence != null) const SizedBox(width: 10),
+                          // 收货人名称
+                          Expanded(
                             child: Text(
-                              '$routeSequence',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
+                              receiverName.isNotEmpty ? receiverName : '收货地址',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: isDelivered
+                                    ? Colors.grey[600]
+                                    : const Color(0xFF20253A),
+                                height: 1.3,
                               ),
                             ),
                           ),
-                        ),
-                      if (routeSequence != null) const SizedBox(width: 8),
-                      // 收货人名称
-                      Expanded(
-                        child: Text(
-                          receiverName.isNotEmpty ? receiverName : '收货地址',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF20253A),
-                          ),
-                        ),
-                      ),
-                      // 加急标签
-                      if (isUrgent)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.orange[100],
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '加急',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.orange[800],
-                              fontWeight: FontWeight.w600,
+                          // 已送达标签
+                          if (isDelivered)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '已送达',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey[700],
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
+                          // 加急标签
+                          if (isUrgent && !isDelivered)
+                            Container(
+                              margin: const EdgeInsets.only(left: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.orange[50],
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '加急',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.orange[800],
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      // 联系人信息
+                      if (contact.isNotEmpty || phone.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.person_outline,
+                              size: 16,
+                              color: Colors.grey[500],
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              contact.isNotEmpty ? contact : phone,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            if (contact.isNotEmpty && phone.isNotEmpty) ...[
+                              const SizedBox(width: 10),
+                              Text(
+                                phone,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      // 收货地址
+                      if (receiverAddress.isNotEmpty)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.location_on_outlined,
+                              size: 16,
+                              color: Colors.grey[500],
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                receiverAddress,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey[600],
+                                  height: 1.4,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      const SizedBox(height: 8),
+                      // 商品件数
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.shopping_cart_outlined,
+                            size: 16,
+                            color: Colors.grey[500],
                           ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  // 联系人信息
-                  if (contact.isNotEmpty || phone.isNotEmpty) ...[
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.person_outline,
-                          size: 14,
-                          color: Color(0xFF8C92A4),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          contact.isNotEmpty ? contact : phone,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF40475C),
-                          ),
-                        ),
-                        if (contact.isNotEmpty && phone.isNotEmpty) ...[
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           Text(
-                            phone,
-                            style: const TextStyle(
+                            '商品件数: $itemCount',
+                            style: TextStyle(
                               fontSize: 13,
-                              color: Color(0xFF8C92A4),
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                  // 收货地址
-                  if (receiverAddress.isNotEmpty)
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(
-                          Icons.location_on_outlined,
-                          size: 14,
-                          color: Color(0xFF8C92A4),
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            receiverAddress,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF40475C),
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  const SizedBox(height: 6),
-                  // 商品件数
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.shopping_bag_outlined,
-                        size: 14,
-                        color: Color(0xFF8C92A4),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '商品件数: $itemCount',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF40475C),
-                        ),
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-            // 右侧导航按钮（垂直居中）
-            if (latitude != null && longitude != null) ...[
-              const SizedBox(width: 8),
-              InkWell(
-                onTap: () {
-                  // 阻止事件冒泡，避免触发订单详情跳转
-                  _navigateToOrder(
-                    latitude!,
-                    longitude!,
-                    receiverName.isNotEmpty ? receiverName : receiverAddress,
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF20CB6B).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.navigation,
-                    size: 20,
-                    color: Color(0xFF20CB6B),
-                  ),
                 ),
-              ),
-            ],
-          ],
+                // 右侧导航按钮（垂直居中）
+                if (latitude != null && longitude != null) ...[
+                  const SizedBox(width: 10),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        // 阻止事件冒泡，避免触发订单详情跳转
+                        _navigateToOrder(
+                          latitude,
+                          longitude,
+                          receiverName.isNotEmpty
+                              ? receiverName
+                              : receiverAddress,
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF20CB6B).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.navigation,
+                          size: 22,
+                          color: Color(0xFF20CB6B),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );

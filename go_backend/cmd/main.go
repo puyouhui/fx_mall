@@ -201,6 +201,10 @@ func main() {
 				protectedGroup.GET("/delivery-records", api.GetAllDeliveryRecordsForAdmin)                     // 获取所有配送记录（后台管理）
 				protectedGroup.GET("/delivery-records/:id", api.GetDeliveryRecordByIDForAdmin)                 // 获取配送记录详情（后台管理）
 				protectedGroup.GET("/delivery-records/order/:orderId", api.GetDeliveryRecordByOrderIDForAdmin) // 根据订单ID获取配送记录（后台管理）
+
+				// 配送费结算管理
+				protectedGroup.GET("/delivery-income/stats", api.GetDeliveryIncomeStatsForAdmin) // 获取配送员收入统计（管理员）
+				protectedGroup.POST("/delivery-income/settle", api.BatchSettleDeliveryFees)      // 批量结算配送费
 			}
 		}
 
@@ -245,6 +249,8 @@ func main() {
 				employeeProtectedGroup.POST("/delivery/pickup/mark-picked", api.MarkItemsAsPicked)                       // 标记商品已取货
 				employeeProtectedGroup.POST("/delivery/route/calculate", api.CalculateRoute)                             // 计算路线规划
 				employeeProtectedGroup.GET("/delivery/route/orders", api.GetRouteOrders)                                 // 获取排序后的订单列表
+				employeeProtectedGroup.GET("/delivery/income/stats", api.GetDeliveryIncomeStats)                         // 获取配送员收入统计
+				employeeProtectedGroup.GET("/delivery/income/details", api.GetDeliveryIncomeDetails)                     // 获取配送员收入明细
 
 				// 销售员相关接口
 				employeeProtectedGroup.GET("/sales/customers", api.GetSalesCustomers)                                            // 获取我的客户列表

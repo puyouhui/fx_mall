@@ -1,117 +1,283 @@
 import 'package:flutter/material.dart';
 import '../utils/storage.dart';
+import 'income_stats_view.dart';
 
 /// 我的 页面视图
-class ProfileView extends StatelessWidget {
-  const ProfileView({
-    super.key,
-    required this.courierPhone,
-  });
+class ProfileView extends StatefulWidget {
+  const ProfileView({super.key, required this.courierPhone});
 
   final String courierPhone;
 
   @override
+  State<ProfileView> createState() => _ProfileViewState();
+}
+
+class _ProfileViewState extends State<ProfileView> {
+  String _employeeName = '配送员';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEmployeeInfo();
+  }
+
+  Future<void> _loadEmployeeInfo() async {
+    final employeeInfo = await Storage.getEmployeeInfo();
+    if (employeeInfo != null && mounted) {
+      setState(() {
+        _employeeName = employeeInfo['name'] as String? ?? '配送员';
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 28,
-                    child: Icon(Icons.person, size: 32),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '配送员',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF20CB6B), Color(0xFFEFF7F2)],
+          stops: [0.0, 0.3],
+        ),
+      ),
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 用户信息卡片
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 20,
+                              offset: const Offset(0, 4),
+                              spreadRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      const Color(0xFF20CB6B).withOpacity(0.15),
+                                      const Color(0xFF20CB6B).withOpacity(0.08),
+                                    ],
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.person,
+                                  size: 40,
+                                  color: Color(0xFF20CB6B),
+                                ),
+                              ),
+                              const SizedBox(width: 20),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _employeeName,
+                                      style: const TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF20253A),
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.phone_outlined,
+                                          size: 16,
+                                          color: const Color(0xFF8C92A4),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          widget.courierPhone,
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            color: Color(0xFF8C92A4),
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          courierPhone,
+                      ),
+                      const SizedBox(height: 28),
+                      // 常用功能标题
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          '常用功能',
                           style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF20253A),
+                            letterSpacing: 0.3,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 16),
+                      // 功能菜单卡片
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 20,
+                              offset: const Offset(0, 4),
+                              spreadRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            _buildMenuItem(
+                              icon: Icons.shopping_cart_outlined,
+                              title: '批量取货',
+                              onTap: () {
+                                Navigator.of(
+                                  context,
+                                ).pushNamed('/batch-pickup');
+                              },
+                            ),
+                            Divider(
+                              height: 1,
+                              indent: 64,
+                              thickness: 0.5,
+                              color: const Color(0xFFE5E7EB),
+                            ),
+                            _buildMenuItem(
+                              icon: Icons.history_outlined,
+                              title: '历史订单',
+                              onTap: () {
+                                // TODO: 跳转历史订单页
+                              },
+                            ),
+                            Divider(
+                              height: 1,
+                              indent: 64,
+                              thickness: 0.5,
+                              color: const Color(0xFFE5E7EB),
+                            ),
+                            _buildMenuItem(
+                              icon: Icons.account_balance_wallet_outlined,
+                              title: '收入统计',
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const IncomeStatsView(),
+                                  ),
+                                );
+                              },
+                            ),
+                            Divider(
+                              height: 1,
+                              indent: 64,
+                              thickness: 0.5,
+                              color: const Color(0xFFE5E7EB),
+                            ),
+                            _buildMenuItem(
+                              icon: Icons.logout_rounded,
+                              title: '退出登录',
+                              iconColor: const Color(0xFFEF4444),
+                              textColor: const Color(0xFFEF4444),
+                              onTap: () {
+                                _confirmLogout(context);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            '常用功能',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.shopping_cart, color: Color(0xFF20CB6B)),
-                  title: const Text('批量取货'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.of(context).pushNamed('/batch-pickup');
-                  },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMenuItem({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    Color? iconColor,
+    Color? textColor,
+  }) {
+    final defaultIconColor = iconColor ?? const Color(0xFF20CB6B);
+    final defaultTextColor = textColor ?? const Color(0xFF20253A);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: defaultIconColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.history),
-                  title: const Text('历史订单'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    // TODO: 跳转历史订单页
-                  },
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.help_outline),
-                  title: const Text('帮助与反馈'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    // TODO: 跳转帮助与反馈
-                  },
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.red),
-                  title: const Text(
-                    '退出登录',
-                    style: TextStyle(color: Colors.red),
+                child: Icon(icon, color: defaultIconColor, size: 22),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: defaultTextColor,
+                    letterSpacing: 0.2,
                   ),
-                  onTap: () {
-                    _confirmLogout(context);
-                  },
                 ),
-              ],
-            ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: const Color(0xFF8C92A4).withOpacity(0.6),
+                size: 22,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -121,16 +287,59 @@ class ProfileView extends StatelessWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('确认退出登录？'),
-          content: const Text('退出后需要重新登录才能继续接单。'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            '确认退出登录？',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF20253A),
+            ),
+          ),
+          content: const Text(
+            '退出后需要重新登录才能继续接单。',
+            style: TextStyle(
+              fontSize: 15,
+              color: Color(0xFF8C92A4),
+              height: 1.5,
+            ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+              ),
+              child: const Text(
+                '取消',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Color(0xFF8C92A4),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('退出登录'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+              ),
+              child: const Text(
+                '退出登录',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Color(0xFFEF4444),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
         );
@@ -140,14 +349,9 @@ class ProfileView extends StatelessWidget {
     if (result == true && context.mounted) {
       // 清除登录信息
       await Storage.clearAll();
-      
+
       // 退出登录：返回到登录页并清空之前的页面栈
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/login',
-        (route) => false,
-      );
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
     }
   }
 }
-
-

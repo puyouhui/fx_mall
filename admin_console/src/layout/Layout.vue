@@ -74,6 +74,12 @@
             </el-icon>
             <span>配送记录</span>
           </el-menu-item>
+          <el-menu-item index="/delivery-income">
+            <el-icon>
+              <Money />
+            </el-icon>
+            <span>配送费结算</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <!-- 用户管理 -->

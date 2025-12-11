@@ -257,11 +257,12 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getDeliveryRecords, getDeliveryRecordByOrderId } from '../api/deliveryRecords'
 
 const router = useRouter()
+const route = useRoute()
 
 // 数据
 const loading = ref(false)
@@ -417,7 +418,14 @@ const getStatusType = (status) => {
 
 // 初始化
 onMounted(() => {
-  loadData()
+  // 从路由参数中读取keyword（如果是从配送费结算页面跳转过来的）
+  if (route.query.keyword) {
+    searchKeyword.value = route.query.keyword
+    // 自动执行搜索
+    handleSearch()
+  } else {
+    loadData()
+  }
 })
 </script>
 

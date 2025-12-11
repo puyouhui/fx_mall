@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"time"
 
 	"go_backend/internal/database"
 	"go_backend/internal/utils"
@@ -141,13 +140,16 @@ func (c *DeliveryFeeCalculator) calculateIsolatedFee() float64 {
 }
 
 // getNearbyOrders 获取邻近订单
+// 查询所有未取货的订单（不管配送员是否接单）
+// 包括：pending, pending_delivery, pending_pickup
+// 不包括：delivering（配送中）、delivered, shipped, paid, cancelled
 func (c *DeliveryFeeCalculator) getNearbyOrders(lat, lng, distance float64) ([]*Order, error) {
-	// 查询所有待配送订单（排除当前订单）
+	// 查询所有未取货的订单（排除当前订单）
 	query := `
 		SELECT o.id, o.order_number, o.user_id, o.address_id, o.status, o.created_at
 		FROM orders o
 		JOIN mini_app_addresses a ON o.address_id = a.id
-		WHERE o.status IN ('pending_delivery', 'pending')
+		WHERE o.status IN ('pending', 'pending_delivery', 'pending_pickup')
 		  AND o.id != ?
 		  AND a.latitude IS NOT NULL
 		  AND a.longitude IS NOT NULL
@@ -194,21 +196,17 @@ func (c *DeliveryFeeCalculator) filterNearbyOrders(orders []*Order) []*Order {
 			continue
 		}
 
-		// 排除已完成订单
-		if order.Status != "pending_delivery" && order.Status != "pending" {
+		// 只保留未取货的订单（不管配送员是否接单）
+		// 不包括：delivering（配送中）、delivered、shipped、paid、cancelled
+		if order.Status != "pending" &&
+			order.Status != "pending_delivery" &&
+			order.Status != "pending_pickup" {
 			continue
 		}
 
-		// 排除同用户短期订单（1小时内）
-		if order.UserID == c.order.UserID {
-			timeDiff := order.CreatedAt.Sub(c.order.CreatedAt)
-			if timeDiff < 0 {
-				timeDiff = -timeDiff
-			}
-			if timeDiff < time.Hour {
-				continue
-			}
-		}
+		// 注意：不再排除同用户短期订单
+		// 因为孤立订单的判断应该基于地理位置，而不是用户
+		// 即使是同一用户的订单，如果地理位置相邻，也不应该都算孤立
 
 		validOrders = append(validOrders, order)
 	}
@@ -443,16 +441,46 @@ func UpdateOrderDeliveryInfo(orderID int) error {
 
 	// 更新当前订单的孤立状态
 	isIsolated := false
-	var affectedOrderIDs []int // 可能受影响的订单ID列表
+	affectedOrderIDsMap := make(map[int]bool) // 使用map去重，避免重复更新同一订单
 	if address.Latitude != nil && address.Longitude != nil {
 		nearbyOrders, err := calculator.getNearbyOrders(*address.Latitude, *address.Longitude, isolatedDistance)
 		if err == nil {
 			validNearby := calculator.filterNearbyOrders(nearbyOrders)
 			isIsolated = len(validNearby) == 0
 
-			// 收集可能受影响的订单ID（这些订单可能因为新订单的创建而改变孤立状态）
+			// 如果新订单找到了相邻订单，这些相邻订单需要重新计算孤立状态
+			// 因为新订单的出现可能使它们不再孤立
 			for _, nearbyOrder := range validNearby {
-				affectedOrderIDs = append(affectedOrderIDs, nearbyOrder.ID)
+				affectedOrderIDsMap[nearbyOrder.ID] = true
+			}
+
+			// 还需要找到所有以当前订单为相邻订单的订单（反向查找）
+			// 这些订单也可能因为新订单的出现而改变孤立状态
+			// 查询所有在范围内的未取货订单，检查它们是否以当前订单为相邻订单
+			reverseQuery := `
+				SELECT o.id, a.latitude, a.longitude
+				FROM orders o
+				JOIN mini_app_addresses a ON o.address_id = a.id
+				WHERE o.status IN ('pending', 'pending_delivery', 'pending_pickup')
+				  AND o.id != ?
+				  AND a.latitude IS NOT NULL
+				  AND a.longitude IS NOT NULL
+			`
+			reverseRows, err := database.DB.Query(reverseQuery, orderID)
+			if err == nil {
+				defer reverseRows.Close()
+				for reverseRows.Next() {
+					var otherOrderID int
+					var otherLat, otherLng sql.NullFloat64
+					if err := reverseRows.Scan(&otherOrderID, &otherLat, &otherLng); err == nil && otherLat.Valid && otherLng.Valid {
+						// 计算距离
+						dist := utils.CalculateDistance(*address.Latitude, *address.Longitude, otherLat.Float64, otherLng.Float64)
+						if dist <= isolatedDistance {
+							// 这个订单以当前订单为相邻订单，需要重新计算孤立状态
+							affectedOrderIDsMap[otherOrderID] = true
+						}
+					}
+				}
 			}
 		}
 	}
@@ -488,8 +516,26 @@ func UpdateOrderDeliveryInfo(orderID int) error {
 
 	// 更新可能受影响的邻近订单的孤立状态
 	// 这些订单可能因为新订单的创建而不再孤立
+	// 将map转换为slice
+	var affectedOrderIDs []int
+	for affectedID := range affectedOrderIDsMap {
+		affectedOrderIDs = append(affectedOrderIDs, affectedID)
+	}
+	// 同步更新受影响订单的孤立状态和配送费，确保状态一致性
 	for _, affectedOrderID := range affectedOrderIDs {
-		_ = updateOrderIsolatedStatus(affectedOrderID, isolatedDistance)
+		// 重新计算受影响订单的孤立状态
+		// 注意：这里需要重新查询，因为可能已经有新订单了
+		if err := updateOrderIsolatedStatus(affectedOrderID, isolatedDistance); err != nil {
+			// 记录错误但不中断流程
+			fmt.Printf("[UpdateOrderDeliveryInfo] 更新订单 %d 的孤立状态失败: %v\n", affectedOrderID, err)
+		} else {
+			// 孤立状态更新成功后，重新计算并存储配送费
+			// 因为孤立状态改变会影响配送费金额（孤立补贴）
+			if err := CalculateAndStoreOrderProfit(affectedOrderID); err != nil {
+				// 记录错误但不中断流程
+				fmt.Printf("[UpdateOrderDeliveryInfo] 重新计算订单 %d 的配送费失败: %v\n", affectedOrderID, err)
+			}
+		}
 	}
 
 	return nil

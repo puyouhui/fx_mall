@@ -110,6 +110,14 @@ const routes = [
         meta: {
           title: '配送记录'
         }
+      },
+      {
+        path: 'delivery-income',
+        name: 'DeliveryIncome',
+        component: () => import('../views/DeliveryIncome.vue'),
+        meta: {
+          title: '配送费结算管理'
+        }
       }
     ]
   },

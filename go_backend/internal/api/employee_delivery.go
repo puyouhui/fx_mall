@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -50,11 +52,12 @@ func GetDeliveryOrders(c *gin.Context) {
 			where = "(status = ? OR status = 'pending')"
 			args = append(args, "pending_delivery")
 		} else if status == "pending_pickup" {
-			where = "status = ?"
-			args = append(args, status)
+			where = "status = ? AND delivery_employee_code = ?"
+			args = append(args, status, employee.EmployeeCode)
 		} else if status == "delivering" {
-			where = "status = ?"
-			args = append(args, status)
+			// 配送中tab只显示delivering状态的订单
+			where = "status = ? AND delivery_employee_code = ?"
+			args = append(args, status, employee.EmployeeCode)
 		} else if status == "delivered" || status == "shipped" {
 			where = "(status = ? OR status = 'shipped')"
 			args = append(args, "delivered")
@@ -62,6 +65,9 @@ func GetDeliveryOrders(c *gin.Context) {
 			where = "status = ?"
 			args = append(args, status)
 		}
+	} else {
+		// 如果没有指定状态，默认查询待配送订单，需要添加配送员条件
+		where += " AND delivery_employee_code IS NULL"
 	}
 
 	// 获取总数量
@@ -246,6 +252,24 @@ func GetDeliveryOrderDetail(c *gin.Context) {
 		return
 	}
 
+	// 如果订单状态是 delivering，确保路线是最新的
+	// 获取配送员当前位置（可选参数，用于路线计算）
+	var employeeLat, employeeLng *float64
+	if latStr := c.Query("latitude"); latStr != "" {
+		if lat, err := strconv.ParseFloat(latStr, 64); err == nil {
+			employeeLat = &lat
+		}
+	}
+	if lngStr := c.Query("longitude"); lngStr != "" {
+		if lng, err := strconv.ParseFloat(lngStr, 64); err == nil {
+			employeeLng = &lng
+		}
+	}
+
+	// 注意：非接单场景不触发路线重新计算，序号保持不变
+	// 序号只在接单时（isNewOrder=true）才会改变，其他情况（标记已送达、取货、刷新等）序号永远不变
+	// 因此这里不再调用 CalculateAndUpdateRoute，避免不必要的计算
+
 	// 获取订单明细
 	items, err := model.GetOrderItemsByOrderID(id)
 	if err != nil {
@@ -371,6 +395,88 @@ func GetDeliveryOrderDetail(c *gin.Context) {
 		}
 	}
 
+	// 获取销售员信息
+	salesEmployeeData := map[string]interface{}{}
+	if user != nil && user.SalesCode != "" {
+		fmt.Printf("[GetDeliveryOrderDetail] 订单 %d 的用户销售员代码: %s (类型: %T, 长度: %d)\n", id, user.SalesCode, user.SalesCode, len(user.SalesCode))
+
+		// 先检查数据库中是否存在该员工代码（精确匹配）
+		var count int
+		checkErr := database.DB.QueryRow(`
+			SELECT COUNT(*) FROM employees WHERE employee_code = ?
+		`, user.SalesCode).Scan(&count)
+		if checkErr == nil {
+			fmt.Printf("[GetDeliveryOrderDetail] 数据库中 employee_code='%s' 的记录数: %d\n", user.SalesCode, count)
+
+			// 如果找不到，尝试查询所有员工代码，看看格式是否匹配
+			if count == 0 {
+				// 尝试去除前导零后查询
+				salesCodeTrimmed := strings.TrimLeft(user.SalesCode, "0")
+				if salesCodeTrimmed != user.SalesCode {
+					fmt.Printf("[GetDeliveryOrderDetail] 尝试去除前导零后查询: '%s'\n", salesCodeTrimmed)
+					var countTrimmed int
+					if database.DB.QueryRow(`SELECT COUNT(*) FROM employees WHERE employee_code = ?`, salesCodeTrimmed).Scan(&countTrimmed) == nil {
+						fmt.Printf("[GetDeliveryOrderDetail] 去除前导零后 employee_code='%s' 的记录数: %d\n", salesCodeTrimmed, countTrimmed)
+						if countTrimmed > 0 {
+							// 使用去除前导零后的代码查询
+							employee, err := model.GetEmployeeByEmployeeCode(salesCodeTrimmed)
+							if err == nil && employee != nil {
+								fmt.Printf("[GetDeliveryOrderDetail] 成功获取销售员信息（去除前导零后）: ID=%d, Code=%s, Name=%s, Phone=%s\n", employee.ID, employee.EmployeeCode, employee.Name, employee.Phone)
+								salesEmployeeData = map[string]interface{}{
+									"id":            employee.ID,
+									"employee_code": employee.EmployeeCode,
+									"name":          employee.Name,
+									"phone":         employee.Phone,
+								}
+							}
+						}
+					}
+				}
+
+				// 如果还是找不到，列出一些示例员工代码
+				rows, _ := database.DB.Query(`SELECT employee_code FROM employees WHERE is_sales = 1 LIMIT 10`)
+				if rows != nil {
+					defer rows.Close()
+					fmt.Printf("[GetDeliveryOrderDetail] 数据库中的销售员代码示例: ")
+					for rows.Next() {
+						var code string
+						if rows.Scan(&code) == nil {
+							fmt.Printf("'%s' ", code)
+						}
+					}
+					fmt.Printf("\n")
+				}
+			}
+		}
+
+		// 如果还没有获取到销售员信息，使用原始代码查询
+		if len(salesEmployeeData) == 0 {
+			employee, err := model.GetEmployeeByEmployeeCode(user.SalesCode)
+			if err == nil && employee != nil {
+				fmt.Printf("[GetDeliveryOrderDetail] 成功获取销售员信息: ID=%d, Code=%s, Name=%s, Phone=%s\n", employee.ID, employee.EmployeeCode, employee.Name, employee.Phone)
+				salesEmployeeData = map[string]interface{}{
+					"id":            employee.ID,
+					"employee_code": employee.EmployeeCode,
+					"name":          employee.Name,
+					"phone":         employee.Phone,
+				}
+			} else {
+				if err != nil {
+					fmt.Printf("[GetDeliveryOrderDetail] 获取销售员信息失败 (employee_code: %s): %v\n", user.SalesCode, err)
+				} else {
+					fmt.Printf("[GetDeliveryOrderDetail] 销售员不存在 (employee_code: %s)\n", user.SalesCode)
+				}
+			}
+		}
+	} else {
+		if user == nil {
+			fmt.Printf("[GetDeliveryOrderDetail] 订单 %d 的用户信息为空\n", id)
+		} else {
+			fmt.Printf("[GetDeliveryOrderDetail] 订单 %d 的用户销售员代码为空\n", id)
+		}
+	}
+	fmt.Printf("[GetDeliveryOrderDetail] 返回的销售员数据: %+v\n", salesEmployeeData)
+
 	// 从订单表中读取已存储的配送费计算结果（配送员视图）
 	var deliveryFeeCalcJSON sql.NullString
 	var deliveryFeeCalculation map[string]interface{}
@@ -438,6 +544,7 @@ func GetDeliveryOrderDetail(c *gin.Context) {
 			"order_items":              items,
 			"address":                  addressData,
 			"user":                     userData,
+			"sales_employee":           salesEmployeeData, // 销售员信息
 			"delivery_fee_calculation": deliveryFeeCalculation,
 			"suppliers":                suppliersList, // 供应商列表
 		},
@@ -522,8 +629,9 @@ func AcceptDeliveryOrder(c *gin.Context) {
 	_ = model.CreateDeliveryLog(deliveryLog) // 记录日志失败不影响主流程
 
 	// 异步触发路线规划计算（使用配送员当前位置）
+	// 接单时：重新规划整个批次（isNewOrder = true）
 	go func() {
-		err := CalculateAndUpdateRoute(employee.EmployeeCode, employeeLat, employeeLng)
+		err := CalculateAndUpdateRoute(employee.EmployeeCode, employeeLat, employeeLng, true)
 		if err != nil {
 			fmt.Printf("[AcceptDeliveryOrder] 异步计算路线失败: %v\n", err)
 		} else {
@@ -714,6 +822,19 @@ func CompleteDeliveryOrder(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "提交事务失败: " + err.Error()})
 		return
 	}
+
+	// 异步检查是否所有订单都已完成，如果是则清空路线记录（开始新的一趟）
+	// 注意：完成配送时不需要重新计算路线，因为订单已完成，路线会自动更新
+	// 这里只检查批次状态，不重新计算路线（因为可能没有位置信息）
+	go func() {
+		// 只检查批次状态，不重新计算路线
+		currentBatchID, err := model.GetCurrentBatchID(employee.EmployeeCode)
+		if err != nil {
+			fmt.Printf("[CompleteDeliveryOrder] 检查批次状态失败: %v\n", err)
+		} else {
+			fmt.Printf("[CompleteDeliveryOrder] 当前批次ID: %s\n", currentBatchID)
+		}
+	}()
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
@@ -1155,6 +1276,19 @@ func MarkItemsAsPicked(c *gin.Context) {
 		return
 	}
 
+	// 获取配送员当前位置（可选参数，用于路线计算）
+	var employeeLat, employeeLng *float64
+	if latStr := c.Query("latitude"); latStr != "" {
+		if lat, err := strconv.ParseFloat(latStr, 64); err == nil {
+			employeeLat = &lat
+		}
+	}
+	if lngStr := c.Query("longitude"); lngStr != "" {
+		if lng, err := strconv.ParseFloat(lngStr, 64); err == nil {
+			employeeLng = &lng
+		}
+	}
+
 	var req struct {
 		ItemIDs []int `json:"item_ids" binding:"required"`
 	}
@@ -1285,6 +1419,10 @@ func MarkItemsAsPicked(c *gin.Context) {
 					go func(orderID int) {
 						_ = model.CalculateAndStoreOrderProfit(orderID)
 					}(orderID)
+
+					// 注意：非接单场景不触发路线重新计算，序号保持不变
+					// 序号只在接单时（isNewOrder=true）才会改变，其他情况（标记已送达、取货、刷新等）序号永远不变
+					// 因此这里不再调用 CalculateAndUpdateRoute，避免不必要的计算
 				}
 			}
 		}
@@ -1296,22 +1434,65 @@ func MarkItemsAsPicked(c *gin.Context) {
 	})
 }
 
-// CalculateAndUpdateRoute 计算并更新配送员的路线排序
-// employeeLat, employeeLng: 配送员当前位置（可选，如果为nil则使用第一个订单位置作为起点）
-func CalculateAndUpdateRoute(employeeCode string, employeeLat, employeeLng *float64) error {
-	// 查询该配送员所有配送中的订单（包括 pending_pickup 和 delivering）
-	query := `
-		SELECT o.id, o.order_number, a.latitude, a.longitude, a.address, a.name
-		FROM orders o
-		INNER JOIN mini_app_addresses a ON o.address_id = a.id
-		WHERE o.delivery_employee_code = ? 
-		  AND o.status IN ('pending_pickup', 'delivering')
-		  AND a.latitude IS NOT NULL 
-		  AND a.longitude IS NOT NULL
-		ORDER BY o.created_at ASC
-	`
+// CalculateAndUpdateRoute 计算并更新配送员的路线排序（使用批次ID区分不同的趟）
+// employeeLat, employeeLng: 配送员当前位置（必须提供，否则返回错误）
+// isNewOrder: 是否为接单触发（true=接单时重新规划整个批次，false=完成订单时只规划剩余订单）
+// 注意：此函数只计算当前批次的订单，如果当前批次已完成，则创建新批次
+func CalculateAndUpdateRoute(employeeCode string, employeeLat, employeeLng *float64, isNewOrder bool) error {
+	// 必须提供配送员位置，否则无法规划路线
+	if employeeLat == nil || employeeLng == nil {
+		return fmt.Errorf("无法规划路线：必须提供配送员当前位置，请确保已开启定位权限并获取到位置")
+	}
 
-	rows, err := database.DB.Query(query, employeeCode)
+	// 获取当前批次ID
+	currentBatchID, err := model.GetCurrentBatchID(employeeCode)
+	if err != nil {
+		return fmt.Errorf("获取当前批次ID失败: %w", err)
+	}
+
+	// 如果没有当前批次（所有订单都已完成），创建新批次
+	if currentBatchID == "" {
+		currentBatchID, err = model.CreateNewBatch(employeeCode)
+		if err != nil {
+			return fmt.Errorf("创建新批次失败: %w", err)
+		}
+		fmt.Printf("[CalculateAndUpdateRoute] 创建新批次: %s\n", currentBatchID)
+		isNewOrder = true // 新批次等同于接单场景，需要重新规划整个批次
+	}
+
+	// 查询当前批次的所有订单（包括已完成的）
+	// 如果是接单触发，需要查询所有未完成的订单（可能还没有在 delivery_route_orders 表中）
+	// 如果是完成订单触发，只查询已在 delivery_route_orders 表中的订单
+	var rows *sql.Rows
+	if isNewOrder {
+		// 接单时：查询所有未完成的订单（可能还没有在 delivery_route_orders 表中）
+		query := `
+			SELECT o.id, o.order_number, o.status, a.latitude, a.longitude, a.address, a.name
+			FROM orders o
+			INNER JOIN mini_app_addresses a ON o.address_id = a.id
+			WHERE o.delivery_employee_code = ?
+			  AND o.status IN ('pending_pickup', 'delivering')
+			  AND a.latitude IS NOT NULL 
+			  AND a.longitude IS NOT NULL
+			ORDER BY o.created_at ASC
+		`
+		rows, err = database.DB.Query(query, employeeCode)
+	} else {
+		// 完成订单时：只查询已在 delivery_route_orders 表中的订单（包括已完成的）
+		query := `
+			SELECT o.id, o.order_number, o.status, a.latitude, a.longitude, a.address, a.name
+			FROM orders o
+			INNER JOIN mini_app_addresses a ON o.address_id = a.id
+			INNER JOIN delivery_route_orders dro ON o.id = dro.order_id
+			WHERE dro.delivery_employee_code = ?
+			  AND dro.batch_id = ?
+			  AND a.latitude IS NOT NULL 
+			  AND a.longitude IS NOT NULL
+			ORDER BY dro.route_sequence ASC
+		`
+		rows, err = database.DB.Query(query, employeeCode, currentBatchID)
+	}
+
 	if err != nil {
 		return fmt.Errorf("查询配送订单失败: %w", err)
 	}
@@ -1319,18 +1500,19 @@ func CalculateAndUpdateRoute(employeeCode string, employeeLat, employeeLng *floa
 
 	type OrderLocation struct {
 		OrderID   int
+		Status    string
 		Latitude  float64
 		Longitude float64
 	}
 
 	var orders []OrderLocation
-	var orderIDs []int
 	for rows.Next() {
 		var ol OrderLocation
 		var latitude, longitude sql.NullFloat64
 		var orderNumber, address, name sql.NullString
+		var status sql.NullString
 
-		err := rows.Scan(&ol.OrderID, &orderNumber, &latitude, &longitude, &address, &name)
+		err := rows.Scan(&ol.OrderID, &orderNumber, &status, &latitude, &longitude, &address, &name)
 		if err != nil {
 			continue
 		}
@@ -1341,60 +1523,169 @@ func CalculateAndUpdateRoute(employeeCode string, employeeLat, employeeLng *floa
 
 		ol.Latitude = latitude.Float64
 		ol.Longitude = longitude.Float64
+		if status.Valid {
+			ol.Status = status.String
+		}
 		orders = append(orders, ol)
-		orderIDs = append(orderIDs, ol.OrderID)
 	}
 
 	if len(orders) == 0 {
-		// 没有订单，清空排序记录
-		_ = model.DeleteRouteOrdersByEmployee(employeeCode)
+		// 没有订单，直接返回（等待接单）
+		fmt.Printf("[CalculateAndUpdateRoute] 没有订单，批次ID: %s\n", currentBatchID)
 		return nil
 	}
 
-	// 如果只有一单，直接设置排序，不需要优化
-	if len(orders) == 1 {
-		orderSequences := []struct {
+	// 确保所有未完成订单都在当前批次中（接单时可能需要加入新订单）
+	if isNewOrder {
+		for _, order := range orders {
+			if order.Status != "delivered" && order.Status != "shipped" {
+				// 检查订单是否已在当前批次中
+				var exists int
+				checkQuery := `SELECT COUNT(*) FROM delivery_route_orders WHERE delivery_employee_code = ? AND batch_id = ? AND order_id = ?`
+				if err := database.DB.QueryRow(checkQuery, employeeCode, currentBatchID, order.OrderID).Scan(&exists); err == nil && exists == 0 {
+					// 订单不在当前批次中，加入当前批次（临时插入，后续会被 UpdateRouteSequence 替换）
+					_, err := database.DB.Exec(`
+						INSERT INTO delivery_route_orders (delivery_employee_code, batch_id, order_id, route_sequence, calculated_at)
+						VALUES (?, ?, ?, 999, NOW())
+						ON DUPLICATE KEY UPDATE batch_id = VALUES(batch_id)
+					`, employeeCode, currentBatchID, order.OrderID)
+					if err != nil {
+						fmt.Printf("[CalculateAndUpdateRoute] 将订单 %d 加入批次 %s 失败: %v\n", order.OrderID, currentBatchID, err)
+					} else {
+						fmt.Printf("[CalculateAndUpdateRoute] 将订单 %d 加入批次 %s\n", order.OrderID, currentBatchID)
+					}
+				}
+			}
+		}
+	}
+
+	// 分离已完成和未完成的订单
+	var completedOrders []OrderLocation
+	var incompleteOrders []OrderLocation
+	var completedOrderSequences = make(map[int]int) // orderID -> route_sequence
+
+	fmt.Printf("[CalculateAndUpdateRoute] 查询到的订单总数: %d\n", len(orders))
+	for _, order := range orders {
+		fmt.Printf("[CalculateAndUpdateRoute] 订单ID: %d, 状态: %s\n", order.OrderID, order.Status)
+		if order.Status == "delivered" || order.Status == "shipped" {
+			completedOrders = append(completedOrders, order)
+			// 获取已完成订单的当前序号
+			var seq int
+			seqQuery := `SELECT route_sequence FROM delivery_route_orders WHERE delivery_employee_code = ? AND batch_id = ? AND order_id = ?`
+			if err := database.DB.QueryRow(seqQuery, employeeCode, currentBatchID, order.OrderID).Scan(&seq); err == nil {
+				completedOrderSequences[order.OrderID] = seq
+				fmt.Printf("[CalculateAndUpdateRoute] 已完成订单ID: %d, 序号: %d\n", order.OrderID, seq)
+			} else {
+				fmt.Printf("[CalculateAndUpdateRoute] 警告: 无法获取已完成订单 %d 的序号: %v\n", order.OrderID, err)
+			}
+		} else {
+			incompleteOrders = append(incompleteOrders, order)
+			fmt.Printf("[CalculateAndUpdateRoute] 未完成订单ID: %d\n", order.OrderID)
+		}
+	}
+	fmt.Printf("[CalculateAndUpdateRoute] 已完成订单数: %d, 未完成订单数: %d\n", len(completedOrders), len(incompleteOrders))
+
+	// 检查是否所有订单都是已送达状态
+	if len(incompleteOrders) == 0 {
+		fmt.Printf("[CalculateAndUpdateRoute] 当前批次所有订单都已送达，批次ID: %s\n", currentBatchID)
+		return nil
+	}
+
+	fmt.Printf("[CalculateAndUpdateRoute] 批次 %s: 已完成订单 %d 个，未完成订单 %d 个，是否接单触发: %v\n",
+		currentBatchID, len(completedOrders), len(incompleteOrders), isNewOrder)
+
+	// 如果只有一单未完成，直接设置排序
+	if len(incompleteOrders) == 1 {
+		// 构建所有订单的序列（包括已完成的）
+		orderSequences := make([]struct {
 			OrderID  int
 			Sequence int
 			Distance *float64
-		}{
-			{
-				OrderID:  orders[0].OrderID,
+		}, 0)
+
+		// 如果是接单触发，重新规划整个批次
+		if isNewOrder {
+			// 接单时：已完成订单也需要重新排序
+			// 先添加未完成订单
+			orderSequences = append(orderSequences, struct {
+				OrderID  int
+				Sequence int
+				Distance *float64
+			}{
+				OrderID:  incompleteOrders[0].OrderID,
 				Sequence: 1,
-				Distance: nil, // 单订单没有距离概念
-			},
+				Distance: nil,
+			})
+			// 已完成订单按原序号追加
+			for i, completedOrder := range completedOrders {
+				orderSequences = append(orderSequences, struct {
+					OrderID  int
+					Sequence int
+					Distance *float64
+				}{
+					OrderID:  completedOrder.OrderID,
+					Sequence: 2 + i,
+					Distance: nil,
+				})
+			}
+		} else {
+			// 完成订单时：已完成订单保持原序号
+			// 先添加已完成订单（保持原序号）
+			for _, completedOrder := range completedOrders {
+				if seq, exists := completedOrderSequences[completedOrder.OrderID]; exists {
+					orderSequences = append(orderSequences, struct {
+						OrderID  int
+						Sequence int
+						Distance *float64
+					}{
+						OrderID:  completedOrder.OrderID,
+						Sequence: seq,
+						Distance: nil,
+					})
+				}
+			}
+			// 未完成订单放在最后
+			maxSeq := 0
+			for _, seq := range completedOrderSequences {
+				if seq > maxSeq {
+					maxSeq = seq
+				}
+			}
+			orderSequences = append(orderSequences, struct {
+				OrderID  int
+				Sequence int
+				Distance *float64
+			}{
+				OrderID:  incompleteOrders[0].OrderID,
+				Sequence: maxSeq + 1,
+				Distance: nil,
+			})
 		}
-		err := model.UpdateRouteSequence(employeeCode, orderSequences)
+
+		err := model.UpdateRouteSequence(employeeCode, currentBatchID, orderSequences)
 		if err != nil {
 			return fmt.Errorf("更新路线排序失败: %w", err)
 		}
 		return nil
 	}
 
-	// 获取配送员当前位置作为起点
-	var startLat, startLng float64
-	if employeeLat != nil && employeeLng != nil {
-		// 使用传入的配送员当前位置
-		startLat = *employeeLat
-		startLng = *employeeLng
-		fmt.Printf("[CalculateAndUpdateRoute] 使用配送员当前位置作为起点: %.6f, %.6f\n", startLat, startLng)
-	} else if len(orders) > 0 {
-		// 如果没有提供位置，使用第一个订单位置作为起点（回退方案）
-		startLat = orders[0].Latitude
-		startLng = orders[0].Longitude
-		fmt.Printf("[CalculateAndUpdateRoute] 警告: 未提供配送员位置，使用第一个订单位置作为起点: %.6f, %.6f (订单ID: %d)\n", startLat, startLng, orders[0].OrderID)
-	} else {
-		// 没有订单，清空排序记录
-		_ = model.DeleteRouteOrdersByEmployee(employeeCode)
-		return nil
-	}
+	// 使用配送员当前位置作为起点（已经验证过不为nil）
+	startLat := *employeeLat
+	startLng := *employeeLng
+	fmt.Printf("[CalculateAndUpdateRoute] 使用配送员当前位置作为起点: %.6f, %.6f\n", startLat, startLng)
 
-	// 构建位置列表（起点 + 订单位置）
+	// 只对未完成订单进行路线优化
+	// 先按订单ID排序，确保稳定排序（相同距离时按订单ID选择）
+	sort.Slice(incompleteOrders, func(i, j int) bool {
+		return incompleteOrders[i].OrderID < incompleteOrders[j].OrderID
+	})
+
+	// 构建位置列表（起点 + 未完成订单位置）
 	locations := make([]struct {
 		Name string
 		Lat  float64
 		Lng  float64
-	}, 0, len(orders)+1)
+	}, 0, len(incompleteOrders)+1)
 
 	// 添加起点（使用特殊名称）- 必须第一个添加，确保索引为0
 	startPointName := fmt.Sprintf("start_%s", employeeCode)
@@ -1409,8 +1700,8 @@ func CalculateAndUpdateRoute(employeeCode string, employeeLat, employeeLng *floa
 	})
 	fmt.Printf("[CalculateAndUpdateRoute] 起点已添加: %s (%.6f, %.6f)，索引: 0\n", startPointName, startLat, startLng)
 
-	// 添加订单位置
-	for i, order := range orders {
+	// 只添加未完成订单位置（已按订单ID排序）
+	for i, order := range incompleteOrders {
 		orderName := fmt.Sprintf("order_%d", order.OrderID)
 		locations = append(locations, struct {
 			Name string
@@ -1421,23 +1712,56 @@ func CalculateAndUpdateRoute(employeeCode string, employeeLat, employeeLng *floa
 			Lat:  order.Latitude,
 			Lng:  order.Longitude,
 		})
-		// 更新 orders 中的索引映射
-		orders[i].OrderID = order.OrderID
+		// 更新 incompleteOrders 中的索引映射
+		incompleteOrders[i].OrderID = order.OrderID
 	}
 
-	// 创建优化器并添加位置
-	optimizer := utils.NewDeliveryRouteOptimizer()
-	for _, loc := range locations {
-		optimizer.AddLocation(loc.Name, loc.Lat, loc.Lng)
+	// 检查是否所有未完成订单都是同一个地址（坐标相同）
+	allSameAddress := true
+	if len(incompleteOrders) > 1 {
+		firstLat := incompleteOrders[0].Latitude
+		firstLng := incompleteOrders[0].Longitude
+		for i := 1; i < len(incompleteOrders); i++ {
+			// 使用较小的阈值（约10米）来判断是否为同一地址
+			latDiff := math.Abs(incompleteOrders[i].Latitude - firstLat)
+			lngDiff := math.Abs(incompleteOrders[i].Longitude - firstLng)
+			// 纬度1度约111公里，经度1度约111*cos(纬度)公里
+			// 0.0001度约11米，使用0.00009度（约10米）作为阈值
+			if latDiff > 0.00009 || lngDiff > 0.00009 {
+				allSameAddress = false
+				break
+			}
+		}
 	}
 
-	// 执行路线优化（迭代300次）
-	optimizedRoute, totalDistance, err := optimizer.OptimizeRoute(startPointName, 300)
-	if err != nil {
-		return fmt.Errorf("路线优化失败: %w", err)
+	var optimizedRoute []int
+	var totalDistance float64
+	var optimizer *utils.DeliveryRouteOptimizer
+
+	if allSameAddress && len(incompleteOrders) > 1 {
+		// 如果所有未完成订单都是同一个地址，按订单ID排序（稳定排序）
+		fmt.Printf("[CalculateAndUpdateRoute] 所有未完成订单都是同一地址，使用订单ID排序\n")
+		optimizedRoute = []int{0} // 起点索引为0
+		// 按订单ID顺序添加订单索引（从1开始，因为0是起点）
+		for i := 1; i <= len(incompleteOrders); i++ {
+			optimizedRoute = append(optimizedRoute, i)
+		}
+		totalDistance = 0.0 // 同一地址，距离为0
+	} else {
+		// 创建优化器并添加位置
+		optimizer = utils.NewDeliveryRouteOptimizer()
+		for _, loc := range locations {
+			optimizer.AddLocation(loc.Name, loc.Lat, loc.Lng)
+		}
+
+		// 执行路线优化（迭代300次）
+		optimizedRoute, totalDistance, err = optimizer.OptimizeRoute(startPointName, 300)
+		if err != nil {
+			return fmt.Errorf("路线优化失败: %w", err)
+		}
 	}
 	fmt.Printf("[CalculateAndUpdateRoute] 路线优化完成，总距离: %.2f 公里，路线点数: %d\n", totalDistance, len(optimizedRoute))
-	if len(optimizedRoute) > 0 {
+	if len(optimizedRoute) > 0 && optimizer != nil {
 		firstLoc := optimizer.GetLocationByIndex(optimizedRoute[0])
 		if firstLoc != nil {
 			fmt.Printf("[CalculateAndUpdateRoute] 优化路线第一个点: %s (%.6f, %.6f)\n", firstLoc.Name, firstLoc.Lat, firstLoc.Lng)
@@ -1450,8 +1774,8 @@ func CalculateAndUpdateRoute(employeeCode string, employeeLat, employeeLng *floa
 		}
 	}
 
-	// 构建排序记录（排除起点，只保留订单）
-	orderSequences := make([]struct {
+	// 构建未完成订单的排序记录（排除起点，只保留未完成订单）
+	incompleteOrderSequences := make([]struct {
 		OrderID  int
 		Sequence int
 		Distance *float64
@@ -1459,79 +1783,146 @@ func CalculateAndUpdateRoute(employeeCode string, employeeLat, employeeLng *floa
 
 	sequence := 1
 	startIdx := -1
-	// 先找到起点的索引
-	for i, routeIdx := range optimizedRoute {
-		loc := optimizer.GetLocationByIndex(routeIdx)
-		if loc != nil && loc.Name == startPointName {
-			startIdx = i
-			fmt.Printf("[CalculateAndUpdateRoute] 起点在优化路线中的索引: %d\n", startIdx)
-			break
+
+	if allSameAddress && len(incompleteOrders) > 1 {
+		// 同一地址情况：起点是第一个（索引0），订单按顺序从1开始
+		startIdx = 0
+		for i := 1; i < len(optimizedRoute); i++ {
+			routeIdx := optimizedRoute[i]
+			// 订单索引从1开始，对应 incompleteOrders[i-1]
+			if routeIdx > 0 && routeIdx <= len(incompleteOrders) {
+				orderID := incompleteOrders[routeIdx-1].OrderID
+				incompleteOrderSequences = append(incompleteOrderSequences, struct {
+					OrderID  int
+					Sequence int
+					Distance *float64
+				}{
+					OrderID:  orderID,
+					Sequence: sequence,
+					Distance: nil, // 同一地址，距离为0
+				})
+				sequence++
+			}
 		}
-	}
-
-	if startIdx == -1 {
-		return fmt.Errorf("在优化路线中未找到起点")
-	}
-
-	// 确保起点是第一个点（NearestNeighbor算法应该保证这一点）
-	if startIdx != 0 {
-		fmt.Printf("[CalculateAndUpdateRoute] 警告: 起点不在第一个位置 (索引: %d)，这可能导致路线计算错误\n", startIdx)
-	}
-
-	for i, routeIdx := range optimizedRoute {
-		loc := optimizer.GetLocationByIndex(routeIdx)
-		if loc == nil {
-			continue
-		}
-
-		// 跳过起点
-		if loc.Name == startPointName {
-			continue
-		}
-
-		// 解析订单ID
-		var orderID int
-		_, err := fmt.Sscanf(loc.Name, "order_%d", &orderID)
-		if err != nil {
-			continue
+	} else {
+		// 先找到起点的索引
+		for i, routeIdx := range optimizedRoute {
+			if optimizer == nil {
+				break
+			}
+			loc := optimizer.GetLocationByIndex(routeIdx)
+			if loc != nil && loc.Name == startPointName {
+				startIdx = i
+				fmt.Printf("[CalculateAndUpdateRoute] 起点在优化路线中的索引: %d\n", startIdx)
+				break
+			}
 		}
 
-		// 计算距离（从前一个点到当前点的距离）
-		// 如果前一个点是起点，则计算从起点到当前点的距离
-		// 否则计算从前一个订单到当前订单的距离
-		var distance *float64
-		if i > 0 {
-			prevIdx := optimizedRoute[i-1]
-			prevLoc := optimizer.GetLocationByIndex(prevIdx)
-			// 如果前一个点是起点，计算从起点到当前点的距离
-			if prevLoc != nil && prevLoc.Name == startPointName {
-				dist := optimizer.CalculateDistance(prevIdx, routeIdx)
-				distance = &dist
-			} else {
-				// 否则计算从前一个订单到当前订单的距离
-				dist := optimizer.CalculateDistance(prevIdx, routeIdx)
+		if startIdx == -1 {
+			return fmt.Errorf("在优化路线中未找到起点")
+		}
+
+		// 确保起点是第一个点（NearestNeighbor算法应该保证这一点）
+		if startIdx != 0 {
+			fmt.Printf("[CalculateAndUpdateRoute] 警告: 起点不在第一个位置 (索引: %d)，这可能导致路线计算错误\n", startIdx)
+		}
+
+		for i, routeIdx := range optimizedRoute {
+			if optimizer == nil {
+				break
+			}
+			loc := optimizer.GetLocationByIndex(routeIdx)
+			if loc == nil {
+				continue
+			}
+
+			// 跳过起点
+			if loc.Name == startPointName {
+				continue
+			}
+
+			// 解析订单ID
+			var orderID int
+			_, err := fmt.Sscanf(loc.Name, "order_%d", &orderID)
+			if err != nil {
+				continue
+			}
+
+			// 计算距离（从前一个点到当前点的距离）
+			// 如果前一个点是起点，则计算从起点到当前点的距离
+			// 否则计算从前一个订单到当前订单的距离
+			var distance *float64
+			if i > 0 {
+				prevIdx := optimizedRoute[i-1]
+				prevLoc := optimizer.GetLocationByIndex(prevIdx)
+				// 如果前一个点是起点，计算从起点到当前点的距离
+				if prevLoc != nil && prevLoc.Name == startPointName {
+					dist := optimizer.CalculateDistance(prevIdx, routeIdx)
+					distance = &dist
+				} else {
+					// 否则计算从前一个订单到当前订单的距离
+					dist := optimizer.CalculateDistance(prevIdx, routeIdx)
+					distance = &dist
+				}
+			} else if i == startIdx+1 {
+				// 如果当前点是起点后的第一个点，计算从起点到当前点的距离
+				dist := optimizer.CalculateDistance(optimizedRoute[startIdx], routeIdx)
 				distance = &dist
 			}
-		} else if i == startIdx+1 {
-			// 如果当前点是起点后的第一个点，计算从起点到当前点的距离
-			dist := optimizer.CalculateDistance(optimizedRoute[startIdx], routeIdx)
-			distance = &dist
-		}
 
-		orderSequences = append(orderSequences, struct {
-			OrderID  int
-			Sequence int
-			Distance *float64
-		}{
-			OrderID:  orderID,
-			Sequence: sequence,
-			Distance: distance,
-		})
-		sequence++
+			incompleteOrderSequences = append(incompleteOrderSequences, struct {
+				OrderID  int
+				Sequence int
+				Distance *float64
+			}{
+				OrderID:  orderID,
+				Sequence: sequence,
+				Distance: distance,
+			})
+			sequence++
+		}
 	}
 
-	// 更新数据库中的排序
-	err = model.UpdateRouteSequence(employeeCode, orderSequences)
+	// 合并已完成订单和未完成订单的序号
+	// 根据 isNewOrder 决定已完成订单的序号处理方式
+	allOrderSequences := make([]struct {
+		OrderID  int
+		Sequence int
+		Distance *float64
+	}, 0)
+
+	if isNewOrder {
+		// 接单时：重新规划整个批次，已完成订单也需要重新排序
+		// 先添加未完成订单（已优化）
+		allOrderSequences = append(allOrderSequences, incompleteOrderSequences...)
+		// 已完成订单追加在后面
+		nextSeq := len(incompleteOrderSequences) + 1
+		for _, completedOrder := range completedOrders {
+			allOrderSequences = append(allOrderSequences, struct {
+				OrderID  int
+				Sequence int
+				Distance *float64
+			}{
+				OrderID:  completedOrder.OrderID,
+				Sequence: nextSeq,
+				Distance: nil,
+			})
+			nextSeq++
+		}
+	} else {
+		// 完成订单时：序号完全保持不变，不进行任何更新
+		// 这是为了确保序号只在接单时才会改变，其他情况（标记已送达、取货等）序号永远不变
+		fmt.Printf("[CalculateAndUpdateRoute] 非接单场景，序号保持不变，跳过更新\n")
+		return nil
+	}
+
+	// 按序号排序，确保顺序正确
+	sort.Slice(allOrderSequences, func(i, j int) bool {
+		return allOrderSequences[i].Sequence < allOrderSequences[j].Sequence
+	})
+
+	// 更新数据库中的排序（仅在接单时执行）
+	err = model.UpdateRouteSequence(employeeCode, currentBatchID, allOrderSequences)
 	if err != nil {
 		return fmt.Errorf("更新路线排序失败: %w", err)
 	}
@@ -1551,7 +1942,7 @@ func CalculateRoute(c *gin.Context) {
 		return
 	}
 
-	// 获取配送员当前位置（可选参数）
+	// 获取配送员当前位置（必须参数）
 	var employeeLat, employeeLng *float64
 	if latStr := c.Query("latitude"); latStr != "" {
 		if lat, err := strconv.ParseFloat(latStr, 64); err == nil {
@@ -1564,11 +1955,24 @@ func CalculateRoute(c *gin.Context) {
 		}
 	}
 
-	// 异步计算路线
+	// 必须提供位置才能计算路线
+	if employeeLat == nil || employeeLng == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无法规划路线：必须提供配送员当前位置，请确保已开启定位权限并获取到位置",
+		})
+		return
+	}
+
+	// 注意：手动触发路线规划不会改变序号
+	// 序号只在接单时（isNewOrder=true）才会改变，手动触发（isNewOrder=false）不会改变序号
+	// 因此这里调用 CalculateAndUpdateRoute 不会产生任何效果，但保留接口以保持兼容性
 	go func() {
-		err := CalculateAndUpdateRoute(employee.EmployeeCode, employeeLat, employeeLng)
+		err := CalculateAndUpdateRoute(employee.EmployeeCode, employeeLat, employeeLng, false)
 		if err != nil {
 			fmt.Printf("[CalculateRoute] 路线规划计算失败: %v\n", err)
+		} else {
+			fmt.Printf("[CalculateRoute] 路线规划计算完成（序号未改变）\n")
 		}
 	}()
 
@@ -1590,15 +1994,20 @@ func GetRouteOrders(c *gin.Context) {
 		return
 	}
 
+	fmt.Printf("[GetRouteOrders] 开始获取路线订单，配送员: %s\n", employee.EmployeeCode)
+
 	// 获取排序记录
 	routeOrders, err := model.GetRouteOrdersByEmployee(employee.EmployeeCode)
 	if err != nil {
+		fmt.Printf("[GetRouteOrders] 获取路线排序失败: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "获取路线排序失败: " + err.Error(),
 		})
 		return
 	}
+
+	fmt.Printf("[GetRouteOrders] 获取到 %d 条路线记录\n", len(routeOrders))
 
 	// 如果没有排序记录，返回空列表
 	if len(routeOrders) == 0 {
@@ -1613,22 +2022,74 @@ func GetRouteOrders(c *gin.Context) {
 		return
 	}
 
-	// 获取订单详情
+	// 获取当前批次ID，用于验证订单是否属于当前批次
+	currentBatchID, err := model.GetCurrentBatchID(employee.EmployeeCode)
+	if err != nil {
+		fmt.Printf("[GetRouteOrders] 获取当前批次ID失败: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取当前批次ID失败: " + err.Error(),
+		})
+		return
+	}
+
+	if currentBatchID == "" {
+		// 没有当前批次，返回空列表
+		fmt.Printf("[GetRouteOrders] 没有当前批次，返回空列表\n")
+		c.JSON(http.StatusOK, gin.H{
+			"code": 200,
+			"data": gin.H{
+				"list":  []interface{}{},
+				"total": 0,
+			},
+			"message": "暂无排序记录",
+		})
+		return
+	}
+
+	fmt.Printf("[GetRouteOrders] 当前批次ID: %s\n", currentBatchID)
+
+	// 获取订单详情（包括delivering和delivered状态的订单）
+	// 注意：这里只返回路线记录中的订单，如果路线记录已被清空（所有订单完成），则返回空列表
 	orderList := make([]map[string]interface{}, 0)
 	for _, ro := range routeOrders {
-		order, err := model.GetOrderByID(ro.OrderID)
-		if err != nil || order == nil {
+		// 验证路线记录是否属于当前批次
+		if ro.BatchID != currentBatchID {
+			fmt.Printf("[GetRouteOrders] 跳过不属于当前批次的订单，订单ID: %d, 路线批次: %s, 当前批次: %s\n", ro.OrderID, ro.BatchID, currentBatchID)
 			continue
 		}
 
+		order, err := model.GetOrderByID(ro.OrderID)
+		if err != nil || order == nil {
+			// 订单不存在，跳过（可能是已删除的订单）
+			continue
+		}
+
+		// 返回当前批次的所有订单（包括已完成的）
+		// 已完成的订单也会显示在列表中，但不会参与路线计算
+		// 只过滤掉不在当前批次的订单
+
+		// 验证订单是否属于当前配送员（防止数据不一致）
+		if order.DeliveryEmployeeCode == nil || *order.DeliveryEmployeeCode != employee.EmployeeCode {
+			continue
+		}
+
+		fmt.Printf("[GetRouteOrders] 订单状态: %s\n", order.Status)
+
 		// 获取订单地址
 		address, err := model.GetAddressByID(order.AddressID)
-		if err != nil || address == nil {
+		if err != nil {
+			fmt.Printf("[GetRouteOrders] 获取地址失败，订单ID: %d, 错误: %v\n", order.ID, err)
+			continue
+		}
+		if address == nil {
+			fmt.Printf("[GetRouteOrders] 地址不存在，订单ID: %d\n", order.ID)
 			continue
 		}
 
 		// 获取订单商品数量
 		itemCount, _ := model.GetOrderItemCountByOrderID(order.ID)
+		fmt.Printf("[GetRouteOrders] 订单 %d 处理成功，添加到列表\n", order.ID)
 
 		orderData := map[string]interface{}{
 			"id":                  order.ID,
@@ -1650,6 +2111,8 @@ func GetRouteOrders(c *gin.Context) {
 
 		orderList = append(orderList, orderData)
 	}
+
+	fmt.Printf("[GetRouteOrders] 处理完成，返回 %d 条订单\n", len(orderList))
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,

@@ -25,10 +25,118 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
-    // 延迟一下，确保UI已经渲染完成后再请求权限
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _getLocation();
-    });
+    // 立即开始获取位置，不等待UI渲染完成，以优化接单时的响应速度
+    _getLocation();
+  }
+
+  /// 显示定位服务未启用对话框
+  Future<bool> _showLocationServiceDialog() async {
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Icon(Icons.location_off, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '定位服务未启用',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              content: const Text(
+                '为了提供配送服务，需要开启系统定位服务。\n\n请点击"去设置"打开系统定位设置。',
+                style: TextStyle(fontSize: 15, color: Color(0xFF40475C)),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text(
+                    '取消',
+                    style: TextStyle(color: Color(0xFF8C92A4)),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF20CB6B),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    '去设置',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+  }
+
+  /// 显示定位权限对话框
+  Future<bool> _showPermissionDialog() async {
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Icon(Icons.location_disabled, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '需要定位权限',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              content: const Text(
+                '为了提供配送服务，需要获取您的位置信息。\n\n请点击"去设置"手动开启定位权限。',
+                style: TextStyle(fontSize: 15, color: Color(0xFF40475C)),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text(
+                    '取消',
+                    style: TextStyle(color: Color(0xFF8C92A4)),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF20CB6B),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    '去设置',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
   }
 
   /// 获取定位信息
@@ -48,8 +156,17 @@ class _MainShellState extends State<MainShell> {
       if (mounted) {
         setState(() {
           _isLoadingLocation = false;
-          _locationError = '定位服务未启用，请先开启GPS';
+          _locationError = '定位服务未启用，请先开启系统定位服务';
         });
+        // 显示对话框引导用户打开系统设置
+        final shouldOpenSettings = await _showLocationServiceDialog();
+        if (shouldOpenSettings) {
+          await LocationService.openLocationSettings();
+          // 延迟一下，等待用户操作
+          await Future.delayed(const Duration(seconds: 2));
+          // 重新检查定位服务
+          _getLocation();
+        }
       }
       return;
     }
@@ -64,13 +181,17 @@ class _MainShellState extends State<MainShell> {
       final permissionHandlerStatus = await Permission.location.status;
 
       String errorMsg = '定位权限未授予';
+      bool needShowDialog = false;
+
       if (permission == LocationPermission.deniedForever ||
           permissionHandlerStatus.isPermanentlyDenied) {
         errorMsg = '定位权限被永久拒绝，请到设置中开启';
+        needShowDialog = true;
       } else if (permission == LocationPermission.denied ||
           permissionHandlerStatus.isDenied) {
         // 小米手机可能没有弹出对话框
         errorMsg = '定位权限未授予（小米手机请到设置中手动开启）';
+        needShowDialog = true;
       }
 
       if (mounted) {
@@ -78,6 +199,18 @@ class _MainShellState extends State<MainShell> {
           _isLoadingLocation = false;
           _locationError = errorMsg;
         });
+
+        // 显示对话框引导用户打开应用设置
+        if (needShowDialog) {
+          final shouldOpenSettings = await _showPermissionDialog();
+          if (shouldOpenSettings) {
+            await LocationService.openAppSettingsPage();
+            // 延迟一下，等待用户操作
+            await Future.delayed(const Duration(seconds: 2));
+            // 重新检查权限
+            _getLocation();
+          }
+        }
       }
       return;
     }
@@ -179,7 +312,7 @@ class _MainShellState extends State<MainShell> {
                 color: Color(0xFF20CB6B),
                 size: 24,
               ),
-              label: '接单大厅',
+              label: '任务',
             ),
             NavigationDestination(
               icon: const Icon(
