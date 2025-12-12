@@ -69,6 +69,28 @@ class AuthApi {
   static Future<void> logout() async {
     await Storage.clearAll();
   }
+
+  // 获取WebSocket配置
+  static Future<ApiResponse<Map<String, dynamic>>> getWebSocketConfig() async {
+    final response = await Request.get<Map<String, dynamic>>(
+      '/employee/websocket-config',
+      needAuth: false,
+      parser: (data) => data as Map<String, dynamic>,
+    );
+
+    if (response.isSuccess && response.data != null) {
+      return ApiResponse<Map<String, dynamic>>(
+        code: response.code,
+        message: response.message,
+        data: response.data,
+      );
+    }
+
+    return ApiResponse<Map<String, dynamic>>(
+      code: response.code,
+      message: response.message,
+    );
+  }
 }
 
 class LoginResponse {

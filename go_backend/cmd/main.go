@@ -84,6 +84,9 @@ func main() {
 			miniAppProtectedGroup.GET("/orders", api.GetUserOrders)          // 获取用户订单列表
 			miniAppProtectedGroup.GET("/orders/:id", api.GetUserOrderDetail) // 获取订单详情
 
+			// 配送员位置接口（小程序端查看配送员位置）
+			miniAppProtectedGroup.GET("/delivery-employee-location/:code", api.GetEmployeeLocationByCode) // 根据员工码获取配送员位置
+
 			// 优惠券接口
 			miniAppProtectedGroup.GET("/coupons", api.GetUserCoupons)                // 获取用户的优惠券列表
 			miniAppProtectedGroup.GET("/coupons/available", api.GetAvailableCoupons) // 获取可用优惠券
@@ -103,6 +106,8 @@ func main() {
 			// 不需要认证的接口
 			adminGroup.POST("/login", api.AdminLogin)   // 管理员登录
 			adminGroup.POST("/logout", api.AdminLogout) // 管理员退出登录
+			// WebSocket位置查看（管理后台）- 不需要认证中间件，在函数内部验证token
+			adminGroup.GET("/employee-locations/ws", api.HandleAdminWebSocket) // WebSocket连接，用于实时接收位置更新
 
 			// 需要认证的接口
 			protectedGroup := adminGroup.Group("")
@@ -112,10 +117,11 @@ func main() {
 				protectedGroup.PUT("/password", api.ChangePassword) // 修改管理员密码
 
 				// 系统设置接口
-				protectedGroup.GET("/settings", api.GetSystemSettings)     // 获取所有系统设置
-				protectedGroup.PUT("/settings", api.UpdateSystemSettings)  // 更新系统设置
-				protectedGroup.GET("/settings/map", api.GetMapSettings)    // 获取地图设置
-				protectedGroup.PUT("/settings/map", api.UpdateMapSettings) // 更新地图设置
+				protectedGroup.GET("/settings", api.GetSystemSettings)            // 获取所有系统设置
+				protectedGroup.PUT("/settings", api.UpdateSystemSettings)         // 更新系统设置
+				protectedGroup.GET("/settings/map", api.GetMapSettings)           // 获取地图设置
+				protectedGroup.PUT("/settings/map", api.UpdateMapSettings)        // 更新地图设置
+				protectedGroup.GET("/settings/websocket", api.GetWebSocketConfig) // 获取WebSocket配置
 
 				// 分类管理接口
 				protectedGroup.GET("/categories", api.GetAllCategoriesForAdmin)    // 获取所有商品分类（后台管理）
@@ -205,6 +211,10 @@ func main() {
 				// 配送费结算管理
 				protectedGroup.GET("/delivery-income/stats", api.GetDeliveryIncomeStatsForAdmin) // 获取配送员收入统计（管理员）
 				protectedGroup.POST("/delivery-income/settle", api.BatchSettleDeliveryFees)      // 批量结算配送费
+
+				// 员工位置管理
+				protectedGroup.GET("/employee-locations", api.GetEmployeeLocations)    // 获取所有员工位置
+				protectedGroup.GET("/employee-locations/:id", api.GetEmployeeLocation) // 获取指定员工位置
 			}
 		}
 
@@ -226,7 +236,10 @@ func main() {
 		employeeGroup := apiGroup.Group("/employee")
 		{
 			// 不需要认证的接口
-			employeeGroup.POST("/login", api.EmployeeLogin) // 员工登录
+			employeeGroup.POST("/login", api.EmployeeLogin)                // 员工登录
+			employeeGroup.GET("/websocket-config", api.GetWebSocketConfig) // 获取WebSocket配置（不需要认证）
+			// WebSocket位置上报（配送员端）- 不需要认证中间件，在函数内部验证token
+			employeeGroup.GET("/location/ws", api.HandleEmployeeWebSocket) // WebSocket连接，用于实时上报位置
 
 			// 需要认证的接口
 			employeeProtectedGroup := employeeGroup.Group("")

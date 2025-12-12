@@ -252,20 +252,6 @@ func GetDeliveryOrderDetail(c *gin.Context) {
 		return
 	}
 
-	// 如果订单状态是 delivering，确保路线是最新的
-	// 获取配送员当前位置（可选参数，用于路线计算）
-	var employeeLat, employeeLng *float64
-	if latStr := c.Query("latitude"); latStr != "" {
-		if lat, err := strconv.ParseFloat(latStr, 64); err == nil {
-			employeeLat = &lat
-		}
-	}
-	if lngStr := c.Query("longitude"); lngStr != "" {
-		if lng, err := strconv.ParseFloat(lngStr, 64); err == nil {
-			employeeLng = &lng
-		}
-	}
-
 	// 注意：非接单场景不触发路线重新计算，序号保持不变
 	// 序号只在接单时（isNewOrder=true）才会改变，其他情况（标记已送达、取货、刷新等）序号永远不变
 	// 因此这里不再调用 CalculateAndUpdateRoute，避免不必要的计算
@@ -1274,19 +1260,6 @@ func MarkItemsAsPicked(c *gin.Context) {
 	if !employee.IsDelivery {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是配送员，无权访问此功能"})
 		return
-	}
-
-	// 获取配送员当前位置（可选参数，用于路线计算）
-	var employeeLat, employeeLng *float64
-	if latStr := c.Query("latitude"); latStr != "" {
-		if lat, err := strconv.ParseFloat(latStr, 64); err == nil {
-			employeeLat = &lat
-		}
-	}
-	if lngStr := c.Query("longitude"); lngStr != "" {
-		if lng, err := strconv.ParseFloat(lngStr, 64); err == nil {
-			employeeLng = &lng
-		}
 	}
 
 	var req struct {

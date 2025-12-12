@@ -102,6 +102,12 @@
             </el-icon>
             <span>员工管理</span>
           </el-menu-item>
+          <el-menu-item index="/employee-locations">
+            <el-icon>
+              <Location />
+            </el-icon>
+            <span>员工位置</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <!-- 营销管理 -->
@@ -211,7 +217,8 @@ import {
   Money,
   Ticket,
   Document,
-  Box
+  Box,
+  Location
 } from '@element-plus/icons-vue'
 import { logout, getAdminInfo } from '../api/auth'
 import { ElMessage } from 'element-plus'

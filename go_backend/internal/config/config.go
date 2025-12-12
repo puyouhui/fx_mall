@@ -36,6 +36,10 @@ var Config = struct {
 		AmapKey    string `json:"amap_key"`    // 高德地图API Key
 		TencentKey string `json:"tencent_key"` // 腾讯地图API Key
 	} `json:"map"`
+	WebSocket struct {
+		EmployeeLocationURL string `json:"employee_location_url"` // 配送员位置上报WebSocket URL
+		AdminLocationURL    string `json:"admin_location_url"`    // 管理后台位置查看WebSocket URL
+	} `json:"websocket"`
 }{}
 
 // InitConfig 初始化配置
@@ -67,4 +71,9 @@ func InitConfig() {
 	Config.Map.AmapKey = ""
 	// 腾讯地图API Key（可选，如果配置了则使用腾讯）
 	Config.Map.TencentKey = ""
+	// WebSocket配置
+	// 配送员位置上报WebSocket URL（相对路径，会自动拼接服务器地址）
+	Config.WebSocket.EmployeeLocationURL = "/api/mini/employee/location/ws"
+	// 管理后台位置查看WebSocket URL（相对路径，会自动拼接服务器地址）
+	Config.WebSocket.AdminLocationURL = "/api/mini/admin/employee-locations/ws"
 }

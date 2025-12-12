@@ -34,3 +34,11 @@ export function updateMapSettings(data) {
   })
 }
 
+// 获取WebSocket配置
+export function getWebSocketConfig() {
+  return request({
+    url: '/admin/settings/websocket',
+    method: 'get'
+  })
+}
+

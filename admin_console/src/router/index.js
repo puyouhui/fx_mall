@@ -118,6 +118,14 @@ const routes = [
         meta: {
           title: '配送费结算管理'
         }
+      },
+      {
+        path: 'employee-locations',
+        name: 'EmployeeLocations',
+        component: () => import('../views/EmployeeLocations.vue'),
+        meta: {
+          title: '员工位置'
+        }
       }
     ]
   },

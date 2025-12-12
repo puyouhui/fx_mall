@@ -59,6 +59,9 @@ dependencies:
   # 图片选择器（拍照和选择图片）
   image_picker: ^1.0.7
 
+  # WebSocket客户端
+  web_socket_channel: ^2.4.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../api/auth_api.dart';
+import '../utils/location_report_service.dart';
 
 /// 登录页面：与员工端同接口（手机号 + 密码），对接后端登录
 class LoginPage extends StatefulWidget {
@@ -390,6 +391,13 @@ class _LoginPageState extends State<LoginPage> {
             _isLoading = false;
           });
           return;
+        }
+
+        // 启动位置上报服务
+        try {
+          await LocationReportService.instance.start();
+        } catch (e) {
+          print('启动位置上报服务失败: $e');
         }
 
         // 登录成功后，跳转到主页面（使用pushReplacementNamed，不能返回）

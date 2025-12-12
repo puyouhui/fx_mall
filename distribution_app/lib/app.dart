@@ -5,6 +5,7 @@ import 'pages/batch_pickup_view.dart';
 import 'pages/complete_delivery_view.dart';
 import 'utils/storage.dart';
 import 'utils/request.dart';
+import 'utils/location_report_service.dart';
 import 'api/auth_api.dart';
 
 /// 根组件：定义路由与主题，启动时检查登录状态，自动登录
@@ -15,7 +16,8 @@ class DistributionApp extends StatefulWidget {
   State<DistributionApp> createState() => _DistributionAppState();
 }
 
-class _DistributionAppState extends State<DistributionApp> {
+class _DistributionAppState extends State<DistributionApp>
+    with WidgetsBindingObserver {
   bool _isLoading = true;
   String _initialRoute = '/login'; // 默认值设为登录页
   String _courierPhone = '';
@@ -24,9 +26,57 @@ class _DistributionAppState extends State<DistributionApp> {
   @override
   void initState() {
     super.initState();
+    // 监听应用生命周期
+    WidgetsBinding.instance.addObserver(this);
     // 设置全局导航键
     Request.setNavigatorKey(_navigatorKey);
     _checkLoginStatus();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // 应用从后台返回前台时，立即检查并重连WebSocket
+      print('[DistributionApp] 应用进入前台，立即检查并重连WebSocket连接');
+      _ensureWebSocketConnected();
+    } else if (state == AppLifecycleState.paused) {
+      // 应用进入后台时，记录状态但不关闭连接（让系统管理）
+      print('[DistributionApp] 应用进入后台（连接保持，等待系统管理）');
+    } else if (state == AppLifecycleState.inactive) {
+      // 应用处于非活动状态（如来电时）
+      print('[DistributionApp] 应用处于非活动状态');
+    } else if (state == AppLifecycleState.detached) {
+      // 应用被系统终止
+      print('[DistributionApp] 应用被系统终止');
+    }
+  }
+
+  /// 确保WebSocket连接（如果已登录）
+  Future<void> _ensureWebSocketConnected() async {
+    final token = await Storage.getToken();
+    if (token != null && token.isNotEmpty) {
+      try {
+        print('[DistributionApp] 开始确保WebSocket连接...');
+        // 强制检查并重连（应用恢复时，连接可能已被系统关闭）
+        await LocationReportService.instance.ensureConnected();
+        print('[DistributionApp] WebSocket连接确保完成');
+      } catch (e) {
+        print('[DistributionApp] 确保WebSocket连接失败: $e');
+        // 如果失败，延迟后重试
+        Future.delayed(const Duration(seconds: 2), () {
+          _ensureWebSocketConnected();
+        });
+      }
+    } else {
+      print('[DistributionApp] 未登录，跳过WebSocket连接检查');
+    }
   }
 
   Future<void> _checkLoginStatus() async {
@@ -63,6 +113,14 @@ class _DistributionAppState extends State<DistributionApp> {
           }
           // 状态正常，跳转到主页面
           final phone = employee.phone;
+
+          // 启动位置上报服务
+          try {
+            await LocationReportService.instance.start();
+          } catch (e) {
+            print('启动位置上报服务失败: $e');
+          }
+
           if (mounted) {
             setState(() {
               _initialRoute = '/main';

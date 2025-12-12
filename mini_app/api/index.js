@@ -346,6 +346,19 @@ export const getOrderDetail = (token, orderId) => {
 };
 
 /**
+ * 获取配送员位置
+ * @param {string} token - 用户token
+ * @param {string} employeeCode - 员工码
+ */
+export const getDeliveryEmployeeLocation = (token, employeeCode) => {
+  return get(`/mini-app/users/delivery-employee-location/${employeeCode}`, {}, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
  * 创建订单
  */
 export const createOrder = (data, token) => {

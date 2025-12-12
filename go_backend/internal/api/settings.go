@@ -1,8 +1,10 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
+	"go_backend/internal/config"
 	"go_backend/internal/model"
 
 	"github.com/gin-gonic/gin"
@@ -114,6 +116,33 @@ func UpdateMapSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "更新成功",
+	})
+}
+
+// GetWebSocketConfig 获取WebSocket配置（供前端使用）
+func GetWebSocketConfig(c *gin.Context) {
+	// 获取请求的协议和主机
+	scheme := "ws"
+	// 检查是否使用HTTPS（支持代理场景）
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		scheme = "wss"
+	}
+	host := c.Request.Host
+	if host == "" {
+		host = fmt.Sprintf("localhost:%d", config.Config.Server.Port)
+	}
+
+	// 构建完整的WebSocket URL
+	employeeLocationURL := fmt.Sprintf("%s://%s%s", scheme, host, config.Config.WebSocket.EmployeeLocationURL)
+	adminLocationURL := fmt.Sprintf("%s://%s%s", scheme, host, config.Config.WebSocket.AdminLocationURL)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "获取成功",
+		"data": map[string]string{
+			"employee_location_url": employeeLocationURL,
+			"admin_location_url":    adminLocationURL,
+		},
 	})
 }
 

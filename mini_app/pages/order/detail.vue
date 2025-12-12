@@ -38,7 +38,7 @@
           :latitude="mapCenter.latitude"
           :longitude="mapCenter.longitude"
           :markers="mapMarkers"
-          :scale="14"
+          :scale="mapScale"
           class="map-container"
           :show-location="true"
           :enable-zoom="true"
@@ -176,7 +176,7 @@
 </template>
 
 <script>
-import { getOrderDetail } from '../../api/index.js'
+import { getOrderDetail, getDeliveryEmployeeLocation } from '../../api/index.js'
 
 export default {
   data() {
@@ -191,7 +191,8 @@ export default {
         latitude: 39.90864,
         longitude: 116.39750
       },
-      mapMarkers: []
+      mapMarkers: [],
+      mapScale: 14 // 地图缩放级别
     }
   },
   computed: {
@@ -245,6 +246,10 @@ export default {
           console.log('配送员信息:', this.orderDetail?.delivery_employee)
           // 初始化地图
           this.initMap()
+          // 如果是配送中状态，加载配送员位置
+          if (this.orderDetail.order?.status === 'delivering' && this.orderDetail.delivery_employee?.employee_code) {
+            this.loadDeliveryEmployeeLocation()
+          }
         } else {
           uni.showToast({
             title: res?.message || '获取订单详情失败',
@@ -284,6 +289,7 @@ export default {
           latitude: address.latitude,
           longitude: address.longitude,
           title: '收货地址',
+          iconPath: '/static/marker-destination.png', // 目的地标记图标
           width: 30,
           height: 30,
           callout: {
@@ -297,6 +303,90 @@ export default {
           }
         }]
       }
+    },
+    async loadDeliveryEmployeeLocation() {
+      const employeeCode = this.orderDetail?.delivery_employee?.employee_code
+      if (!employeeCode) {
+        console.log('配送员员工码不存在，无法获取位置')
+        return
+      }
+      
+      try {
+        const res = await getDeliveryEmployeeLocation(this.token, employeeCode)
+        if (res && res.code === 200 && res.data) {
+          const location = res.data
+          if (location.latitude && location.longitude) {
+            // 添加配送员位置标记
+            const deliveryMarker = {
+              id: 2,
+              latitude: location.latitude,
+              longitude: location.longitude,
+              title: '配送员位置',
+              iconPath: '/static/marker-delivery.png', // 配送员标记图标
+              width: 30,
+              height: 30,
+              callout: {
+                content: `配送员${location.is_realtime ? '（实时）' : '（历史位置）'}`,
+                color: '#333',
+                fontSize: 12,
+                borderRadius: 4,
+                bgColor: location.is_realtime ? '#20CB6B' : '#FFA500',
+                padding: 8,
+                display: 'ALWAYS'
+              }
+            }
+            
+            // 添加到地图标记数组
+            this.mapMarkers.push(deliveryMarker)
+            
+            // 调整地图视野，同时显示收货地址和配送员位置
+            if (this.orderDetail?.address?.latitude && this.orderDetail?.address?.longitude) {
+              const lat1 = this.orderDetail.address.latitude
+              const lng1 = this.orderDetail.address.longitude
+              const lat2 = location.latitude
+              const lng2 = location.longitude
+              
+              // 计算中心点
+              const centerLat = (lat1 + lat2) / 2
+              const centerLng = (lng1 + lng2) / 2
+              
+              // 计算距离，调整缩放级别
+              const distance = this.calculateDistance(lat1, lng1, lat2, lng2)
+              let scale = 14
+              if (distance > 10000) scale = 11
+              else if (distance > 5000) scale = 12
+              else if (distance > 2000) scale = 13
+              else if (distance > 1000) scale = 14
+              else scale = 15
+              
+              this.mapCenter = {
+                latitude: centerLat,
+                longitude: centerLng
+              }
+              
+              // 更新地图缩放级别
+              this.mapScale = scale
+            }
+            
+            console.log('配送员位置已加载:', location)
+          }
+        } else {
+          console.log('获取配送员位置失败:', res?.message)
+        }
+      } catch (error) {
+        console.error('获取配送员位置失败:', error)
+      }
+    },
+    // 计算两点间距离（米）
+    calculateDistance(lat1, lng1, lat2, lng2) {
+      const R = 6371000 // 地球半径（米）
+      const dLat = (lat2 - lat1) * Math.PI / 180
+      const dLng = (lng2 - lng1) * Math.PI / 180
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2)
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+      return R * c
     },
     contactDelivery() {
       if (!this.orderDetail?.delivery_employee?.phone) {

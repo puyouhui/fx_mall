@@ -38,3 +38,17 @@ export function deleteEmployee(id) {
   })
 }
 
+export function getEmployeeLocations() {
+  return request({
+    url: '/admin/employee-locations',
+    method: 'get'
+  })
+}
+
+export function getEmployeeLocation(id) {
+  return request({
+    url: `/admin/employee-locations/${id}`,
+    method: 'get'
+  })
+}
+
