@@ -164,7 +164,33 @@ class Request {
     http.Response response, {
     T Function(dynamic)? parser,
   }) {
+    // 检查响应状态码
+    if (response.statusCode == 404) {
+      return ApiResponse<T>(
+        code: 404,
+        message: '接口不存在，请检查路径是否正确或后端服务是否已重启',
+      );
+    }
+
+    // 检查响应内容类型
+    final contentType = response.headers['content-type'] ?? '';
+    if (!contentType.contains('application/json') && response.body.isNotEmpty) {
+      // 如果不是 JSON 格式，可能是 HTML 错误页面
+      return ApiResponse<T>(
+        code: response.statusCode,
+        message: '服务器返回了非 JSON 格式的响应（可能是错误页面）',
+      );
+    }
+
     try {
+      // 如果响应体为空，返回空响应
+      if (response.body.isEmpty) {
+        return ApiResponse<T>(
+          code: response.statusCode,
+          message: '服务器返回空响应',
+        );
+      }
+
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final code = data['code'] as int? ?? response.statusCode;
       final message = data['message'] as String? ?? '请求失败';
@@ -189,9 +215,14 @@ class Request {
 
       return ApiResponse<T>(code: code, message: message, data: parsedData);
     } catch (e) {
+      // 如果解析失败，返回更详细的错误信息
+      String errorMessage = '响应解析失败: ${e.toString()}';
+      if (response.body.isNotEmpty && response.body.length < 200) {
+        errorMessage += '\n响应内容: ${response.body}';
+      }
       return ApiResponse<T>(
         code: response.statusCode,
-        message: '响应解析失败: ${e.toString()}',
+        message: errorMessage,
       );
     }
   }

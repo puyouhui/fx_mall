@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"sort"
@@ -70,6 +71,10 @@ func GetDeliveryOrders(c *gin.Context) {
 		where += " AND delivery_employee_code IS NULL"
 	}
 
+	// 过滤掉已锁定的订单（正在被修改的订单不能接单）
+	// 使用COALESCE处理NULL值，如果字段不存在会报错，需要在错误处理中处理
+	where += " AND COALESCE(is_locked, 0) = 0"
+
 	// 获取总数量
 	var total int
 	countQuery := "SELECT COUNT(*) FROM orders WHERE " + where
@@ -95,6 +100,18 @@ func GetDeliveryOrders(c *gin.Context) {
 
 	rows, err := database.DB.Query(query, args...)
 	if err != nil {
+		// 如果查询失败，可能是字段不存在，记录错误并返回
+		log.Printf("[GetDeliveryOrders] 查询订单列表失败: %v", err)
+		// 检查是否是字段不存在的错误
+		if strings.Contains(err.Error(), "is_locked") || strings.Contains(err.Error(), "Unknown column") {
+			log.Printf("[GetDeliveryOrders] 检测到is_locked字段可能不存在，请检查数据库迁移")
+			// 即使字段不存在，也不返回已锁定的订单，而是返回错误提示
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": "数据库字段缺失，请联系管理员检查is_locked字段是否存在",
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单列表失败: " + err.Error()})
 		return
 	}
@@ -571,6 +588,16 @@ func AcceptDeliveryOrder(c *gin.Context) {
 	// 验证订单状态
 	if order.Status != "pending_delivery" && order.Status != "pending" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能接待配送的订单"})
+		return
+	}
+
+	// 检查订单是否被锁定（正在修改中）
+	if order.IsLocked {
+		log.Printf("[AcceptDeliveryOrder] 订单 %d 已被锁定，锁定者: %v，无法接单", id, order.LockedBy)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "订单正在被修改中，暂时无法接单，请稍后再试",
+		})
 		return
 	}
 

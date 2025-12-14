@@ -3,6 +3,8 @@ import 'package:employees_app/utils/request.dart';
 import 'package:employees_app/pages/customer/customer_profile_page.dart';
 import 'package:employees_app/pages/customer/customer_detail_page.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
 
 /// 我的客户列表页面（销售员）
 class CustomerListPage extends StatefulWidget {
@@ -127,11 +129,16 @@ class _CustomerListPageState extends State<CustomerListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true, // 让body延伸到系统操作条下方
+      extendBodyBehindAppBar: true, // 让背景延伸到AppBar下方
       appBar: AppBar(
-        title: const Text('我的客户'),
+        title: const Text(
+          '我的客户',
+          style: TextStyle(color: Colors.white),
+        ),
         centerTitle: true,
-        backgroundColor: const Color(0xFF20CB6B),
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Container(
         decoration: const BoxDecoration(
@@ -510,11 +517,7 @@ class _CustomerListPageState extends State<CustomerListPage> {
                         child: TextButton.icon(
                           onPressed: phone.isEmpty
                               ? null
-                              : () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('请拨打：$phone')),
-                                  );
-                                },
+                              : () => _makePhoneCall(phone),
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
@@ -547,6 +550,29 @@ class _CustomerListPageState extends State<CustomerListPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _makePhoneCall(String phone) async {
+    try {
+      // 使用原生平台通道直接调用 Android Intent
+      const platform = MethodChannel('com.example.employees_app/phone');
+      await platform.invokeMethod('dialPhone', {'phone': phone});
+    } catch (e) {
+      // 如果原生方法失败，尝试使用 url_launcher
+      try {
+        final uri = Uri.parse('tel:$phone');
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (e2) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('拨打电话失败，请手动拨打: $phone'),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    }
   }
 }
 

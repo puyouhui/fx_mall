@@ -51,7 +51,7 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 	orderIDs := make([]int, 0, len(orders))
 	userIDSet := make(map[int]bool)
 	addressIDSet := make(map[int]bool)
-	
+
 	for _, order := range orders {
 		orderIDs = append(orderIDs, order.ID)
 		if !userIDSet[order.UserID] {
@@ -66,13 +66,13 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 
 	// 批量查询用户信息
 	usersMap, _ := model.GetMiniAppUsersByIDs(userIDs)
-	
+
 	// 批量查询地址信息
 	addressesMap, _ := model.GetAddressesByIDs(addressIDs)
-	
+
 	// 批量查询订单商品数量
 	itemCountsMap, _ := model.GetOrderItemCountsByOrderIDs(orderIDs)
-	
+
 	// 收集所有销售员代码
 	salesCodes := make([]string, 0)
 	salesCodeSet := make(map[string]bool)
@@ -82,7 +82,7 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 			salesCodeSet[user.SalesCode] = true
 		}
 	}
-	
+
 	// 批量查询销售员信息
 	employeesMap, _ := model.GetEmployeesByEmployeeCodes(salesCodes)
 
@@ -90,23 +90,23 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 	ordersWithDetails := make([]map[string]interface{}, 0, len(orders))
 	for _, order := range orders {
 		orderData := map[string]interface{}{
-			"id":                  order.ID,
-			"order_number":        order.OrderNumber,
-			"user_id":             order.UserID,
-			"address_id":          order.AddressID,
-			"status":              order.Status,
-			"goods_amount":        order.GoodsAmount,
-			"delivery_fee":        order.DeliveryFee,
-			"points_discount":     order.PointsDiscount,
-			"coupon_discount":     order.CouponDiscount,
-			"total_amount":        order.TotalAmount,
-			"remark":              order.Remark,
+			"id":                    order.ID,
+			"order_number":          order.OrderNumber,
+			"user_id":               order.UserID,
+			"address_id":            order.AddressID,
+			"status":                order.Status,
+			"goods_amount":          order.GoodsAmount,
+			"delivery_fee":          order.DeliveryFee,
+			"points_discount":       order.PointsDiscount,
+			"coupon_discount":       order.CouponDiscount,
+			"total_amount":          order.TotalAmount,
+			"remark":                order.Remark,
 			"out_of_stock_strategy": order.OutOfStockStrategy,
-			"trust_receipt":       order.TrustReceipt,
-			"hide_price":          order.HidePrice,
+			"trust_receipt":         order.TrustReceipt,
+			"hide_price":            order.HidePrice,
 			"require_phone_contact": order.RequirePhoneContact,
-			"created_at":          order.CreatedAt,
-			"updated_at":          order.UpdatedAt,
+			"created_at":            order.CreatedAt,
+			"updated_at":            order.UpdatedAt,
 		}
 
 		// 获取用户信息（从批量查询结果中获取）
@@ -119,7 +119,7 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 				"user_type":  user.UserType,
 				"sales_code": user.SalesCode,
 			}
-			
+
 			// 获取销售员信息（从批量查询结果中获取）
 			if user.SalesCode != "" {
 				if employee, ok := employeesMap[user.SalesCode]; ok && employee != nil {
@@ -131,10 +131,10 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 					}
 				}
 			}
-			
+
 			orderData["user"] = userData
 		}
-		
+
 		// 获取订单商品数量（从批量查询结果中获取）
 		if itemCount, ok := itemCountsMap[order.ID]; ok {
 			orderData["item_count"] = itemCount
@@ -161,7 +161,7 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 			SELECT delivery_fee_calculation, order_profit, net_profit
 			FROM orders WHERE id = ?
 		`, order.ID).Scan(&deliveryFeeCalcJSON, &orderProfit, &netProfit)
-		
+
 		if err == nil {
 			// 解析配送费计算结果JSON
 			if deliveryFeeCalcJSON.Valid && deliveryFeeCalcJSON.String != "" {
@@ -170,7 +170,7 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 					orderData["delivery_fee_calculation"] = deliveryFeeResult
 				}
 			}
-			
+
 			// 读取利润信息
 			if orderProfit.Valid {
 				orderData["order_profit"] = orderProfit.Float64
@@ -179,7 +179,7 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 				orderData["net_profit"] = netProfit.Float64
 			}
 		}
-		
+
 		// 如果订单中没有存储的数据，则尝试计算（这种情况应该很少）
 		if _, hasCalc := orderData["delivery_fee_calculation"]; !hasCalc {
 			calculator, calcErr := model.NewDeliveryFeeCalculator(order.ID)
@@ -187,15 +187,15 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 				deliveryFeeResult, calcErr := calculator.Calculate(true) // true表示管理员视图
 				if calcErr == nil {
 					orderData["delivery_fee_calculation"] = deliveryFeeResult
-					
+
 					// 计算订单利润
 					orderProfit := calculator.CalculateOrderProfit()
 					orderData["order_profit"] = orderProfit
-					
+
 					// 计算减去配送费后的利润（平台实际利润）
 					netProfit := orderProfit - deliveryFeeResult.TotalPlatformCost
 					orderData["net_profit"] = netProfit
-					
+
 					// 异步存储计算结果，下次查询时可以直接使用
 					go func() {
 						_ = model.CalculateAndStoreOrderProfit(order.ID)
@@ -253,11 +253,11 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 	userData := map[string]interface{}{}
 	if user != nil {
 		userData = map[string]interface{}{
-			"id":         user.ID,
-			"user_code":  user.UserCode,
-			"name":       user.Name,
-			"phone":      user.Phone,
-			"user_type":  user.UserType,
+			"id":        user.ID,
+			"user_code": user.UserCode,
+			"name":      user.Name,
+			"phone":     user.Phone,
+			"user_type": user.UserType,
 		}
 	}
 
@@ -277,33 +277,33 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 	// 从订单表中读取已存储的配送费计算结果和利润信息（避免实时计算）
 	deliveryFeeCalculation := map[string]interface{}{}
 	var orderProfit, netProfit float64
-	
+
 	var deliveryFeeCalcJSON sql.NullString
 	var orderProfitVal, netProfitVal sql.NullFloat64
 	err = database.DB.QueryRow(`
 		SELECT delivery_fee_calculation, order_profit, net_profit
 		FROM orders WHERE id = ?
 	`, id).Scan(&deliveryFeeCalcJSON, &orderProfitVal, &netProfitVal)
-	
+
 	if err == nil {
 		// 解析配送费计算结果JSON
 		if deliveryFeeCalcJSON.Valid && deliveryFeeCalcJSON.String != "" {
 			var deliveryFeeResult model.DeliveryFeeCalculationResult
 			if json.Unmarshal([]byte(deliveryFeeCalcJSON.String), &deliveryFeeResult) == nil {
 				deliveryFeeCalculation = map[string]interface{}{
-					"base_fee":                  deliveryFeeResult.BaseFee,
-					"isolated_fee":             deliveryFeeResult.IsolatedFee,
-					"item_fee":                 deliveryFeeResult.ItemFee,
-					"urgent_fee":               deliveryFeeResult.UrgentFee,
-					"weather_fee":              deliveryFeeResult.WeatherFee,
+					"base_fee":                    deliveryFeeResult.BaseFee,
+					"isolated_fee":                deliveryFeeResult.IsolatedFee,
+					"item_fee":                    deliveryFeeResult.ItemFee,
+					"urgent_fee":                  deliveryFeeResult.UrgentFee,
+					"weather_fee":                 deliveryFeeResult.WeatherFee,
 					"delivery_fee_without_profit": deliveryFeeResult.DeliveryFeeWithoutProfit,
-					"profit_share":             deliveryFeeResult.ProfitShare,
-					"rider_payable_fee":        deliveryFeeResult.RiderPayableFee,
-					"total_platform_cost":      deliveryFeeResult.TotalPlatformCost,
+					"profit_share":                deliveryFeeResult.ProfitShare,
+					"rider_payable_fee":           deliveryFeeResult.RiderPayableFee,
+					"total_platform_cost":         deliveryFeeResult.TotalPlatformCost,
 				}
 			}
 		}
-		
+
 		// 读取利润信息
 		if orderProfitVal.Valid {
 			orderProfit = orderProfitVal.Float64
@@ -312,7 +312,7 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 			netProfit = netProfitVal.Float64
 		}
 	}
-	
+
 	// 如果订单中没有存储的数据，则尝试计算（这种情况应该很少）
 	if len(deliveryFeeCalculation) == 0 {
 		calculator, calcErr := model.NewDeliveryFeeCalculator(id)
@@ -320,23 +320,23 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 			deliveryFeeResult, calcErr := calculator.Calculate(true) // true表示管理员视图
 			if calcErr == nil {
 				deliveryFeeCalculation = map[string]interface{}{
-					"base_fee":                  deliveryFeeResult.BaseFee,
-					"isolated_fee":             deliveryFeeResult.IsolatedFee,
-					"item_fee":                 deliveryFeeResult.ItemFee,
-					"urgent_fee":               deliveryFeeResult.UrgentFee,
-					"weather_fee":              deliveryFeeResult.WeatherFee,
+					"base_fee":                    deliveryFeeResult.BaseFee,
+					"isolated_fee":                deliveryFeeResult.IsolatedFee,
+					"item_fee":                    deliveryFeeResult.ItemFee,
+					"urgent_fee":                  deliveryFeeResult.UrgentFee,
+					"weather_fee":                 deliveryFeeResult.WeatherFee,
 					"delivery_fee_without_profit": deliveryFeeResult.DeliveryFeeWithoutProfit,
-					"profit_share":             deliveryFeeResult.ProfitShare,
-					"rider_payable_fee":        deliveryFeeResult.RiderPayableFee,
-					"total_platform_cost":      deliveryFeeResult.TotalPlatformCost,
+					"profit_share":                deliveryFeeResult.ProfitShare,
+					"rider_payable_fee":           deliveryFeeResult.RiderPayableFee,
+					"total_platform_cost":         deliveryFeeResult.TotalPlatformCost,
 				}
-				
+
 				// 计算订单利润
 				orderProfit = calculator.CalculateOrderProfit()
-				
+
 				// 计算减去配送费后的利润（平台实际利润）
 				netProfit = orderProfit - deliveryFeeResult.TotalPlatformCost
-				
+
 				// 异步存储计算结果，下次查询时可以直接使用
 				go func() {
 					_ = model.CalculateAndStoreOrderProfit(id)
@@ -348,13 +348,13 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,
 		"data": gin.H{
-			"order":                  order,
-			"order_items":            items,
-			"user":                   userData,
-			"address":                addressData,
+			"order":                    order,
+			"order_items":              items,
+			"user":                     userData,
+			"address":                  addressData,
 			"delivery_fee_calculation": deliveryFeeCalculation,
-			"order_profit":           orderProfit,
-			"net_profit":             netProfit,
+			"order_profit":             orderProfit,
+			"net_profit":               netProfit,
 		},
 		"message": "获取成功",
 	})
@@ -435,12 +435,12 @@ func isValidStatusTransition(currentStatus, newStatus string) bool {
 	if currentStatus == "pending" {
 		currentStatus = "pending_delivery"
 	}
-	
+
 	// 允许的状态流转
 	transitions := map[string][]string{
 		"pending_delivery": {"pending_pickup", "cancelled"},
 		"pending_pickup":   {"delivering", "cancelled"},
-		"delivering":       {"delivered", "cancelled"},
+		"delivering":       {"delivered"}, // 配送中不能取消
 		"delivered":        {"paid"},
 		"shipped":          {"paid"}, // 兼容旧状态 shipped -> paid
 		"paid":             {},       // 已收款是最终状态，不能再流转
@@ -461,4 +461,3 @@ func isValidStatusTransition(currentStatus, newStatus string) bool {
 
 	return false
 }
-

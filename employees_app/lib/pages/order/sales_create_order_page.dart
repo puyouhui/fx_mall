@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:employees_app/utils/request.dart';
 import 'package:employees_app/pages/customer/customer_list_page.dart';
 import 'package:employees_app/pages/order/sales_create_order_page_coupon.dart';
+import 'package:employees_app/pages/order/order_detail_page.dart';
 
 /// 销售开单页面（员工代客下单）
 /// 支持：
@@ -30,6 +31,9 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
 
   List<dynamic> _items = []; // 采购单商品
   Map<String, dynamic>? _summary; // 运费汇总
+  Map<String, dynamic>? _riderDeliveryFeePreview; // 配送员配送费预览
+  List<dynamic>?
+  _purchaseListBackup; // 用户原来的采购单备份（从GetSalesCustomerPurchaseList获取）
 
   List<dynamic> _coupons = []; // 客户优惠券列表
   Map<String, dynamic>? _selectedCoupon; // 选中的优惠券
@@ -41,6 +45,7 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
   bool _trustReceipt = false; // 信任签收
   bool _hidePrice = false; // 隐藏价格
   bool _requirePhoneContact = true; // 配送时电话联系（默认开启）
+  bool _isUrgent = false; // 是否加急
 
   /// 圆形加减按钮
   Widget _buildRoundQtyButton({
@@ -185,6 +190,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
     final addrList = (detail['addresses'] as List<dynamic>? ?? []);
     final items = (purchase['items'] as List<dynamic>? ?? []);
     final summary = purchase['summary'] as Map<String, dynamic>?;
+    // 保存备份数据（用户进入开单页面时的原始采购单，不包含销售员后续的操作）
+    final backup = (purchase['backup'] as List<dynamic>? ?? []);
 
     int? selectedAddressId;
     if (addrList.isNotEmpty) {
@@ -210,8 +217,15 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       _summary = summary;
       _coupons = coupons;
       _selectedCoupon = null; // 不默认选中优惠券
+      // 只在第一次加载时保存备份（如果备份为空），后续调用不覆盖备份
+      // 这样确保备份是用户进入开单页面时的原始状态，不包含销售员后续的任何操作
+      if (_purchaseListBackup == null || _purchaseListBackup!.isEmpty) {
+        _purchaseListBackup = backup; // 保存备份数据（用户进入开单页面时的原始采购单）
+      }
       _isLoading = false;
     });
+    // 加载配送员配送费预览
+    _loadRiderDeliveryFeePreview();
   }
 
   Future<void> _submitOrder() async {
@@ -251,11 +265,14 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       'hide_price': _hidePrice,
       'require_phone_contact': _requirePhoneContact,
       if (_selectedCoupon != null) 'coupon_id': _getCouponId(_selectedCoupon!),
+      if (_purchaseListBackup != null)
+        'purchase_list_backup': _purchaseListBackup, // 传入备份数据
     };
 
-    final resp = await Request.post<dynamic>(
+    final resp = await Request.post<Map<String, dynamic>>(
       '/employee/sales/orders',
       body: body,
+      parser: (data) => data as Map<String, dynamic>,
     );
 
     if (!mounted) return;
@@ -265,10 +282,31 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
     });
 
     if (resp.isSuccess) {
+      // 获取订单ID
+      int? orderId;
+      if (resp.data != null) {
+        final order = resp.data!['order'] as Map<String, dynamic>?;
+        if (order != null) {
+          orderId = order['id'] as int?;
+        }
+      }
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('创建订单成功')));
-      Navigator.of(context).pop(true);
+
+      // 如果有订单ID，跳转到订单详情页面
+      if (orderId != null) {
+        // 先关闭当前页面
+        Navigator.of(context).pop();
+        // 然后跳转到订单详情页面
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => OrderDetailPage(orderId: orderId!)),
+        );
+      } else {
+        // 如果没有订单ID，只返回上一页
+        Navigator.of(context).pop(true);
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -341,6 +379,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
                               _buildOrderOptionsCard(),
                               const SizedBox(height: 12),
                               _buildRemarkCard(),
+                              const SizedBox(height: 12),
+                              _buildRiderDeliveryFeeCard(),
                             ],
                           ],
                         ),
@@ -525,6 +565,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       setState(() {
         _selectedAddressId = selectedId;
       });
+      // 更新配送员配送费预览
+      _loadRiderDeliveryFeePreview();
     }
   }
 
@@ -2114,6 +2156,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
         _items = data['items'] as List<dynamic>? ?? [];
         _summary = data['summary'] as Map<String, dynamic>?;
       });
+      // 更新配送员配送费预览
+      _loadRiderDeliveryFeePreview();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2139,12 +2183,155 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
         _items = data['items'] as List<dynamic>? ?? [];
         _summary = data['summary'] as Map<String, dynamic>?;
       });
+      // 更新配送员配送费预览
+      _loadRiderDeliveryFeePreview();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(resp.message.isNotEmpty ? resp.message : '删除商品失败'),
         ),
       );
+    }
+  }
+
+  /// 构建配送员配送费卡片（独立模块，页面底部）
+  Widget _buildRiderDeliveryFeeCard() {
+    if (_customerId == null ||
+        _items.isEmpty ||
+        _riderDeliveryFeePreview == null) {
+      return const SizedBox.shrink();
+    }
+
+    final preview = _riderDeliveryFeePreview!;
+    final riderPayableFee =
+        (preview['rider_payable_fee'] as num?)?.toDouble() ?? 0.0;
+    final baseFee = (preview['base_fee'] as num?)?.toDouble() ?? 0.0;
+    final isolatedFee = (preview['isolated_fee'] as num?)?.toDouble() ?? 0.0;
+    final itemFee = (preview['item_fee'] as num?)?.toDouble() ?? 0.0;
+    final urgentFee = (preview['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+    final weatherFee = (preview['weather_fee'] as num?)?.toDouble() ?? 0.0;
+    final profitShare = (preview['profit_share'] as num?)?.toDouble() ?? 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F6FA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE5E7F0), width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.motorcycle, size: 14, color: Colors.grey[600]),
+              const SizedBox(width: 6),
+              Text(
+                '配送员配送费预估',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '配送员实际所得',
+                style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+              ),
+              Text(
+                '¥${riderPayableFee.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                ),
+              ),
+            ],
+          ),
+          if (riderPayableFee > 0) ...[
+            const SizedBox(height: 6),
+            Divider(height: 1, thickness: 0.5, color: Colors.grey[300]),
+            const SizedBox(height: 6),
+            _buildFeeDetailRow('基础配送费', baseFee),
+            if (isolatedFee > 0) _buildFeeDetailRow('孤立订单补贴', isolatedFee),
+            if (itemFee > 0) _buildFeeDetailRow('件数补贴', itemFee),
+            if (urgentFee > 0) _buildFeeDetailRow('加急补贴', urgentFee),
+            if (weatherFee > 0) _buildFeeDetailRow('天气补贴', weatherFee),
+            if (profitShare > 0) _buildFeeDetailRow('利润分成', profitShare),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 构建费用明细行
+  Widget _buildFeeDetailRow(String label, double amount) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+          Text(
+            '¥${amount.toStringAsFixed(2)}',
+            style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 加载配送员配送费预览
+  Future<void> _loadRiderDeliveryFeePreview() async {
+    if (_customerId == null || _items.isEmpty) {
+      setState(() {
+        _riderDeliveryFeePreview = null;
+      });
+      return;
+    }
+
+    // 需要地址ID才能计算孤立订单补贴和天气补贴
+    if (_selectedAddressId == null) {
+      setState(() {
+        _riderDeliveryFeePreview = null;
+      });
+      return;
+    }
+
+    try {
+      final resp = await Request.get<Map<String, dynamic>>(
+        '/employee/sales/customers/$_customerId/rider-delivery-fee-preview',
+        queryParams: {
+          'address_id': _selectedAddressId.toString(),
+          'is_urgent': _isUrgent.toString(),
+        },
+        parser: (data) => data as Map<String, dynamic>,
+      );
+
+      if (!mounted) return;
+
+      if (resp.isSuccess && resp.data != null) {
+        setState(() {
+          _riderDeliveryFeePreview = resp.data;
+        });
+      } else {
+        setState(() {
+          _riderDeliveryFeePreview = null;
+        });
+      }
+    } catch (e) {
+      // 静默失败，不影响主流程
+      if (mounted) {
+        setState(() {
+          _riderDeliveryFeePreview = null;
+        });
+      }
     }
   }
 
@@ -2163,15 +2350,23 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       ),
     );
 
-    if (!mounted || result == null) return;
+    if (!mounted) return;
 
-    final items = result['items'] as List<dynamic>?;
-    final summary = result['summary'] as Map<String, dynamic>?;
-    if (items != null) {
-      setState(() {
-        _items = items;
-        _summary = summary;
-      });
+    // 如果返回了数据，直接使用返回的数据更新
+    if (result != null) {
+      final items = result['items'] as List<dynamic>?;
+      final summary = result['summary'] as Map<String, dynamic>?;
+      if (items != null) {
+        setState(() {
+          _items = items;
+          _summary = summary;
+        });
+        // 更新配送员配送费预览
+        _loadRiderDeliveryFeePreview();
+      }
+    } else {
+      // 如果没有返回数据（用户可能直接返回），重新加载数据以确保同步
+      await _loadData();
     }
   }
 }

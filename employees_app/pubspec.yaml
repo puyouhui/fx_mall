@@ -59,6 +59,13 @@ dependencies:
   # 日期格式化
   intl: ^0.19.0
 
+  # 地图组件（flutter_map）
+  flutter_map: ^8.0.0
+  latlong2: ^0.9.1
+
+  # URL启动器（拨打电话等）
+  url_launcher: ^6.3.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

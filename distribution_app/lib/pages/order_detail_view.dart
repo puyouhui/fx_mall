@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_location_marker/flutter_map_location_marker.dart';
 import 'package:latlong2/latlong.dart';
@@ -1522,27 +1523,23 @@ class _OrderDetailViewState extends State<OrderDetailView> {
       }
 
       try {
-        final uri = Uri.parse('tel:$phone');
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri);
-        } else {
+        // 使用原生平台通道直接调用 Android Intent
+        const platform = MethodChannel('com.example.distribution_app/phone');
+        await platform.invokeMethod('dialPhone', {'phone': phone});
+      } catch (e) {
+        // 如果原生方法失败，尝试使用 url_launcher
+        try {
+          final uri = Uri.parse('tel:$phone');
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } catch (e2) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('无法拨打电话'),
-                duration: Duration(seconds: 2),
+              SnackBar(
+                content: Text('拨打电话失败，请手动拨打: $phone'),
+                duration: const Duration(seconds: 2),
               ),
             );
           }
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('拨打电话失败: $e'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
         }
       }
     }
@@ -2570,27 +2567,23 @@ class _OrderDetailViewState extends State<OrderDetailView> {
       }
 
       try {
-        final uri = Uri.parse('tel:$phone');
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri);
-        } else {
+        // 使用原生平台通道直接调用 Android Intent
+        const platform = MethodChannel('com.example.distribution_app/phone');
+        await platform.invokeMethod('dialPhone', {'phone': phone});
+      } catch (e) {
+        // 如果原生方法失败，尝试使用 url_launcher
+        try {
+          final uri = Uri.parse('tel:$phone');
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } catch (e2) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('无法拨打电话'),
-                duration: Duration(seconds: 2),
+              SnackBar(
+                content: Text('拨打电话失败，请手动拨打: $phone'),
+                duration: const Duration(seconds: 2),
               ),
             );
           }
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('拨打电话失败: $e'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
         }
       }
     }

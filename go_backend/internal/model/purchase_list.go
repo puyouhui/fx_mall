@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"go_backend/internal/database"
@@ -114,6 +115,44 @@ func GetPurchaseListItemsByUserID(userID int) ([]PurchaseListItem, error) {
 	}
 
 	return items, nil
+}
+
+// BackupPurchaseList 备份用户的采购单（返回采购单的副本）
+func BackupPurchaseList(userID int) ([]PurchaseListItem, error) {
+	return GetPurchaseListItemsByUserID(userID)
+}
+
+// RestorePurchaseList 恢复用户的采购单（从备份恢复）
+func RestorePurchaseList(userID int, backup []PurchaseListItem) error {
+	// 先清空当前采购单
+	_, err := database.DB.Exec("DELETE FROM purchase_list_items WHERE user_id = ?", userID)
+	if err != nil {
+		return fmt.Errorf("清空采购单失败: %w", err)
+	}
+
+	// 恢复备份的采购单
+	for _, item := range backup {
+		specBytes, err := json.Marshal(item.SpecSnapshot)
+		if err != nil {
+			log.Printf("[RestorePurchaseList] 序列化规格快照失败: 商品ID=%d, 错误=%v", item.ProductID, err)
+			continue
+		}
+		isSpecial := 0
+		if item.IsSpecial {
+			isSpecial = 1
+		}
+
+		_, err = database.DB.Exec(`
+			INSERT INTO purchase_list_items (user_id, product_id, product_name, product_image, spec_name, spec_snapshot, quantity, is_special, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+		`, item.UserID, item.ProductID, item.ProductName, item.ProductImage, item.SpecName, string(specBytes), item.Quantity, isSpecial)
+		if err != nil {
+			log.Printf("[RestorePurchaseList] 恢复采购单项失败: 商品ID=%d, 错误=%v", item.ProductID, err)
+			continue
+		}
+	}
+
+	return nil
 }
 
 // UpdatePurchaseListItemQuantity 更新采购单项数量

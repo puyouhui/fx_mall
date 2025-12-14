@@ -860,6 +860,70 @@ func InitDB() error {
 			}
 		}
 
+		// 检查 is_locked 字段（订单锁定，防止修改时被接单）
+		var isLockedExists int
+		checkIsLockedQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'is_locked'`
+		if err := DB.QueryRow(checkIsLockedQuery).Scan(&isLockedExists); err == nil && isLockedExists == 0 {
+			// 先检查settlement_date是否存在，如果不存在则添加到表末尾
+			var settlementDateExists int
+			checkSettlementDateQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'settlement_date'`
+			var alterSQL string
+			if err := DB.QueryRow(checkSettlementDateQuery).Scan(&settlementDateExists); err == nil && settlementDateExists > 0 {
+				alterSQL = `ALTER TABLE orders ADD COLUMN is_locked TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否被锁定（修改中）' AFTER settlement_date`
+			} else {
+				alterSQL = `ALTER TABLE orders ADD COLUMN is_locked TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否被锁定（修改中）'`
+			}
+			if _, err = DB.Exec(alterSQL); err != nil {
+				log.Printf("添加is_locked字段失败: %v", err)
+			} else {
+				log.Println("已添加is_locked字段到orders表")
+			}
+		}
+
+		// 检查 locked_by 字段（锁定者员工码）
+		var lockedByExists int
+		checkLockedByQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'locked_by'`
+		if err := DB.QueryRow(checkLockedByQuery).Scan(&lockedByExists); err == nil && lockedByExists == 0 {
+			var alterSQL string
+			var isLockedExistsCheck int
+			checkIsLockedExistsQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'is_locked'`
+			if err := DB.QueryRow(checkIsLockedExistsQuery).Scan(&isLockedExistsCheck); err == nil && isLockedExistsCheck > 0 {
+				alterSQL = `ALTER TABLE orders ADD COLUMN locked_by VARCHAR(10) DEFAULT NULL COMMENT '锁定者员工码' AFTER is_locked`
+			} else {
+				alterSQL = `ALTER TABLE orders ADD COLUMN locked_by VARCHAR(10) DEFAULT NULL COMMENT '锁定者员工码'`
+			}
+			if _, err = DB.Exec(alterSQL); err != nil {
+				log.Printf("添加locked_by字段失败: %v", err)
+			} else {
+				log.Println("已添加locked_by字段到orders表")
+			}
+		}
+
+		// 检查 locked_at 字段（锁定时间）
+		var lockedAtExists int
+		checkLockedAtQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'locked_at'`
+		if err := DB.QueryRow(checkLockedAtQuery).Scan(&lockedAtExists); err == nil && lockedAtExists == 0 {
+			var alterSQL string
+			var lockedByExistsCheck int
+			checkLockedByExistsQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'locked_by'`
+			if err := DB.QueryRow(checkLockedByExistsQuery).Scan(&lockedByExistsCheck); err == nil && lockedByExistsCheck > 0 {
+				alterSQL = `ALTER TABLE orders ADD COLUMN locked_at DATETIME DEFAULT NULL COMMENT '锁定时间' AFTER locked_by`
+			} else {
+				alterSQL = `ALTER TABLE orders ADD COLUMN locked_at DATETIME DEFAULT NULL COMMENT '锁定时间'`
+			}
+			if _, err = DB.Exec(alterSQL); err != nil {
+				log.Printf("添加locked_at字段失败: %v", err)
+			} else {
+				log.Println("已添加locked_at字段到orders表")
+			}
+		}
+
 		// 检查 order_items 表的 is_picked 字段
 		var isPickedExists int
 		checkIsPickedQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 

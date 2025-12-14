@@ -103,7 +103,12 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
 
         _nameController.text = user['name'] as String? ?? '';
         _phoneController.text = user['phone'] as String? ?? '';
-        _selectedStoreType = user['store_type'] as String?;
+        // 确保店铺类型在选项列表中，否则设为 null
+        final storeType = user['store_type'] as String?;
+        _selectedStoreType = (storeType != null && 
+            _storeTypeOptions.contains(storeType)) 
+            ? storeType 
+            : null;
         _userType = user['user_type'] as String?;
 
         _addrContactController.text =
@@ -903,13 +908,16 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true, // 让背景延伸到AppBar下方
       appBar: AppBar(
-        title: const Text('新客资料完善', style: TextStyle(color: Colors.white)),
+        title: const Text(
+          '新客资料完善',
+          style: TextStyle(color: Colors.white),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      extendBodyBehindAppBar: true,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -1070,11 +1078,7 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
                                   const SizedBox(height: 12),
                                   // 店铺类型（与小程序一致）
                                   DropdownButtonFormField<String>(
-                                    initialValue:
-                                        (_selectedStoreType != null &&
-                                            _selectedStoreType!.isNotEmpty)
-                                        ? _selectedStoreType
-                                        : null,
+                                    value: _selectedStoreType,
                                     decoration: InputDecoration(
                                       labelText: '店铺类型（可选）',
                                       filled: true,

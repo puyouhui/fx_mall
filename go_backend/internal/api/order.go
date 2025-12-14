@@ -3,8 +3,10 @@ package api
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"go_backend/internal/database"
 	"go_backend/internal/model"
@@ -197,6 +199,54 @@ func CreateOrderFromCart(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建订单失败: " + err.Error()})
 		return
+	}
+
+	// 创建订单成功后，使用优惠券（标记为已使用并关联订单ID）
+	// 处理免配送费券
+	if appliedCombination.DeliveryFeeCoupon != nil {
+		if err := model.UseCoupon(user.ID, appliedCombination.DeliveryFeeCoupon.CouponID, order.ID); err != nil {
+			// 如果使用失败，记录错误但不影响订单创建
+			log.Printf("标记免配送费券为已使用失败 (用户ID: %d, 优惠券ID: %d, 订单ID: %d): %v", user.ID, appliedCombination.DeliveryFeeCoupon.CouponID, order.ID, err)
+		}
+	}
+	// 处理金额券
+	if appliedCombination.AmountCoupon != nil {
+		if err := model.UseCoupon(user.ID, appliedCombination.AmountCoupon.CouponID, order.ID); err != nil {
+			// 如果使用失败，记录错误但不影响订单创建
+			log.Printf("标记金额券为已使用失败 (用户ID: %d, 优惠券ID: %d, 订单ID: %d): %v", user.ID, appliedCombination.AmountCoupon.CouponID, order.ID, err)
+		}
+	}
+
+	// 小程序用户自己下单后，删除已下单的商品（不备份，直接删除）
+	// 如果指定了 item_ids，只删除指定的商品；否则删除所有商品（因为使用了所有商品）
+	if len(req.ItemIDs) > 0 {
+		// 删除指定的商品
+		itemIDList := make([]interface{}, 0, len(req.ItemIDs))
+		for _, id := range req.ItemIDs {
+			if id > 0 {
+				itemIDList = append(itemIDList, id)
+			}
+		}
+		if len(itemIDList) > 0 {
+			placeholders := strings.Repeat("?,", len(itemIDList))
+			placeholders = placeholders[:len(placeholders)-1] // 移除最后一个逗号
+			query := fmt.Sprintf("DELETE FROM purchase_list_items WHERE user_id = ? AND id IN (%s)", placeholders)
+			args := append([]interface{}{user.ID}, itemIDList...)
+			_, err = database.DB.Exec(query, args...)
+			if err != nil {
+				log.Printf("[CreateOrderFromCart] 删除已下单商品失败: %v", err)
+			} else {
+				log.Printf("[CreateOrderFromCart] 成功删除已下单商品，删除商品数量: %d", len(itemIDList))
+			}
+		}
+	} else {
+		// 如果没有指定 item_ids，删除所有商品（因为创建订单时使用了所有商品）
+		_, err = database.DB.Exec("DELETE FROM purchase_list_items WHERE user_id = ?", user.ID)
+		if err != nil {
+			log.Printf("[CreateOrderFromCart] 清空采购单失败: %v", err)
+		} else {
+			log.Printf("[CreateOrderFromCart] 成功清空采购单")
+		}
 	}
 
 	// 返回创建成功的订单概要

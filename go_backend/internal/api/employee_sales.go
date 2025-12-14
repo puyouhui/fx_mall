@@ -2,6 +2,8 @@ package api
 
 import (
 	"database/sql"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -295,11 +297,27 @@ func GetSalesOrderDetail(c *gin.Context) {
 	addressData := map[string]interface{}{}
 	if address != nil {
 		addressData = map[string]interface{}{
-			"id":      address.ID,
-			"name":    address.Name,
-			"contact": address.Contact,
-			"phone":   address.Phone,
-			"address": address.Address,
+			"id":        address.ID,
+			"name":      address.Name,
+			"contact":   address.Contact,
+			"phone":     address.Phone,
+			"address":   address.Address,
+			"latitude":  address.Latitude,
+			"longitude": address.Longitude,
+		}
+	}
+
+	// 获取配送员信息（如果有）
+	deliveryEmployeeData := map[string]interface{}{}
+	if order.DeliveryEmployeeCode != nil && *order.DeliveryEmployeeCode != "" {
+		deliveryEmployee, err := model.GetEmployeeByEmployeeCode(*order.DeliveryEmployeeCode)
+		if err == nil && deliveryEmployee != nil {
+			deliveryEmployeeData = map[string]interface{}{
+				"id":            deliveryEmployee.ID,
+				"employee_code": deliveryEmployee.EmployeeCode,
+				"name":          deliveryEmployee.Name,
+				"phone":         deliveryEmployee.Phone,
+			}
 		}
 	}
 
@@ -316,12 +334,726 @@ func GetSalesOrderDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,
 		"data": gin.H{
-			"order":       order,
-			"order_items": items,
-			"address":     addressData,
-			"user":        userData,
+			"order":             order,
+			"order_items":       items,
+			"address":           addressData,
+			"user":              userData,
+			"delivery_employee": deliveryEmployeeData,
 		},
 		"message": "获取成功",
+	})
+}
+
+// LockOrderForEdit 锁定订单用于修改（防止被接单）
+func LockOrderForEdit(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+	if !employee.IsSales {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是销售员，无权访问此功能"})
+		return
+	}
+
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
+		return
+	}
+
+	// 获取订单并校验权限
+	order, err := model.GetOrderByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单失败: " + err.Error()})
+		return
+	}
+	if order == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
+		return
+	}
+
+	// 校验客户归属
+	user, err := model.GetMiniAppUserByID(order.UserID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "客户不存在"})
+		return
+	}
+	if user.SalesCode != employee.EmployeeCode {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权修改该订单"})
+		return
+	}
+
+	// 锁定订单
+	err = model.LockOrder(id, employee.EmployeeCode)
+	if err != nil {
+		log.Printf("[LockOrderForEdit] 锁定订单失败: 订单ID=%d, 员工=%s, 错误=%v", id, employee.EmployeeCode, err)
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+
+	// 验证锁定是否成功
+	lockedOrder, err := model.GetOrderByID(id)
+	if err != nil || lockedOrder == nil {
+		log.Printf("[LockOrderForEdit] 验证锁定状态失败: 订单ID=%d, 错误=%v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "验证锁定状态失败"})
+		return
+	}
+	if !lockedOrder.IsLocked {
+		log.Printf("[LockOrderForEdit] 订单锁定失败: 订单ID=%d, is_locked=%v", id, lockedOrder.IsLocked)
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "订单锁定失败，请重试"})
+		return
+	}
+
+	log.Printf("[LockOrderForEdit] 订单锁定成功: 订单ID=%d, 锁定者=%s, is_locked=%v", id, employee.EmployeeCode, lockedOrder.IsLocked)
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "订单已锁定，可以开始修改",
+	})
+}
+
+// UnlockOrderAfterEdit 修改完成后解锁订单
+func UnlockOrderAfterEdit(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+	if !employee.IsSales {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是销售员，无权访问此功能"})
+		return
+	}
+
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
+		return
+	}
+
+	// 解锁订单
+	err = model.UnlockOrder(id, employee.EmployeeCode)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "订单已解锁",
+	})
+}
+
+// SyncOrderItemsToPurchaseList 将订单商品同步到采购单（用于修改订单）
+func SyncOrderItemsToPurchaseList(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+	if !employee.IsSales {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是销售员，无权访问此功能"})
+		return
+	}
+
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
+		return
+	}
+
+	// 获取订单并校验权限
+	order, err := model.GetOrderByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单失败: " + err.Error()})
+		return
+	}
+	if order == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
+		return
+	}
+
+	// 验证客户归属
+	user, err := model.GetMiniAppUserByID(order.UserID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "客户不存在"})
+		return
+	}
+	if user.SalesCode != employee.EmployeeCode {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权访问该订单"})
+		return
+	}
+
+	// 获取订单商品
+	orderItems, err := model.GetOrderItemsByOrderID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单商品失败: " + err.Error()})
+		return
+	}
+
+	if len(orderItems) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "订单没有商品，无需同步",
+			"data":    gin.H{"items": []interface{}{}, "summary": nil},
+		})
+		return
+	}
+
+	// 修改订单时，不直接修改用户的采购单，而是创建一个临时的采购单视图
+	// 将订单商品添加到采购单（用于修改订单时显示和编辑）
+	// 在同步订单商品到采购单之前，先备份用户的原始采购单（用于修改订单完成后恢复）
+	// 注意：即使采购单为空（比如用户之前已经下过单），也要备份，这样恢复时才能正确恢复空状态
+	userPurchaseListBackup, err := model.BackupPurchaseList(order.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "备份采购单失败: " + err.Error()})
+		return
+	}
+	log.Printf("[SyncOrderItemsToPurchaseList] 备份采购单，备份商品数量: %d", len(userPurchaseListBackup))
+
+	// 先清空该用户的采购单（用于修改订单）
+	// 注意：这里清空的是用户当前的采购单，可能是空的（如果用户之前已经下过单），也可能包含用户在小程序中添加的商品
+	_, err = database.DB.Exec("DELETE FROM purchase_list_items WHERE user_id = ?", order.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "清空采购单失败: " + err.Error()})
+		return
+	}
+
+	// 将订单商品添加到采购单
+	syncedItems := make([]model.PurchaseListItem, 0, len(orderItems))
+	for _, orderItem := range orderItems {
+		// 获取商品信息（包括规格信息）
+		product, err := model.GetProductByID(orderItem.ProductID)
+		if err != nil || product == nil {
+			log.Printf("[SyncOrderItemsToPurchaseList] 获取商品失败: 商品ID=%d, 错误=%v", orderItem.ProductID, err)
+			continue
+		}
+
+		// 查找对应的规格
+		var specSnapshot model.PurchaseSpecSnapshot
+		found := false
+		for _, spec := range product.Specs {
+			if spec.Name == orderItem.SpecName {
+				specSnapshot = model.PurchaseSpecSnapshot{
+					Name:           spec.Name,
+					Description:    spec.Description,
+					Cost:           spec.Cost,
+					WholesalePrice: spec.WholesalePrice,
+					RetailPrice:    spec.RetailPrice,
+				}
+				found = true
+				break
+			}
+		}
+
+		// 如果找不到规格，使用订单中的价格信息构造快照
+		if !found {
+			specSnapshot = model.PurchaseSpecSnapshot{
+				Name:           orderItem.SpecName,
+				Description:    "",
+				Cost:           0,
+				WholesalePrice: orderItem.UnitPrice,
+				RetailPrice:    orderItem.UnitPrice,
+			}
+		}
+
+		// 使用订单中的图片，如果没有则使用商品首图
+		productImage := orderItem.Image
+		if productImage == "" && len(product.Images) > 0 {
+			productImage = product.Images[0]
+		}
+
+		item := &model.PurchaseListItem{
+			UserID:       order.UserID,
+			ProductID:    orderItem.ProductID,
+			ProductName:  orderItem.ProductName,
+			ProductImage: productImage,
+			SpecName:     orderItem.SpecName,
+			SpecSnapshot: specSnapshot,
+			Quantity:     orderItem.Quantity,
+			IsSpecial:    product.IsSpecial,
+		}
+
+		if _, err := model.AddOrUpdatePurchaseListItem(item); err != nil {
+			log.Printf("[SyncOrderItemsToPurchaseList] 添加采购单项失败: 商品ID=%d, 错误=%v", orderItem.ProductID, err)
+			continue
+		}
+
+		syncedItems = append(syncedItems, *item)
+	}
+
+	// 返回最新的采购单（包含配送费汇总）
+	items, err := model.GetPurchaseListItemsByUserID(order.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取采购单失败: " + err.Error()})
+		return
+	}
+
+	// 计算配送费汇总
+	userType := user.UserType
+	if userType == "" {
+		userType = "retail"
+	}
+	summary, err := model.CalculateDeliveryFee(items, userType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "计算配送费失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "订单商品已同步到采购单",
+		"data": gin.H{
+			"items":   items,
+			"summary": summary,
+			"backup":  userPurchaseListBackup, // 返回备份，供修改订单完成后恢复使用（即使为空也要返回）
+		},
+	})
+	log.Printf("[SyncOrderItemsToPurchaseList] 返回备份数据，备份商品数量: %d", len(userPurchaseListBackup))
+}
+
+// UpdateOrderForCustomer 修改订单（销售员）
+func UpdateOrderForCustomer(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+	if !employee.IsSales {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是销售员，无权访问此功能"})
+		return
+	}
+
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
+		return
+	}
+
+	var req struct {
+		AddressID           int                      `json:"address_id" binding:"required"`
+		ItemIDs             []int                    `json:"item_ids"`              // 采购单项ID列表，为空则使用全部
+		Remark              string                   `json:"remark"`                // 订单备注
+		CouponID            int                      `json:"coupon_id"`             // 用户优惠券ID（user_coupon_id），可选
+		OutOfStockStrategy  string                   `json:"out_of_stock_strategy"` // 缺货处理：cancel_item / ship_available / contact_me
+		TrustReceipt        bool                     `json:"trust_receipt"`         // 信任签收
+		HidePrice           bool                     `json:"hide_price"`            // 是否隐藏价格
+		RequirePhoneContact bool                     `json:"require_phone_contact"` // 配送时是否电话联系
+		IsUrgent            bool                     `json:"is_urgent"`             // 是否加急订单
+		PurchaseListBackup  []model.PurchaseListItem `json:"purchase_list_backup"`  // 用户原来的采购单备份（从 SyncOrderItemsToPurchaseList 获取）
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	// 获取订单并校验权限和锁定状态
+	order, err := model.GetOrderByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单失败: " + err.Error()})
+		return
+	}
+	if order == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
+		return
+	}
+
+	// 检查订单状态是否允许修改
+	if order.Status != "pending_delivery" && order.Status != "pending" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单状态不允许修改（当前状态：" + order.Status + "）"})
+		return
+	}
+
+	// 检查订单是否被锁定
+	if order.IsLocked {
+		if order.LockedBy == nil || *order.LockedBy != employee.EmployeeCode {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单正在被其他员工修改中，请稍后再试"})
+			return
+		}
+	}
+
+	// 验证客户归属
+	user, err := model.GetMiniAppUserByID(order.UserID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "客户不存在"})
+		return
+	}
+	if user.SalesCode != employee.EmployeeCode {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权修改该订单"})
+		return
+	}
+
+	// 验证地址归属
+	address, err := model.GetAddressByID(req.AddressID)
+	if err != nil || address == nil || address.UserID != order.UserID {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "收货地址无效"})
+		return
+	}
+
+	// 获取采购单
+	items, err := model.GetPurchaseListItemsByUserID(order.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取采购单失败: " + err.Error()})
+		return
+	}
+
+	// 筛选指定的 item_ids
+	if len(req.ItemIDs) > 0 {
+		filter := make(map[int]struct{}, len(req.ItemIDs))
+		for _, itemID := range req.ItemIDs {
+			if itemID > 0 {
+				filter[itemID] = struct{}{}
+			}
+		}
+		filteredItems := make([]model.PurchaseListItem, 0, len(filter))
+		for _, item := range items {
+			if _, ok := filter[item.ID]; ok {
+				filteredItems = append(filteredItems, item)
+			}
+		}
+		items = filteredItems
+	}
+
+	if len(items) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "采购单为空，无法修改订单"})
+		return
+	}
+
+	// 获取用户类型
+	userType := user.UserType
+	if userType == "" || userType == "unknown" {
+		userType = "retail"
+	}
+
+	// 计算配送费
+	summary, err := model.CalculateDeliveryFee(items, userType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "计算配送费失败: " + err.Error()})
+		return
+	}
+
+	// 计算订单金额和分类信息用于优惠券筛选
+	orderAmount := 0.0
+	categoryIDSet := make(map[int]struct{})
+	productIDs := make([]int, 0, len(items))
+	for _, item := range items {
+		var price float64
+		if userType == "wholesale" {
+			price = item.SpecSnapshot.WholesalePrice
+			if price <= 0 {
+				price = item.SpecSnapshot.RetailPrice
+			}
+		} else {
+			price = item.SpecSnapshot.RetailPrice
+			if price <= 0 {
+				price = item.SpecSnapshot.WholesalePrice
+			}
+		}
+		if price <= 0 {
+			price = item.SpecSnapshot.Cost
+		}
+		if price < 0 {
+			price = 0
+		}
+		orderAmount += price * float64(item.Quantity)
+		productIDs = append(productIDs, item.ProductID)
+	}
+
+	categoryInfo, err := model.FetchProductCategoryInfo(productIDs)
+	if err == nil {
+		for _, info := range categoryInfo {
+			if info.CategoryID > 0 {
+				categoryIDSet[info.CategoryID] = struct{}{}
+			}
+			if info.ParentID > 0 {
+				categoryIDSet[info.ParentID] = struct{}{}
+			}
+		}
+	}
+	categoryIDs := make([]int, 0, len(categoryIDSet))
+	for id := range categoryIDSet {
+		categoryIDs = append(categoryIDs, id)
+	}
+
+	// 获取可用优惠券并计算折扣
+	couponDiscount := 0.0
+	var selectedCoupon *model.AvailableCouponInfo
+	if req.CouponID > 0 {
+		availableCoupons, err := model.GetAvailableCouponsForPurchaseList(
+			order.UserID,
+			orderAmount,
+			categoryIDs,
+			summary.DeliveryFee,
+			summary.IsFreeShipping,
+		)
+		if err == nil {
+			for i := range availableCoupons {
+				if availableCoupons[i].UserCouponID == req.CouponID && availableCoupons[i].IsAvailable {
+					selectedCoupon = &availableCoupons[i]
+					if selectedCoupon.Type == "delivery_fee" {
+						couponDiscount = summary.DeliveryFee
+					} else if selectedCoupon.Type == "amount" {
+						couponDiscount = selectedCoupon.DiscountValue
+					}
+					break
+				}
+			}
+		}
+	}
+
+	// 处理缺货策略
+	outOfStockStrategy := req.OutOfStockStrategy
+	if outOfStockStrategy == "" {
+		outOfStockStrategy = "contact_me"
+	}
+
+	// 获取加急费用
+	urgentFee := 0.0
+	if req.IsUrgent {
+		urgentFeeStr, err := model.GetSystemSetting("order_urgent_fee")
+		if err == nil && urgentFeeStr != "" {
+			if fee, parseErr := strconv.ParseFloat(urgentFeeStr, 64); parseErr == nil && fee > 0 {
+				urgentFee = fee
+			}
+		}
+	}
+
+	// 计算新的订单金额
+	goodsAmount := summary.TotalAmount
+	deliveryFee := summary.DeliveryFee
+	if summary.IsFreeShipping {
+		deliveryFee = 0
+	}
+	if !req.IsUrgent {
+		urgentFee = 0
+	}
+	totalAmount := goodsAmount + deliveryFee + urgentFee - couponDiscount
+	if totalAmount < 0 {
+		totalAmount = 0
+	}
+
+	// 开始事务更新订单
+	tx, err := database.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "开始事务失败: " + err.Error()})
+		return
+	}
+	defer tx.Rollback()
+
+	// 更新订单主表
+	_, err = tx.Exec(`
+		UPDATE orders SET
+			address_id = ?,
+			goods_amount = ?,
+			delivery_fee = ?,
+			coupon_discount = ?,
+			is_urgent = ?,
+			urgent_fee = ?,
+			total_amount = ?,
+			remark = ?,
+			out_of_stock_strategy = ?,
+			trust_receipt = ?,
+			hide_price = ?,
+			require_phone_contact = ?,
+			updated_at = NOW()
+		WHERE id = ? AND is_locked = 1 AND locked_by = ?
+	`, req.AddressID, goodsAmount, deliveryFee, couponDiscount, boolToTinyInt(req.IsUrgent), urgentFee, totalAmount,
+		req.Remark, outOfStockStrategy, boolToTinyInt(req.TrustReceipt), boolToTinyInt(req.HidePrice), boolToTinyInt(req.RequirePhoneContact),
+		id, employee.EmployeeCode)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新订单失败: " + err.Error()})
+		return
+	}
+
+	// 删除旧的订单商品
+	_, err = tx.Exec("DELETE FROM order_items WHERE order_id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除旧订单商品失败: " + err.Error()})
+		return
+	}
+
+	// 插入新的订单商品
+	itemStmt, err := tx.Prepare(`
+		INSERT INTO order_items (
+			order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "准备插入订单商品失败: " + err.Error()})
+		return
+	}
+	defer itemStmt.Close()
+
+	for _, it := range items {
+		var price float64
+		if userType == "wholesale" {
+			price = it.SpecSnapshot.WholesalePrice
+			if price <= 0 {
+				price = it.SpecSnapshot.RetailPrice
+			}
+		} else {
+			price = it.SpecSnapshot.RetailPrice
+			if price <= 0 {
+				price = it.SpecSnapshot.WholesalePrice
+			}
+		}
+		if price <= 0 {
+			price = it.SpecSnapshot.Cost
+		}
+		if price < 0 {
+			price = 0
+		}
+		subtotal := price * float64(it.Quantity)
+
+		_, err = itemStmt.Exec(
+			id,
+			it.ProductID,
+			it.ProductName,
+			it.SpecName,
+			it.Quantity,
+			price,
+			subtotal,
+			it.ProductImage,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "插入订单商品失败: " + err.Error()})
+			return
+		}
+	}
+
+	// 解锁订单
+	_, err = tx.Exec(`
+		UPDATE orders SET is_locked = 0, locked_by = NULL, locked_at = NULL 
+		WHERE id = ? AND locked_by = ?
+	`, id, employee.EmployeeCode)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "解锁订单失败: " + err.Error()})
+		return
+	}
+
+	// 如果使用了新的优惠券，标记为已使用
+	if selectedCoupon != nil {
+		if err := model.UseCoupon(order.UserID, selectedCoupon.CouponID, id); err != nil {
+			// 记录错误但不影响订单修改
+			log.Printf("标记优惠券为已使用失败 (用户ID: %d, 优惠券ID: %d, 订单ID: %d): %v", order.UserID, selectedCoupon.CouponID, id, err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "提交事务失败: " + err.Error()})
+		return
+	}
+
+	// 恢复用户原来的采购单（无条件恢复备份，不管销售员做了什么操作）
+	// 备份是用户进入修改订单页面时的原始采购单，不包含销售员后续的任何操作
+	// 无论销售员增加了商品、减少了商品、修改了数量，都恢复到备份的状态
+	if len(req.PurchaseListBackup) > 0 {
+		// 直接恢复备份，不需要任何过滤
+		// 因为备份就是用户进入修改订单页面时的原始状态
+		log.Printf("[UpdateOrderForCustomer] 开始恢复采购单，备份商品数量: %d", len(req.PurchaseListBackup))
+		if err := model.RestorePurchaseList(order.UserID, req.PurchaseListBackup); err != nil {
+			log.Printf("[UpdateOrderForCustomer] 恢复采购单失败: %v", err)
+		} else {
+			log.Printf("[UpdateOrderForCustomer] 成功恢复采购单，恢复商品数量: %d", len(req.PurchaseListBackup))
+		}
+	} else {
+		// 如果没有提供备份，说明前端没有保存备份，这是不正确的行为
+		// 但为了兼容，直接清空采购单（因为修改订单时，采购单中只有订单商品）
+		log.Printf("[UpdateOrderForCustomer] 警告：前端未传入备份数据，直接清空采购单（可能不准确）")
+		_, err = database.DB.Exec("DELETE FROM purchase_list_items WHERE user_id = ?", order.UserID)
+		if err != nil {
+			log.Printf("[UpdateOrderForCustomer] 清空采购单失败: %v", err)
+		}
+	}
+
+	// 异步重新计算配送费和利润
+	go func() {
+		_ = model.UpdateOrderDeliveryInfo(id)
+		_ = model.CalculateAndStoreOrderProfit(id)
+	}()
+
+	// 获取更新后的订单信息
+	updatedOrder, err := model.GetOrderByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取更新后的订单失败: " + err.Error()})
+		return
+	}
+
+	orderItems, err := model.GetOrderItemsByOrderID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单商品失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"data": gin.H{
+			"order":       updatedOrder,
+			"order_items": orderItems,
+		},
+		"message": "修改订单成功",
+	})
+}
+
+// CancelSalesOrder 销售员取消订单
+func CancelSalesOrder(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+	if !employee.IsSales {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是销售员，无权访问此功能"})
+		return
+	}
+
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
+		return
+	}
+
+	// 获取订单并校验权限
+	order, err := model.GetOrderByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单失败: " + err.Error()})
+		return
+	}
+	if order == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
+		return
+	}
+
+	// 校验客户归属
+	user, err := model.GetMiniAppUserByID(order.UserID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "客户不存在"})
+		return
+	}
+	if user.SalesCode != employee.EmployeeCode {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权取消该订单"})
+		return
+	}
+
+	// 验证订单状态是否可以取消
+	if order.Status != "pending_delivery" && order.Status != "pending" && order.Status != "pending_pickup" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "订单状态不允许取消（只能取消待配送或待取货状态的订单）",
+		})
+		return
+	}
+
+	// 更新订单状态为已取消
+	err = model.UpdateOrderStatus(id, "cancelled")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "取消订单失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "订单已取消",
 	})
 }
 
@@ -858,6 +1590,16 @@ func GetSalesCustomerPurchaseList(c *gin.Context) {
 		return
 	}
 
+	// 在获取采购单时，备份用户的原始采购单（用于后续创建订单时恢复）
+	// 这样备份的就是用户原来的采购单，不包含销售员后续添加的新商品
+	// 注意：每次调用都会备份，前端应该保存第一次调用时返回的备份
+	userPurchaseListBackup, err := model.BackupPurchaseList(userID)
+	if err != nil {
+		// 备份失败不影响获取采购单，只记录日志
+		log.Printf("[GetSalesCustomerPurchaseList] 备份采购单失败: %v", err)
+		userPurchaseListBackup = []model.PurchaseListItem{}
+	}
+
 	// 获取采购单
 	items, err := model.GetPurchaseListItemsByUserID(userID)
 	if err != nil {
@@ -883,6 +1625,7 @@ func GetSalesCustomerPurchaseList(c *gin.Context) {
 		"data": gin.H{
 			"items":   items,
 			"summary": summary,
+			"backup":  userPurchaseListBackup, // 返回备份，前端必须保存并在创建订单时传入
 		},
 		"message": "获取成功",
 	})
@@ -1138,9 +1881,11 @@ func AddSalesCustomerPurchaseItem(c *gin.Context) {
 	}
 
 	if _, err := model.AddOrUpdatePurchaseListItem(item); err != nil {
+		log.Printf("[AddSalesCustomerPurchaseItem] 加入采购单失败: 用户ID=%d, 商品ID=%d, 规格=%s, 错误=%v", userID, item.ProductID, item.SpecName, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "加入采购单失败: " + err.Error()})
 		return
 	}
+	log.Printf("[AddSalesCustomerPurchaseItem] 成功添加商品到采购单: 用户ID=%d, 商品ID=%d, 规格=%s, 数量=%d", userID, item.ProductID, item.SpecName, item.Quantity)
 
 	// 返回最新的采购单及配送费汇总
 	items, err := model.GetPurchaseListItemsByUserID(userID)
@@ -1183,16 +1928,17 @@ func CreateOrderForCustomer(c *gin.Context) {
 	}
 
 	var req struct {
-		UserID              int    `json:"user_id" binding:"required"`
-		AddressID           int    `json:"address_id" binding:"required"`
-		ItemIDs             []int  `json:"item_ids"`              // 采购单项ID列表，为空则使用全部
-		Remark              string `json:"remark"`                // 订单备注
-		CouponID            int    `json:"coupon_id"`             // 用户优惠券ID（user_coupon_id），可选
-		OutOfStockStrategy  string `json:"out_of_stock_strategy"` // 缺货处理：cancel_item / ship_available / contact_me
-		TrustReceipt        bool   `json:"trust_receipt"`         // 信任签收
-		HidePrice           bool   `json:"hide_price"`            // 是否隐藏价格
-		RequirePhoneContact bool   `json:"require_phone_contact"` // 配送时是否电话联系
-		IsUrgent            bool   `json:"is_urgent"`             // 是否加急订单
+		UserID              int                      `json:"user_id" binding:"required"`
+		AddressID           int                      `json:"address_id" binding:"required"`
+		ItemIDs             []int                    `json:"item_ids"`              // 采购单项ID列表，为空则使用全部
+		Remark              string                   `json:"remark"`                // 订单备注
+		CouponID            int                      `json:"coupon_id"`             // 用户优惠券ID（user_coupon_id），可选
+		OutOfStockStrategy  string                   `json:"out_of_stock_strategy"` // 缺货处理：cancel_item / ship_available / contact_me
+		TrustReceipt        bool                     `json:"trust_receipt"`         // 信任签收
+		HidePrice           bool                     `json:"hide_price"`            // 是否隐藏价格
+		RequirePhoneContact bool                     `json:"require_phone_contact"` // 配送时是否电话联系
+		IsUrgent            bool                     `json:"is_urgent"`             // 是否加急订单
+		PurchaseListBackup  []model.PurchaseListItem `json:"purchase_list_backup"`  // 用户原来的采购单备份（从GetSalesCustomerPurchaseList获取，必须传入）
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1219,7 +1965,25 @@ func CreateOrderForCustomer(c *gin.Context) {
 		return
 	}
 
-	// 获取采购单
+	// 使用前端传入的备份数据（在GetSalesCustomerPurchaseList时获取的）
+	// 这个备份是用户进入开单页面时的原始采购单，不包含销售员后续的任何操作
+	userPurchaseListBackup := req.PurchaseListBackup
+	if len(userPurchaseListBackup) == 0 {
+		// 如果没有传入备份，说明前端没有保存备份，这是不正确的行为
+		// 但为了兼容，我们在创建订单前备份（这时可能已经包含销售员添加的商品了）
+		// 注意：这种情况下，恢复后可能仍然包含销售员添加的商品，这是不正确的
+		backup, err := model.BackupPurchaseList(req.UserID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "备份采购单失败: " + err.Error()})
+			return
+		}
+		userPurchaseListBackup = backup
+		log.Printf("[CreateOrderForCustomer] 警告：前端未传入备份数据，使用创建订单前的备份（可能包含销售员添加的商品，恢复后可能不准确）")
+	} else {
+		log.Printf("[CreateOrderForCustomer] 使用前端传入的备份数据，备份商品数量: %d", len(userPurchaseListBackup))
+	}
+
+	// 获取采购单（此时可能包含销售员在开单时添加的新商品、修改的数量等）
 	items, err := model.GetPurchaseListItemsByUserID(req.UserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取采购单失败: " + err.Error()})
@@ -1232,16 +1996,16 @@ func CreateOrderForCustomer(c *gin.Context) {
 	}
 
 	// 筛选指定的 item_ids
+	selectedItemIDs := make(map[int]struct{})
 	if len(req.ItemIDs) > 0 {
-		filter := make(map[int]struct{}, len(req.ItemIDs))
 		for _, id := range req.ItemIDs {
 			if id > 0 {
-				filter[id] = struct{}{}
+				selectedItemIDs[id] = struct{}{}
 			}
 		}
-		filteredItems := make([]model.PurchaseListItem, 0, len(filter))
+		filteredItems := make([]model.PurchaseListItem, 0, len(selectedItemIDs))
 		for _, item := range items {
-			if _, ok := filter[item.ID]; ok {
+			if _, ok := selectedItemIDs[item.ID]; ok {
 				filteredItems = append(filteredItems, item)
 			}
 		}
@@ -1368,10 +2132,51 @@ func CreateOrderForCustomer(c *gin.Context) {
 		UrgentFee:           urgentFee,
 	}
 
+	// 创建订单（注意：CreateOrderFromPurchaseList 不再清空采购单）
 	order, orderItems, err := model.CreateOrderFromPurchaseList(req.UserID, req.AddressID, items, summary, options, userType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建订单失败: " + err.Error()})
 		return
+	}
+
+	// 创建订单成功后，删除用于创建订单的商品，然后恢复用户原来的采购单
+	// 删除用于创建订单的商品
+	if len(selectedItemIDs) > 0 {
+		// 删除指定的商品
+		itemIDList := make([]interface{}, 0, len(selectedItemIDs))
+		for id := range selectedItemIDs {
+			itemIDList = append(itemIDList, id)
+		}
+		placeholders := strings.Repeat("?,", len(itemIDList))
+		placeholders = placeholders[:len(placeholders)-1] // 移除最后一个逗号
+		query := fmt.Sprintf("DELETE FROM purchase_list_items WHERE user_id = ? AND id IN (%s)", placeholders)
+		args := append([]interface{}{req.UserID}, itemIDList...)
+		_, err = database.DB.Exec(query, args...)
+		if err != nil {
+			log.Printf("[CreateOrderForCustomer] 删除已下单商品失败: %v", err)
+		}
+	} else {
+		// 如果没有指定 item_ids，删除所有商品（因为创建订单时使用了所有商品）
+		_, err = database.DB.Exec("DELETE FROM purchase_list_items WHERE user_id = ?", req.UserID)
+		if err != nil {
+			log.Printf("[CreateOrderForCustomer] 清空采购单失败: %v", err)
+		}
+	}
+
+	// 恢复用户原来的采购单（无条件恢复备份，不管销售员做了什么操作）
+	// 备份是用户进入开单页面时的原始采购单，不包含销售员后续的任何操作
+	// 无论销售员增加了商品、减少了商品、修改了数量，都恢复到备份的状态
+	if len(userPurchaseListBackup) > 0 {
+		// 直接恢复备份，不需要任何过滤
+		// 因为备份就是用户进入开单页面时的原始状态
+		log.Printf("[CreateOrderForCustomer] 开始恢复采购单，备份商品数量: %d", len(userPurchaseListBackup))
+		if err := model.RestorePurchaseList(req.UserID, userPurchaseListBackup); err != nil {
+			log.Printf("[CreateOrderForCustomer] 恢复采购单失败: %v", err)
+		} else {
+			log.Printf("[CreateOrderForCustomer] 成功恢复采购单，恢复商品数量: %d", len(userPurchaseListBackup))
+		}
+	} else {
+		log.Printf("[CreateOrderForCustomer] 警告：备份数据为空，无法恢复采购单")
 	}
 
 	// 创建订单成功后，使用优惠券（标记为已使用并关联订单ID）
@@ -1490,7 +2295,101 @@ func GetSalesProducts(c *gin.Context) {
 	})
 }
 
+// PreviewRiderDeliveryFee 预览配送员配送费（基于采购单和地址）
+func PreviewRiderDeliveryFee(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+	if !employee.IsSales {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是销售员，无权访问此功能"})
+		return
+	}
+
+	idStr := c.Param("id")
+	userID, err := strconv.Atoi(idStr)
+	if err != nil || userID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "客户ID格式错误"})
+		return
+	}
+
+	// 从查询参数获取地址ID和是否加急
+	addressIDStr := c.Query("address_id")
+	var addressID int
+	if addressIDStr != "" {
+		addressID, err = strconv.Atoi(addressIDStr)
+		if err != nil || addressID <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "地址ID格式错误"})
+			return
+		}
+	}
+
+	isUrgent := c.Query("is_urgent") == "true"
+
+	// 校验客户归属
+	user, err := model.GetMiniAppUserByID(userID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "客户不存在"})
+		return
+	}
+	if user.SalesCode != employee.EmployeeCode {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权访问此客户信息"})
+		return
+	}
+
+	// 获取采购单
+	items, err := model.GetPurchaseListItemsByUserID(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取采购单失败: " + err.Error()})
+		return
+	}
+
+	if len(items) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 200,
+			"data": gin.H{
+				"rider_payable_fee": 0.0,
+				"base_fee":          0.0,
+				"isolated_fee":      0.0,
+				"item_fee":          0.0,
+				"urgent_fee":        0.0,
+				"weather_fee":       0.0,
+				"profit_share":      0.0,
+			},
+			"message": "采购单为空",
+		})
+		return
+	}
+
+	// 获取用户类型
+	userType := user.UserType
+	if userType == "" || userType == "unknown" {
+		userType = "retail"
+	}
+
+	// 计算配送员配送费
+	result, err := model.CalculateRiderDeliveryFeePreview(items, addressID, isUrgent, userType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "计算配送费失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"data":    result,
+		"message": "获取成功",
+	})
+}
+
 // contains 检查字符串是否包含子串（不区分大小写）
 func contains(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
+// boolToTinyInt 将布尔值转换为TinyInt（0或1）
+func boolToTinyInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }

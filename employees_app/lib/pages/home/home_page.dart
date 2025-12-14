@@ -8,6 +8,8 @@ import 'package:employees_app/pages/order/sales_create_order_page.dart';
 import 'package:employees_app/pages/coupon/coupon_send_page.dart';
 import 'package:employees_app/pages/product/product_search_page.dart';
 import 'package:employees_app/pages/order/order_list_page.dart';
+import 'package:employees_app/pages/order/order_detail_page.dart';
+import 'package:employees_app/pages/order/edit_order_list_page.dart';
 
 /// 员工端首页（总览 + 配送）
 class HomePage extends StatefulWidget {
@@ -150,7 +152,12 @@ class _HomePageState extends State<HomePage> {
                     ),
 
                     // 内容区域
-                    Expanded(child: OverviewTab(dashboard: _dashboard)),
+                    Expanded(
+                      child: OverviewTab(
+                        dashboard: _dashboard,
+                        onRefreshDashboard: _loadDashboard,
+                      ),
+                    ),
                   ],
                 ),
         ),
@@ -208,8 +215,13 @@ class StatTile extends StatelessWidget {
 /// 总览 Tab
 class OverviewTab extends StatefulWidget {
   final Map<String, dynamic>? dashboard;
+  final Future<void> Function()? onRefreshDashboard;
 
-  const OverviewTab({super.key, required this.dashboard});
+  const OverviewTab({
+    super.key,
+    required this.dashboard,
+    this.onRefreshDashboard,
+  });
 
   @override
   State<OverviewTab> createState() => _OverviewTabState();
@@ -227,6 +239,23 @@ class _OverviewTabState extends State<OverviewTab> {
   void initState() {
     super.initState();
     _loadMorePendingOrders();
+  }
+
+  /// 刷新待配送订单列表（下拉刷新时调用）
+  Future<void> _refreshPendingOrders() async {
+    // 同时刷新 dashboard 数据
+    if (widget.onRefreshDashboard != null) {
+      await widget.onRefreshDashboard!();
+    }
+
+    // 刷新待配送订单列表
+    setState(() {
+      _pendingOrders.clear();
+      _pageNum = 1;
+      _hasMore = true;
+      _isLoadingMore = false;
+    });
+    await _loadMorePendingOrders();
   }
 
   Future<void> _loadMorePendingOrders() async {
@@ -287,6 +316,9 @@ class _OverviewTabState extends State<OverviewTab> {
         }
         return false;
       },
+      child: RefreshIndicator(
+        onRefresh: _refreshPendingOrders,
+        color: const Color(0xFF20CB6B),
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           16,
@@ -343,7 +375,10 @@ class _OverviewTabState extends State<OverviewTab> {
             // 常用功能
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 14,
+                ),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
@@ -408,17 +443,25 @@ class _OverviewTabState extends State<OverviewTab> {
                             onTap: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const SalesCreateOrderPage(),
+                                    builder: (_) =>
+                                        const SalesCreateOrderPage(),
                                 ),
                               );
                             },
                           ),
                           const SizedBox(width: 8),
                           // 4. 修改订单
-                          const QuickActionItem(
+                            QuickActionItem(
                             icon: Icons.edit_note_outlined,
-                            iconColor: Color(0xFF7C4DFF),
+                              iconColor: const Color(0xFF7C4DFF),
                             label: '修改订单',
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const EditOrderListPage(),
+                                  ),
+                                );
+                              },
                           ),
                         ],
                       ),
@@ -558,6 +601,7 @@ class _OverviewTabState extends State<OverviewTab> {
               ),
             ],
           ],
+          ),
         ),
       ),
     );
@@ -599,7 +643,20 @@ class OrderPreviewRow extends StatelessWidget {
       totalAmountText = totalAmountDynamic?.toString() ?? '0.00';
     }
 
-    return Container(
+    final orderId = order['id'] as int?;
+
+    return InkWell(
+      onTap: orderId != null
+          ? () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => OrderDetailPage(orderId: orderId),
+                ),
+              );
+            }
+          : null,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
       decoration: BoxDecoration(
@@ -716,6 +773,7 @@ class OrderPreviewRow extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }

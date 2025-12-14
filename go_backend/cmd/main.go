@@ -275,6 +275,7 @@ func main() {
 				employeeProtectedGroup.POST("/sales/customers/:id/purchase-list", api.AddSalesCustomerPurchaseItem)              // 新增客户采购单条目
 				employeeProtectedGroup.PUT("/sales/customers/:id/purchase-list/:itemId", api.UpdateSalesCustomerPurchaseItem)    // 更新客户采购单条目
 				employeeProtectedGroup.DELETE("/sales/customers/:id/purchase-list/:itemId", api.DeleteSalesCustomerPurchaseItem) // 删除客户采购单条目
+				employeeProtectedGroup.GET("/sales/customers/:id/rider-delivery-fee-preview", api.PreviewRiderDeliveryFee)       // 预览配送员配送费
 				employeeProtectedGroup.PUT("/sales/customers/:id/profile", api.UpdateSalesCustomerProfile)                       // 更新客户基础资料
 				employeeProtectedGroup.POST("/sales/customers/:id/addresses", api.CreateSalesCustomerAddress)                    // 为客户新增地址
 				employeeProtectedGroup.PUT("/sales/addresses/:id", api.UpdateSalesCustomerAddress)                               // 更新客户地址
@@ -286,6 +287,12 @@ func main() {
 				employeeProtectedGroup.POST("/sales/coupons/issue", api.IssueCouponToUser)                                       // 销售员为客户发放优惠券
 				employeeProtectedGroup.GET("/sales/orders", api.GetSalesOrders)                                                  // 销售员查看名下订单列表
 				employeeProtectedGroup.GET("/sales/orders/:id", api.GetSalesOrderDetail)                                         // 销售员查看订单详情
+				employeeProtectedGroup.POST("/sales/orders/:id/lock", api.LockOrderForEdit)                                      // 锁定订单用于修改
+				employeeProtectedGroup.POST("/sales/orders/:id/unlock", api.UnlockOrderAfterEdit)                                // 解锁订单
+				employeeProtectedGroup.POST("/sales/orders/:id/sync-to-purchase-list", api.SyncOrderItemsToPurchaseList)         // 将订单商品同步到采购单
+				employeeProtectedGroup.PUT("/sales/orders/:id", api.UpdateOrderForCustomer)                                      // 修改订单
+				employeeProtectedGroup.POST("/sales/orders/:id/cancel", api.CancelSalesOrder)                                    // 取消订单
+				employeeProtectedGroup.GET("/delivery-employee-location/:code", api.GetEmployeeLocationByCode)                   // 获取配送员位置（员工端）
 			}
 		}
 	}

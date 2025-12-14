@@ -37,6 +37,9 @@ type Order struct {
 	IsIsolated           bool       `json:"is_isolated"`                      // 是否孤立订单（8公里内无其他订单）
 	DeliveryFeeSettled   bool       `json:"delivery_fee_settled"`            // 配送费是否已结算
 	SettlementDate       *time.Time `json:"settlement_date,omitempty"`       // 结算日期
+	IsLocked             bool       `json:"is_locked"`                       // 是否被锁定（修改中）
+	LockedBy             *string    `json:"locked_by,omitempty"`             // 锁定者员工码
+	LockedAt             *time.Time  `json:"locked_at,omitempty"`             // 锁定时间
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 }
@@ -259,10 +262,8 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 		})
 	}
 
-	// 创建成功后可以清空采购单
-	if _, err = tx.Exec(`DELETE FROM purchase_list_items WHERE user_id = ?`, userID); err != nil {
-		return nil, nil, err
-	}
+	// 注意：不再在创建订单时清空采购单
+	// 采购单的清空和恢复由调用方（API层）处理，以便区分用户自己添加的商品和销售员添加的商品
 
 	if err = tx.Commit(); err != nil {
 		return nil, nil, err
@@ -435,16 +436,18 @@ func GetOrderByID(id int) (*Order, error) {
 	query := `
 		SELECT id, order_number, user_id, address_id, status, delivery_employee_code, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
-		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, created_at, updated_at
+		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, 
+		       is_locked, locked_by, locked_at, created_at, updated_at
 		FROM orders WHERE id = ?
 	`
-	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
-	var deliveryEmployeeCode sql.NullString
+	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt, isLockedTinyInt int
+	var deliveryEmployeeCode, lockedBy sql.NullString
+	var lockedAt sql.NullTime
 	err := database.DB.QueryRow(query, id).Scan(
 		&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &deliveryEmployeeCode, &order.GoodsAmount, &order.DeliveryFee,
 		&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
 		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
-		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &order.CreatedAt, &order.UpdatedAt,
+		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &isLockedTinyInt, &lockedBy, &lockedAt, &order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -457,6 +460,7 @@ func GetOrderByID(id int) (*Order, error) {
 	order.HidePrice = hidePriceTinyInt == 1
 	order.RequirePhoneContact = requirePhoneContactTinyInt == 1
 	order.IsIsolated = isIsolatedTinyInt == 1
+	order.IsLocked = isLockedTinyInt == 1
 	if expectedDelivery.Valid {
 		t := expectedDelivery.Time
 		order.ExpectedDeliveryAt = &t
@@ -466,6 +470,13 @@ func GetOrderByID(id int) (*Order, error) {
 	}
 	if deliveryEmployeeCode.Valid {
 		order.DeliveryEmployeeCode = &deliveryEmployeeCode.String
+	}
+	if lockedBy.Valid {
+		order.LockedBy = &lockedBy.String
+	}
+	if lockedAt.Valid {
+		t := lockedAt.Time
+		order.LockedAt = &t
 	}
 
 	return &order, nil
@@ -568,13 +579,26 @@ func GetOrdersBySalesCode(employeeCode string, pageNum, pageSize int, status, ke
 	}
 
 	// 查询分页数据
-	query := `
+	// 先检查字段是否存在，如果不存在则不查询这些字段
+	var hasLockFields bool
+	checkLockFieldsQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME IN ('is_locked', 'locked_by')`
+	var lockFieldsCount int
+	if err := database.DB.QueryRow(checkLockFieldsQuery).Scan(&lockFieldsCount); err == nil {
+		hasLockFields = lockFieldsCount >= 2
+	}
+
+	var query string
+	if hasLockFields {
+		query = `
 		SELECT
 			o.id,
 			o.order_number,
 			o.status,
 			o.total_amount,
 			o.created_at,
+				o.is_locked,
+				o.locked_by,
 			u.name AS user_name,
 			u.user_code,
 			a.name AS store_name,
@@ -587,6 +611,30 @@ func GetOrdersBySalesCode(employeeCode string, pageNum, pageSize int, status, ke
 		ORDER BY o.id DESC
 		LIMIT ? OFFSET ?
 	`
+	} else {
+		// 字段不存在时，使用默认值
+		query = `
+			SELECT
+				o.id,
+				o.order_number,
+				o.status,
+				o.total_amount,
+				o.created_at,
+				0 AS is_locked,
+				NULL AS locked_by,
+				u.name AS user_name,
+				u.user_code,
+				a.name AS store_name,
+				a.address,
+				a.phone AS contact_phone
+			FROM orders o
+			JOIN mini_app_users u ON o.user_id = u.id
+			LEFT JOIN mini_app_addresses a ON o.address_id = a.id
+			WHERE ` + where + `
+			ORDER BY o.id DESC
+			LIMIT ? OFFSET ?
+		`
+	}
 	args = append(args, pageSize, offset)
 
 	rows, err := database.DB.Query(query, args...)
@@ -603,6 +651,8 @@ func GetOrdersBySalesCode(employeeCode string, pageNum, pageSize int, status, ke
 			statusVal    string
 			totalAmount  float64
 			createdAt    time.Time
+			isLockedTinyInt int
+			lockedBy     sql.NullString
 			userName     sql.NullString
 			userCode     sql.NullString
 			storeName    sql.NullString
@@ -616,6 +666,8 @@ func GetOrdersBySalesCode(employeeCode string, pageNum, pageSize int, status, ke
 			&statusVal,
 			&totalAmount,
 			&createdAt,
+			&isLockedTinyInt,
+			&lockedBy,
 			&userName,
 			&userCode,
 			&storeName,
@@ -633,6 +685,8 @@ func GetOrdersBySalesCode(employeeCode string, pageNum, pageSize int, status, ke
 			"status":        statusVal,
 			"total_amount":  totalAmount,
 			"created_at":    createdAt,
+			"is_locked":     isLockedTinyInt == 1,
+			"locked_by":     getStringValue(lockedBy),
 			"user_name":     getStringValue(userName),
 			"user_code":     getStringValue(userCode),
 			"store_name":    getStringValue(storeName),
@@ -876,10 +930,33 @@ func UpdateOrderStatus(orderID int, newStatus string) error {
 
 // UpdateOrderStatusWithDeliveryEmployee 更新订单状态并记录配送员信息
 func UpdateOrderStatusWithDeliveryEmployee(orderID int, newStatus string, deliveryEmployeeCode string) error {
-	query := "UPDATE orders SET status = ?, delivery_employee_code = ?, updated_at = NOW() WHERE id = ?"
-	_, err := database.DB.Exec(query, newStatus, deliveryEmployeeCode, orderID)
+	// 在更新时检查订单是否被锁定，防止在修改期间被接单
+	query := `
+		UPDATE orders 
+		SET status = ?, delivery_employee_code = ?, updated_at = NOW() 
+		WHERE id = ? 
+		  AND (is_locked = 0 OR is_locked IS NULL)
+	`
+	result, err := database.DB.Exec(query, newStatus, deliveryEmployeeCode, orderID)
 	if err != nil {
 		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		// 检查订单是否被锁定
+		var isLockedTinyInt int
+		err := database.DB.QueryRow("SELECT is_locked FROM orders WHERE id = ?", orderID).Scan(&isLockedTinyInt)
+		if err == nil {
+			if isLockedTinyInt == 1 {
+				return fmt.Errorf("订单正在被修改中，暂时无法接单")
+			}
+		}
+		return fmt.Errorf("更新订单状态失败，订单可能不存在或已被锁定")
 	}
 
 	// 更新订单状态后，重新计算配送费和利润（异步执行，避免阻塞）
@@ -887,5 +964,77 @@ func UpdateOrderStatusWithDeliveryEmployee(orderID int, newStatus string, delive
 		_ = CalculateAndStoreOrderProfit(orderID)
 	}()
 
+	return nil
+}
+
+// LockOrder 锁定订单（防止修改时被接单）
+// 使用数据库行锁确保原子性
+func LockOrder(orderID int, employeeCode string) error {
+	// 使用 SELECT ... FOR UPDATE 获取行锁，然后更新
+	// 如果订单已被锁定，返回错误
+	// 如果锁定超过5分钟，自动解锁（防止异常情况）
+	query := `
+		UPDATE orders 
+		SET is_locked = 1, locked_by = ?, locked_at = NOW() 
+		WHERE id = ? 
+		  AND (is_locked = 0 OR is_locked IS NULL OR locked_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE))
+		  AND status IN ('pending_delivery', 'pending')
+	`
+	result, err := database.DB.Exec(query, employeeCode, orderID)
+	if err != nil {
+		return fmt.Errorf("锁定订单失败: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("获取锁定结果失败: %v", err)
+	}
+
+	if rowsAffected == 0 {
+		// 检查订单是否存在且状态正确
+		var status string
+		var isLocked bool
+		err := database.DB.QueryRow("SELECT status, is_locked FROM orders WHERE id = ?", orderID).Scan(&status, &isLocked)
+		if err != nil {
+			return fmt.Errorf("订单不存在")
+		}
+		if status != "pending_delivery" && status != "pending" {
+			return fmt.Errorf("订单状态不允许修改（当前状态：%s）", status)
+		}
+		if isLocked {
+			return fmt.Errorf("订单正在被其他员工修改中，请稍后再试")
+		}
+		return fmt.Errorf("锁定订单失败，请重试")
+	}
+
+	return nil
+}
+
+// UnlockOrder 解锁订单
+func UnlockOrder(orderID int, employeeCode string) error {
+	// 只有锁定者才能解锁
+	query := `
+		UPDATE orders 
+		SET is_locked = 0, locked_by = NULL, locked_at = NULL 
+		WHERE id = ? AND locked_by = ?
+	`
+	_, err := database.DB.Exec(query, orderID, employeeCode)
+	if err != nil {
+		return fmt.Errorf("解锁订单失败: %v", err)
+	}
+	return nil
+}
+
+// UnlockOrderForce 强制解锁订单（用于超时或异常情况）
+func UnlockOrderForce(orderID int) error {
+	query := `
+		UPDATE orders 
+		SET is_locked = 0, locked_by = NULL, locked_at = NULL 
+		WHERE id = ?
+	`
+	_, err := database.DB.Exec(query, orderID)
+	if err != nil {
+		return fmt.Errorf("强制解锁订单失败: %v", err)
+	}
 	return nil
 }

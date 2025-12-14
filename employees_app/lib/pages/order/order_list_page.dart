@@ -125,35 +125,99 @@ class _OrderListPageState extends State<OrderListPage> {
     _loadOrders(reset: true);
   }
 
-  /// 顶部状态 Tab（全部 / 待配送 / 已送达 / 已取消）
+  /// 顶部状态 Tab（全部 / 待配送 / 待取货 / 配送中 / 已送达 / 已收款 / 已取消）
   Widget _buildStatusTabs() {
     return Container(
       // 使用透明背景，让下面的渐变背景透出，避免与页面整体风格不一致
       color: Colors.transparent,
-      child: TabBar(
-        isScrollable: false,
-        indicatorSize: TabBarIndicatorSize.tab,
-        // 自定义一个短一点的下划线，并去掉整行的下边框
-        indicator: const UnderlineTabIndicator(
-          borderSide: BorderSide(width: 2, color: Colors.white),
-          insets: EdgeInsets.symmetric(horizontal: 24),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16), // 与订单卡片对齐
+        child: SizedBox(
+          width:
+              MediaQuery.of(context).size.width -
+              32, // 与订单卡片宽度一致（屏幕宽度减去左右各16px）
+          child: TabBar(
+            isScrollable: true, // 改为可滚动，因为 Tab 数量增加了
+            indicatorSize: TabBarIndicatorSize.tab,
+            // 自定义一个短一点的下划线，并去掉整行的下边框
+            indicator: const UnderlineTabIndicator(
+              borderSide: BorderSide(width: 2, color: Colors.white),
+              insets: EdgeInsets.zero, // 移除 indicator 的 insets，确保对齐
+            ),
+            labelPadding: EdgeInsets.zero, // 移除默认 padding
+            padding: EdgeInsets.zero, // 移除 TabBar 的默认 padding
+            tabAlignment: TabAlignment.start, // 左对齐
+            indicatorColor: Colors.transparent,
+            indicatorWeight: 0,
+            dividerColor: Colors.transparent, // 取消整行底部的分割线
+            labelColor: Colors.white,
+            unselectedLabelColor: const Color(0xFFE0F5EB),
+            labelStyle: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+            unselectedLabelStyle: const TextStyle(fontSize: 14),
+            onTap: (index) {
+              const keys = [
+                '',
+                'pending_delivery',
+                'pending_pickup',
+                'delivering',
+                'delivered',
+                'paid',
+                'cancelled',
+              ];
+              _onStatusChanged(keys[index]);
+            },
+            tabs: const [
+              Tab(
+                child: Padding(
+                  padding: EdgeInsets.only(right: 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('全部'),
+                  ),
+                ),
+              ),
+              Tab(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: Text('待配送'),
+                ),
+              ),
+              Tab(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: Text('待取货'),
+                ),
+              ),
+              Tab(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: Text('配送中'),
+                ),
+              ),
+              Tab(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: Text('已送达'),
+                ),
+              ),
+              Tab(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: Text('已收款'),
+                ),
+              ),
+              Tab(
+                child: Padding(
+                  padding: EdgeInsets.only(left: 12),
+                  child: Text('已取消'),
+                ),
+              ),
+            ],
+          ),
         ),
-        labelPadding: EdgeInsets.zero,
-        indicatorColor: Colors.transparent,
-        indicatorWeight: 0,
-        dividerColor: Colors.transparent, // 取消整行底部的分割线
-        labelColor: Colors.white,
-        unselectedLabelColor: const Color(0xFFE0F5EB),
-        onTap: (index) {
-          const keys = ['', 'pending_delivery', 'delivered', 'cancelled'];
-          _onStatusChanged(keys[index]);
-        },
-        tabs: const [
-          Tab(text: '全部'),
-          Tab(text: '待配送'),
-          Tab(text: '已送达'),
-          Tab(text: '已取消'),
-        ],
       ),
     );
   }
@@ -161,7 +225,7 @@ class _OrderListPageState extends State<OrderListPage> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 7, // 更新 Tab 数量
       child: Scaffold(
         appBar: AppBar(
           title: const Text('订单查询'),
@@ -335,15 +399,39 @@ class _OrderListPageState extends State<OrderListPage> {
 
     String statusText = status;
     Color statusColor = const Color(0xFF8C92A4);
-    if (status == 'pending_delivery' || status == 'pending') {
-      statusText = '待配送';
-      statusColor = const Color(0xFFFFA940);
-    } else if (status == 'delivered' || status == 'shipped') {
-      statusText = '已送达';
-      statusColor = const Color(0xFF20CB6B);
-    } else if (status == 'cancelled') {
-      statusText = '已取消';
-      statusColor = const Color(0xFFB0B4C3);
+
+    // 根据订单状态显示对应的文本和颜色
+    switch (status) {
+      case 'pending_delivery':
+      case 'pending':
+        statusText = '待配送';
+        statusColor = const Color(0xFFFFA940); // 橙色
+        break;
+      case 'pending_pickup':
+        statusText = '待取货';
+        statusColor = const Color(0xFF4C8DF6); // 蓝色
+        break;
+      case 'delivering':
+        statusText = '配送中';
+        statusColor = const Color(0xFF20CB6B); // 绿色
+        break;
+      case 'delivered':
+      case 'shipped':
+        statusText = '已送达';
+        statusColor = const Color(0xFF20CB6B); // 绿色
+        break;
+      case 'paid':
+      case 'completed':
+        statusText = '已收款';
+        statusColor = const Color(0xFF7C4DFF); // 紫色
+        break;
+      case 'cancelled':
+        statusText = '已取消';
+        statusColor = const Color(0xFFB0B4C3); // 灰色
+        break;
+      default:
+        statusText = status;
+        statusColor = const Color(0xFF8C92A4); // 默认灰色
     }
 
     return InkWell(

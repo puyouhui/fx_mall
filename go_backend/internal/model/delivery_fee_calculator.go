@@ -618,3 +618,270 @@ func CalculateAndStoreOrderProfit(orderID int) error {
 
 	return err
 }
+
+// CalculateRiderDeliveryFeePreview 计算配送员配送费预览（基于采购单和地址，不创建订单）
+func CalculateRiderDeliveryFeePreview(items []PurchaseListItem, addressID int, isUrgent bool, userType string) (map[string]interface{}, error) {
+	result := map[string]interface{}{
+		"base_fee":          0.0,
+		"isolated_fee":      0.0,
+		"item_fee":          0.0,
+		"urgent_fee":        0.0,
+		"weather_fee":       0.0,
+		"profit_share":      0.0,
+		"rider_payable_fee": 0.0,
+	}
+
+	// 1. 基础配送费
+	baseFeeStr, _ := GetSystemSetting("delivery_base_fee")
+	baseFee := 4.0
+	if baseFeeStr != "" {
+		if val, err := strconv.ParseFloat(baseFeeStr, 64); err == nil {
+			baseFee = math.Max(0, val)
+		}
+	}
+	result["base_fee"] = baseFee
+
+	// 2. 商品件数补贴
+	thresholdLowStr, _ := GetSystemSetting("delivery_item_threshold_low")
+	thresholdLow := 5
+	if thresholdLowStr != "" {
+		if val, err := strconv.Atoi(thresholdLowStr); err == nil {
+			thresholdLow = val
+		}
+	}
+
+	rateLowStr, _ := GetSystemSetting("delivery_item_rate_low")
+	rateLow := 0.5
+	if rateLowStr != "" {
+		if val, err := strconv.ParseFloat(rateLowStr, 64); err == nil {
+			rateLow = val
+		}
+	}
+
+	thresholdHighStr, _ := GetSystemSetting("delivery_item_threshold_high")
+	thresholdHigh := 10
+	if thresholdHighStr != "" {
+		if val, err := strconv.Atoi(thresholdHighStr); err == nil {
+			thresholdHigh = val
+		}
+	}
+
+	rateHighStr, _ := GetSystemSetting("delivery_item_rate_high")
+	rateHigh := 0.6
+	if rateHighStr != "" {
+		if val, err := strconv.ParseFloat(rateHighStr, 64); err == nil {
+			rateHigh = val
+		}
+	}
+
+	maxItemsStr, _ := GetSystemSetting("delivery_item_max_count")
+	maxItems := 50
+	if maxItemsStr != "" {
+		if val, err := strconv.Atoi(maxItemsStr); err == nil {
+			maxItems = val
+		}
+	}
+
+	itemCount := 0
+	for _, item := range items {
+		itemCount += item.Quantity
+	}
+	if itemCount > maxItems {
+		itemCount = maxItems
+	}
+
+	itemFee := 0.0
+	if itemCount >= thresholdLow {
+		if itemCount < thresholdHigh {
+			itemFee = float64(itemCount) * rateLow
+		} else {
+			itemFee = float64(itemCount) * rateHigh
+		}
+	}
+	result["item_fee"] = itemFee
+
+	// 3. 加急订单补贴
+	urgentFee := 0.0
+	if isUrgent {
+		urgentSubsidyStr, _ := GetSystemSetting("delivery_urgent_subsidy")
+		urgentSubsidy := 10.0
+		if urgentSubsidyStr != "" {
+			if val, err := strconv.ParseFloat(urgentSubsidyStr, 64); err == nil {
+				urgentSubsidy = math.Max(0, val)
+			}
+		}
+		urgentFee = urgentSubsidy
+	}
+	result["urgent_fee"] = urgentFee
+
+	// 4. 孤立订单补贴（需要地址信息）
+	isolatedFee := 0.0
+	if addressID > 0 {
+		isolatedSubsidyStr, _ := GetSystemSetting("delivery_isolated_subsidy")
+		isolatedSubsidy := 3.0
+		if isolatedSubsidyStr != "" {
+			if val, err := strconv.ParseFloat(isolatedSubsidyStr, 64); err == nil {
+				isolatedSubsidy = val
+			}
+		}
+
+		isolatedDistanceStr, _ := GetSystemSetting("delivery_isolated_distance")
+		isolatedDistance := 8.0
+		if isolatedDistanceStr != "" {
+			if val, err := strconv.ParseFloat(isolatedDistanceStr, 64); err == nil {
+				isolatedDistance = val
+			}
+		}
+
+		// 获取地址
+		address, err := GetAddressByID(addressID)
+		if err == nil && address != nil && address.Latitude != nil && address.Longitude != nil {
+			// 查询附近订单
+			rows, err := database.DB.Query(`
+				SELECT a.latitude, a.longitude
+				FROM orders o
+				JOIN mini_app_addresses a ON o.address_id = a.id
+				WHERE o.status IN ('pending', 'pending_delivery', 'pending_pickup')
+				  AND a.latitude IS NOT NULL
+				  AND a.longitude IS NOT NULL
+			`)
+			if err == nil {
+				defer rows.Close()
+				hasNearby := false
+				for rows.Next() {
+					var lat, lng sql.NullFloat64
+					if err := rows.Scan(&lat, &lng); err == nil && lat.Valid && lng.Valid {
+						dist := utils.CalculateDistance(*address.Latitude, *address.Longitude, lat.Float64, lng.Float64)
+						if dist <= isolatedDistance {
+							hasNearby = true
+							break
+						}
+					}
+				}
+				if !hasNearby {
+					isolatedFee = isolatedSubsidy
+				}
+			}
+		}
+	}
+	result["isolated_fee"] = isolatedFee
+
+	// 5. 极端天气补贴（需要地址信息）
+	weatherFee := 0.0
+	if addressID > 0 {
+		weatherSubsidyStr, _ := GetSystemSetting("delivery_weather_subsidy")
+		weatherSubsidy := 1.0
+		if weatherSubsidyStr != "" {
+			if val, err := strconv.ParseFloat(weatherSubsidyStr, 64); err == nil {
+				weatherSubsidy = val
+			}
+		}
+
+		extremeTempStr, _ := GetSystemSetting("delivery_extreme_temp")
+		extremeTemp := 37.0
+		if extremeTempStr != "" {
+			if val, err := strconv.ParseFloat(extremeTempStr, 64); err == nil {
+				extremeTemp = val
+			}
+		}
+
+		// 获取地址
+		address, err := GetAddressByID(addressID)
+		if err == nil && address != nil && address.Latitude != nil && address.Longitude != nil {
+			amapKey, _ := GetSystemSetting("map_amap_key")
+			weather, err := utils.GetWeatherByLocation(*address.Latitude, *address.Longitude, amapKey)
+			if err == nil && weather.Success && utils.IsExtremeWeather(weather, extremeTemp) {
+				weatherFee = weatherSubsidy
+			}
+		}
+	}
+	result["weather_fee"] = weatherFee
+
+	// 6. 汇总配送费（不含利润分成）
+	deliveryFeeWithoutProfit := baseFee + isolatedFee + itemFee + urgentFee + weatherFee
+
+	// 7. 利润分成（预览时也计算，确保与实际订单一致）
+	profitShare := 0.0
+	profitThresholdStr, _ := GetSystemSetting("delivery_profit_threshold")
+	profitThreshold := 25.0
+	if profitThresholdStr != "" {
+		if val, err := strconv.ParseFloat(profitThresholdStr, 64); err == nil {
+			profitThreshold = val
+		}
+	}
+
+	profitShareRateStr, _ := GetSystemSetting("delivery_profit_share_rate")
+	profitShareRate := 0.08
+	if profitShareRateStr != "" {
+		if val, err := strconv.ParseFloat(profitShareRateStr, 64); err == nil {
+			profitShareRate = val
+		}
+	}
+
+	maxProfitShareStr, _ := GetSystemSetting("delivery_max_profit_share")
+	maxProfitShare := 50.0
+	if maxProfitShareStr != "" {
+		if val, err := strconv.ParseFloat(maxProfitShareStr, 64); err == nil {
+			maxProfitShare = val
+		}
+	}
+
+	// 计算订单利润
+	// 商品总金额
+	goodsAmount := 0.0
+	totalCost := 0.0
+	for _, item := range items {
+		// 根据用户类型计算商品金额
+		var price float64
+		if userType == "wholesale" {
+			price = item.SpecSnapshot.WholesalePrice
+			if price <= 0 {
+				price = item.SpecSnapshot.RetailPrice
+			}
+		} else {
+			price = item.SpecSnapshot.RetailPrice
+			if price <= 0 {
+				price = item.SpecSnapshot.WholesalePrice
+			}
+		}
+		if price <= 0 {
+			price = item.SpecSnapshot.Cost
+		}
+		if price < 0 {
+			price = 0
+		}
+		goodsAmount += price * float64(item.Quantity)
+
+		// 计算成本
+		cost := item.SpecSnapshot.Cost
+		if cost < 0 {
+			cost = 0
+		}
+		totalCost += cost * float64(item.Quantity)
+	}
+
+	// 订单利润 = 商品总金额 - 总成本
+	orderProfit := goodsAmount - totalCost
+	if orderProfit < 0 {
+		orderProfit = 0
+	}
+
+	// 计算利润分成
+	if orderProfit > profitThreshold {
+		// 计算分成基数（避免循环依赖）
+		profitExcess := orderProfit - deliveryFeeWithoutProfit
+		if profitExcess > 0 {
+			profitShare = profitExcess * profitShareRate
+			// 边界保护
+			profitShare = math.Min(math.Max(0, profitShare), maxProfitShare)
+			profitShare = math.Round(profitShare*100) / 100
+		}
+	}
+	result["profit_share"] = profitShare
+
+	// 配送员实际所得 = 基础配送费 + 各种补贴 + 利润分成
+	riderPayableFee := deliveryFeeWithoutProfit + profitShare
+	result["rider_payable_fee"] = riderPayableFee
+
+	return result, nil
+}

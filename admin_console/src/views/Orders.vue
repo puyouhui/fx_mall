@@ -152,7 +152,7 @@
                       标记已收款
                     </el-dropdown-item>
                     <el-dropdown-item 
-                      v-if="isPendingDelivery(scope.row.status) || scope.row.status === 'delivering'" 
+                      v-if="isPendingDelivery(scope.row.status)" 
                       command="cancelled"
                       divided
                     >
