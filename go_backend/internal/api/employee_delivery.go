@@ -74,6 +74,23 @@ func GetDeliveryOrders(c *gin.Context) {
 	// 过滤掉已锁定的订单（正在被修改的订单不能接单）
 	// 使用COALESCE处理NULL值，如果字段不存在会报错，需要在错误处理中处理
 	where += " AND COALESCE(is_locked, 0) = 0"
+	log.Printf("[GetDeliveryOrders] 查询条件: %s, 参数: %v", where, args)
+	// #region agent log - 检查是否有已锁定的订单被查询
+	checkLockedQuery := "SELECT id, is_locked, locked_by, locked_at FROM orders WHERE status IN ('pending_delivery', 'pending') AND COALESCE(is_locked, 0) = 1 LIMIT 5"
+	lockedRows, checkErr := database.DB.Query(checkLockedQuery)
+	if checkErr == nil {
+		defer lockedRows.Close()
+		for lockedRows.Next() {
+			var orderID int
+			var isLocked int
+			var lockedBy sql.NullString
+			var lockedAt sql.NullTime
+			if scanErr := lockedRows.Scan(&orderID, &isLocked, &lockedBy, &lockedAt); scanErr == nil {
+				log.Printf("[GetDeliveryOrders] 发现已锁定订单: 订单ID=%d, is_locked=%d, locked_by=%v, locked_at=%v", orderID, isLocked, lockedBy, lockedAt)
+			}
+		}
+	}
+	// #endregion
 
 	// 获取总数量
 	var total int
@@ -527,17 +544,21 @@ func GetDeliveryOrderDetail(c *gin.Context) {
 
 	// 配送员能拿到的加急费用
 	orderData := map[string]interface{}{
-		"id":           order.ID,
-		"order_number": order.OrderNumber,
-		"status":       order.Status,
-		"goods_amount": order.GoodsAmount,
-		"delivery_fee": order.DeliveryFee,
-		"total_amount": order.TotalAmount,
-		"is_urgent":    order.IsUrgent,
-		"urgent_fee":   riderUrgentFee, // 配送员能拿到的加急费用
-		"remark":       order.Remark,
-		"created_at":   order.CreatedAt,
-		"updated_at":   order.UpdatedAt,
+		"id":                    order.ID,
+		"order_number":          order.OrderNumber,
+		"status":                order.Status,
+		"goods_amount":          order.GoodsAmount,
+		"delivery_fee":          order.DeliveryFee,
+		"total_amount":          order.TotalAmount,
+		"is_urgent":             order.IsUrgent,
+		"urgent_fee":            riderUrgentFee, // 配送员能拿到的加急费用
+		"remark":                order.Remark,
+		"out_of_stock_strategy": order.OutOfStockStrategy,
+		"trust_receipt":         order.TrustReceipt,
+		"hide_price":            order.HidePrice,
+		"require_phone_contact": order.RequirePhoneContact,
+		"created_at":            order.CreatedAt,
+		"updated_at":            order.UpdatedAt,
 	}
 
 	c.JSON(http.StatusOK, gin.H{

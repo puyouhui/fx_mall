@@ -16,6 +16,8 @@ type AvailableCouponInfo struct {
 	CategoryIDs   []int   `json:"category_ids"`
 	IsAvailable   bool    `json:"is_available"`     // 是否满足使用条件
 	Reason        string  `json:"reason,omitempty"` // 不可用原因
+	ExpiresAt     *string `json:"expires_at,omitempty"` // 用户优惠券的过期日期（优先使用，如果有）
+	ValidTo       *string `json:"valid_to,omitempty"`   // 优惠券模板的有效期（仅在 expires_at 为空时使用）
 }
 
 // BestCouponCombination 最佳优惠券组合
@@ -44,24 +46,47 @@ func GetAvailableCouponsForPurchaseList(userID int, orderAmount float64, categor
 			continue
 		}
 
-		// 检查优惠券是否过期
-		if uc.ExpiresAt != nil && now.After(*uc.ExpiresAt) {
-			continue
-		}
-
-		// 检查优惠券本身的有效期
+		// 检查优惠券本身是否存在
 		if uc.Coupon == nil {
 			continue
 		}
 
 		coupon := uc.Coupon
-		if now.Before(coupon.ValidFrom.ToTime()) || now.After(coupon.ValidTo.ToTime()) {
-			continue
+
+		// 优先使用用户优惠券的 expires_at（发放时指定的过期日期）
+		// 如果用户优惠券有 expires_at，则只检查这个日期，不再检查优惠券模板的 valid_to
+		if uc.ExpiresAt != nil {
+			// 使用用户优惠券的过期日期
+			if now.After(*uc.ExpiresAt) {
+				continue // 已过期
+			}
+			// 如果用户优惠券有 expires_at，还需要检查优惠券模板的 valid_from（开始时间）
+			// 确保当前时间在优惠券模板的有效期内（至少要在 valid_from 之后）
+			if now.Before(coupon.ValidFrom.ToTime()) {
+				continue // 优惠券模板还未生效
+			}
+		} else {
+			// 如果用户优惠券没有 expires_at，则使用优惠券模板的有效期
+			if now.Before(coupon.ValidFrom.ToTime()) || now.After(coupon.ValidTo.ToTime()) {
+				continue
+			}
 		}
 
 		// 检查优惠券是否启用
 		if coupon.Status != 1 {
 			continue
+		}
+
+		// 格式化过期日期
+		var expiresAtStr *string
+		var validToStr *string
+		if uc.ExpiresAt != nil {
+			expiresAtFormatted := uc.ExpiresAt.Format("2006-01-02 15:04:05")
+			expiresAtStr = &expiresAtFormatted
+		} else {
+			// 如果没有 expires_at，使用优惠券模板的 valid_to
+			validToFormatted := coupon.ValidTo.ToTime().Format("2006-01-02 15:04:05")
+			validToStr = &validToFormatted
 		}
 
 		info := AvailableCouponInfo{
@@ -73,6 +98,8 @@ func GetAvailableCouponsForPurchaseList(userID int, orderAmount float64, categor
 			MinAmount:     coupon.MinAmount,
 			CategoryIDs:   coupon.CategoryIDs,
 			IsAvailable:   false,
+			ExpiresAt:     expiresAtStr,
+			ValidTo:       validToStr,
 		}
 
 		// 检查金额门槛

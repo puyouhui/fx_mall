@@ -83,7 +83,14 @@ class _CouponSelectionPageState extends State<CouponSelectionPage> {
       return false;
     }
 
-    // 检查用户优惠券的有效期（expires_at）
+    // 如果传入的是 userCoupon，需要从 coupon 字段获取优惠券信息
+    Map<String, dynamic> couponData = coupon;
+    if (coupon['coupon'] != null) {
+      couponData = coupon['coupon'] as Map<String, dynamic>;
+    }
+
+    // 优先使用用户优惠券的 expires_at（发放时指定的过期日期）
+    // 如果用户优惠券有 expires_at，则只检查这个日期，不再检查优惠券模板的 valid_to
     final expiresAtStr = coupon['expires_at'] as String?;
     if (expiresAtStr != null && expiresAtStr.isNotEmpty) {
       try {
@@ -92,28 +99,35 @@ class _CouponSelectionPageState extends State<CouponSelectionPage> {
         if (now.isAfter(expiresAt)) {
           return false; // 已过期
         }
-      } catch (e) {
-        // 解析失败，继续检查其他条件
-      }
-    }
-
-    // 如果传入的是 userCoupon，需要从 coupon 字段获取优惠券信息
-    Map<String, dynamic> couponData = coupon;
-    if (coupon['coupon'] != null) {
-      couponData = coupon['coupon'] as Map<String, dynamic>;
-    }
-
-    // 检查优惠券本身的有效期（valid_to）
-    final validToStr = couponData['valid_to'] as String?;
-    if (validToStr != null && validToStr.isNotEmpty) {
-      try {
-        final validTo = DateTime.parse(validToStr);
-        final now = DateTime.now();
-        if (now.isAfter(validTo)) {
-          return false; // 优惠券本身已过期
+        // 如果用户优惠券有 expires_at，还需要检查优惠券模板的 valid_from（开始时间）
+        // 确保当前时间在优惠券模板的有效期内（至少要在 valid_from 之后）
+        final validFromStr = couponData['valid_from'] as String?;
+        if (validFromStr != null && validFromStr.isNotEmpty) {
+          try {
+            final validFrom = DateTime.parse(validFromStr);
+            if (now.isBefore(validFrom)) {
+              return false; // 优惠券模板还未生效
+            }
+          } catch (e) {
+            // 解析失败，继续检查其他条件
+          }
         }
       } catch (e) {
         // 解析失败，继续检查其他条件
+      }
+    } else {
+      // 如果用户优惠券没有 expires_at，则使用优惠券模板的有效期
+      final validToStr = couponData['valid_to'] as String?;
+      if (validToStr != null && validToStr.isNotEmpty) {
+        try {
+          final validTo = DateTime.parse(validToStr);
+          final now = DateTime.now();
+          if (now.isAfter(validTo)) {
+            return false; // 优惠券本身已过期
+          }
+        } catch (e) {
+          // 解析失败，继续检查其他条件
+        }
       }
     }
 
@@ -704,7 +718,7 @@ class _CouponSelectionPageState extends State<CouponSelectionPage> {
                                                   ),
                                                   const SizedBox(height: 4),
                                                   Text(
-                                                    _formatValidPeriod(coupon),
+                                                    _formatValidPeriod(userCoupon),
                                                     style: const TextStyle(
                                                       fontSize: 11,
                                                       color: Color(0xFF8C92A4),

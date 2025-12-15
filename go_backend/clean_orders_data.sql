@@ -1,5 +1,5 @@
 -- 清理所有订单相关数据的SQL脚本
--- 注意：此脚本会删除所有订单、订单明细、配送记录、配送日志和路线排序数据
+-- 注意：此脚本会删除所有订单、订单明细、配送记录、配送日志、路线排序数据和优惠券使用记录
 -- 执行前请确保已备份重要数据！
 
 -- 禁用外键检查（临时）
@@ -20,6 +20,14 @@ TRUNCATE TABLE order_items;
 -- 5. 删除订单主表数据
 TRUNCATE TABLE orders;
 
+-- 6. 删除优惠券使用记录（已使用的优惠券）
+-- 注意：这里只删除已使用的优惠券记录，未使用的优惠券会保留
+-- 清理所有已使用的优惠券（包括有订单ID和没有订单ID的，以防数据异常）
+DELETE FROM user_coupons WHERE status = 'used';
+
+-- 7. 清理优惠券发放记录表数据（可选，如果需要保留发放记录可以注释掉）
+TRUNCATE TABLE coupon_issue_logs;
+
 -- 重新启用外键检查
 SET FOREIGN_KEY_CHECKS = 1;
 
@@ -37,5 +45,11 @@ SELECT
     'order_items', COUNT(*) FROM order_items
 UNION ALL
 SELECT 
-    'orders', COUNT(*) FROM orders;
+    'orders', COUNT(*) FROM orders
+UNION ALL
+SELECT 
+    'user_coupons (used)', COUNT(*) FROM user_coupons WHERE status = 'used'
+UNION ALL
+SELECT 
+    'coupon_issue_logs', COUNT(*) FROM coupon_issue_logs;
 

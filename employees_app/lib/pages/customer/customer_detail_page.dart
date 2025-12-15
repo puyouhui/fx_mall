@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:employees_app/utils/request.dart';
 import 'package:employees_app/pages/customer/customer_profile_page.dart';
 import 'package:employees_app/pages/order/sales_create_order_page.dart';
+import 'package:employees_app/pages/order/order_detail_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
 
@@ -52,10 +53,22 @@ class _CustomerDetailPageState extends State<CustomerDetailPage> {
 
     if (resp.isSuccess && resp.data != null) {
       final data = resp.data!;
+      final recentOrdersRaw = data['recent_orders'];
+      print('[CustomerDetailPage] recent_orders 原始数据: $recentOrdersRaw');
+      print(
+        '[CustomerDetailPage] recent_orders 类型: ${recentOrdersRaw.runtimeType}',
+      );
+
       setState(() {
         _user = data['user'] as Map<String, dynamic>?;
         _addresses = (data['addresses'] as List<dynamic>? ?? []);
-        _recentOrders = (data['recent_orders'] as List<dynamic>? ?? []);
+        // 确保正确解析 recent_orders
+        if (recentOrdersRaw is List) {
+          _recentOrders = recentOrdersRaw;
+        } else {
+          _recentOrders = [];
+        }
+        print('[CustomerDetailPage] 解析后的订单数量: ${_recentOrders.length}');
         _addressCount = data['address_count'] as int? ?? _addresses.length;
         _orderCount = data['order_count'] as int? ?? 0;
         _totalAmount = (data['total_amount'] as num?)?.toDouble() ?? 0.0;
@@ -79,10 +92,7 @@ class _CustomerDetailPageState extends State<CustomerDetailPage> {
       extendBody: true, // 让body延伸到系统操作条下方
       extendBodyBehindAppBar: true, // 让背景延伸到AppBar下方
       appBar: AppBar(
-        title: Text(
-          name,
-          style: const TextStyle(color: Colors.white),
-        ),
+        title: Text(name, style: const TextStyle(color: Colors.white)),
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -118,7 +128,14 @@ class _CustomerDetailPageState extends State<CustomerDetailPage> {
                 child: RefreshIndicator(
                   onRefresh: _loadDetail,
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      16,
+                      16,
+                      16 +
+                          MediaQuery.of(context).padding.bottom +
+                          80, // 底部padding：系统操作条高度 + 底部操作栏高度
+                    ),
                     children: [
                       _buildBasicInfoCard(),
                       const SizedBox(height: 12),
@@ -471,7 +488,7 @@ class _CustomerDetailPageState extends State<CustomerDetailPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '最近购买记录（3单）',
+            '最近购买记录',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -481,65 +498,105 @@ class _CustomerDetailPageState extends State<CustomerDetailPage> {
           const SizedBox(height: 8),
           ..._recentOrders.map((item) {
             final order = item as Map<String, dynamic>;
+            final orderId = order['id'] as int?;
             final orderNo = order['order_number'] as String? ?? '';
             final total = (order['total_amount'] as num?)?.toDouble() ?? 0.0;
             final status = order['status'] as String? ?? '';
             final createdAt = order['created_at']?.toString() ?? '';
+            final addressName = order['address_name'] as String? ?? '';
 
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF7F8FA),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          orderNo,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF20253A),
+            return InkWell(
+              onTap: orderId != null
+                  ? () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => OrderDetailPage(orderId: orderId),
+                        ),
+                      );
+                    }
+                  : null,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7F8FA),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 第一行：地址名称（如果有）
+                    if (addressName.isNotEmpty) ...[
+                      Text(
+                        addressName,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF20253A),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                    ],
+                    // 第二行：订单号和金额
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            orderNo,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF8C92A4),
+                            ),
                           ),
                         ),
-                      ),
-                      Text(
-                        '¥${total.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFFF5A5F),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Text(
-                        _formatTime(createdAt),
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFFB0B4C3),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      if (status.isNotEmpty)
                         Text(
-                          status,
+                          '¥${total.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFFF5A5F),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    // 第三行：时间和状态
+                    Row(
+                      children: [
+                        Text(
+                          _formatTime(createdAt),
                           style: const TextStyle(
                             fontSize: 11,
-                            color: Color(0xFF8C92A4),
+                            color: Color(0xFFB0B4C3),
                           ),
                         ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 12),
+                        if (status.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(status).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              _formatStatus(status),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: _getStatusColor(status),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             );
           }),
@@ -704,6 +761,52 @@ class _CustomerDetailPageState extends State<CustomerDetailPage> {
       return DateFormat('yyyy-MM-dd HH:mm').format(dt.toLocal());
     } catch (_) {
       return raw;
+    }
+  }
+
+  /// 格式化订单状态为中文
+  String _formatStatus(String status) {
+    switch (status) {
+      case 'pending_delivery':
+      case 'pending':
+        return '待配送';
+      case 'pending_pickup':
+        return '待取货';
+      case 'delivering':
+        return '配送中';
+      case 'delivered':
+      case 'shipped':
+        return '已送达';
+      case 'paid':
+      case 'completed':
+        return '已收款';
+      case 'cancelled':
+        return '已取消';
+      default:
+        return status;
+    }
+  }
+
+  /// 获取订单状态颜色
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending_delivery':
+      case 'pending':
+        return const Color(0xFFFFA940); // 橙色
+      case 'pending_pickup':
+        return const Color(0xFF4C8DF6); // 蓝色
+      case 'delivering':
+        return const Color(0xFF4C8DF6); // 蓝色
+      case 'delivered':
+      case 'shipped':
+        return const Color(0xFF20CB6B); // 绿色
+      case 'paid':
+      case 'completed':
+        return const Color(0xFF20CB6B); // 绿色
+      case 'cancelled':
+        return const Color(0xFFB0B4C3); // 灰色
+      default:
+        return const Color(0xFF8C92A4); // 默认灰色
     }
   }
 }

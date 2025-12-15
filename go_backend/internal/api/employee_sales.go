@@ -269,6 +269,9 @@ func GetSalesOrderDetail(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
 		return
 	}
+	// #region agent log - 记录订单锁定状态
+	log.Printf("[GetSalesOrderDetail] 查询订单详情: 订单ID=%d, is_locked=%v, locked_by=%v, locked_at=%v", id, order.IsLocked, order.LockedBy, order.LockedAt)
+	// #endregion
 
 	// 获取客户信息，并校验是否属于当前销售员
 	user, err := model.GetMiniAppUserByID(order.UserID)
@@ -483,6 +486,17 @@ func SyncOrderItemsToPurchaseList(c *gin.Context) {
 		return
 	}
 
+	// 检查订单是否已锁定（必须已锁定才能进入修改页面）
+	if !order.IsLocked {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单未锁定，请先锁定订单"})
+		return
+	}
+	// 检查订单是否被当前员工锁定
+	if order.LockedBy == nil || *order.LockedBy != employee.EmployeeCode {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单已被其他员工锁定，无法修改"})
+		return
+	}
+
 	// 获取订单商品
 	orderItems, err := model.GetOrderItemsByOrderID(id)
 	if err != nil {
@@ -664,13 +678,19 @@ func UpdateOrderForCustomer(c *gin.Context) {
 		return
 	}
 
-	// 检查订单是否被锁定
-	if order.IsLocked {
-		if order.LockedBy == nil || *order.LockedBy != employee.EmployeeCode {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单正在被其他员工修改中，请稍后再试"})
-			return
-		}
+	// 检查订单是否已锁定（必须已锁定才能修改）
+	if !order.IsLocked {
+		log.Printf("[UpdateOrderForCustomer] 订单未锁定，拒绝修改: 订单ID=%d, 员工=%s", id, employee.EmployeeCode)
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单未锁定，请先锁定订单"})
+		return
 	}
+	// 检查订单是否被当前员工锁定
+	if order.LockedBy == nil || *order.LockedBy != employee.EmployeeCode {
+		log.Printf("[UpdateOrderForCustomer] 订单被其他员工锁定，拒绝修改: 订单ID=%d, 当前员工=%s, 锁定者=%v", id, employee.EmployeeCode, order.LockedBy)
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单已被其他员工锁定，无法修改"})
+		return
+	}
+	log.Printf("[UpdateOrderForCustomer] 订单锁定检查通过: 订单ID=%d, 锁定者=%s", id, employee.EmployeeCode)
 
 	// 验证客户归属
 	user, err := model.GetMiniAppUserByID(order.UserID)
@@ -932,10 +952,13 @@ func UpdateOrderForCustomer(c *gin.Context) {
 	}
 
 	// 如果使用了新的优惠券，标记为已使用
-	if selectedCoupon != nil {
-		if err := model.UseCoupon(order.UserID, selectedCoupon.CouponID, id); err != nil {
+	// 使用 user_coupon_id 精确更新，避免用户有多张相同优惠券时误更新
+	if selectedCoupon != nil && req.CouponID > 0 {
+		if err := model.UseCouponByUserCouponID(req.CouponID, id); err != nil {
 			// 记录错误但不影响订单修改
-			log.Printf("标记优惠券为已使用失败 (用户ID: %d, 优惠券ID: %d, 订单ID: %d): %v", order.UserID, selectedCoupon.CouponID, id, err)
+			log.Printf("[UpdateOrderForCustomer] 标记优惠券为已使用失败 (userCouponID=%d, orderID=%d): %v", req.CouponID, id, err)
+		} else {
+			log.Printf("[UpdateOrderForCustomer] 成功标记优惠券为已使用 (userCouponID=%d, orderID=%d)", req.CouponID, id)
 		}
 	}
 
@@ -1413,7 +1436,12 @@ func GetSalesCustomerDetail(c *gin.Context) {
 	totalAmount, orderCount, _ := model.GetOrderSummaryByUserID(id)
 
 	// 最近三笔订单
-	recentOrders, _ := model.GetRecentOrdersByUserID(id, 3)
+	recentOrders, err := model.GetRecentOrdersByUserID(id, 3)
+	if err != nil {
+		log.Printf("[GetSalesCustomerDetail] 获取最近订单失败: userID=%d, error=%v", id, err)
+		recentOrders = []map[string]interface{}{} // 如果出错，返回空数组
+	}
+	log.Printf("[GetSalesCustomerDetail] 获取最近订单成功: userID=%d, count=%d", id, len(recentOrders))
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,
@@ -2180,10 +2208,13 @@ func CreateOrderForCustomer(c *gin.Context) {
 	}
 
 	// 创建订单成功后，使用优惠券（标记为已使用并关联订单ID）
-	if selectedCoupon != nil {
-		if err := model.UseCoupon(req.UserID, selectedCoupon.CouponID, order.ID); err != nil {
+	// 使用 user_coupon_id 精确更新，避免用户有多张相同优惠券时误更新
+	if selectedCoupon != nil && req.CouponID > 0 {
+		if err := model.UseCouponByUserCouponID(req.CouponID, order.ID); err != nil {
 			// 如果使用失败，记录错误但不影响订单创建
-			// 这里可以记录日志，但不返回错误给前端
+			log.Printf("[CreateOrderForCustomer] 标记优惠券为已使用失败 (userCouponID=%d, orderID=%d): %v", req.CouponID, order.ID, err)
+		} else {
+			log.Printf("[CreateOrderForCustomer] 成功标记优惠券为已使用 (userCouponID=%d, orderID=%d)", req.CouponID, order.ID)
 		}
 	}
 

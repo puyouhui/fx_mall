@@ -54,24 +54,16 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _remarkController.dispose();
-    // 如果订单已锁定且未解锁，自动解锁
-    if (_isLocked && !_hasUnlocked) {
-      _unlockOrder();
-    }
+    // 注意：不在dispose中自动解锁，避免应用生命周期变化时误解锁
+    // 只在用户主动退出（WillPopScope）或取消修改时解锁
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    // 当应用进入后台或暂停时，如果订单已锁定，自动解锁
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.detached) {
-      if (_isLocked && !_hasUnlocked) {
-        _unlockOrder();
-      }
-    }
+    // 注意：不要因为应用生命周期变化而解锁订单
+    // 只在用户主动退出（WillPopScope）或取消修改时解锁
   }
 
   /// 解锁订单
@@ -127,9 +119,30 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('订单数据不完整')));
+      // 如果订单数据不完整，不解锁订单（订单可能已经被锁定，不应该因为数据获取失败而解锁）
       Navigator.of(context).pop(false);
       return;
     }
+
+    // 检查订单是否已锁定
+    final isLocked = (order['is_locked'] as bool?) ?? false;
+    if (!isLocked) {
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('订单未锁定，请先锁定订单')));
+      // 返回 null 表示订单已解锁，不需要再次解锁
+      // 在 _handleEditOrder 中，我们需要区分 null（订单已解锁）和 false（用户取消）
+      Navigator.of(context).pop(null);
+      return;
+    }
+
+    // 设置锁定状态
+    setState(() {
+      _isLocked = true;
+    });
 
     _customerId = user['id'] as int?;
     if (_customerId == null) {
@@ -139,15 +152,41 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('客户信息缺失')));
+      // 客户信息缺失，不解锁订单，直接返回（订单保持锁定状态）
       Navigator.of(context).pop(false);
       return;
     }
 
     // 2. 将订单商品同步到采购单（确保修改订单时能正确显示商品）
+    // 注意：这个API会检查订单是否已锁定，如果未锁定会返回错误
     final syncResp = await Request.post<Map<String, dynamic>>(
       '/employee/sales/orders/${widget.orderId}/sync-to-purchase-list',
       parser: (data) => data as Map<String, dynamic>,
     );
+
+    // 如果同步失败，检查失败原因
+    if (!syncResp.isSuccess) {
+      setState(() {
+        _isLoading = false;
+        _isLocked = false; // 同步失败，订单可能未锁定
+      });
+
+      // 检查失败原因并显示错误信息
+      final errorMessage = syncResp.message.isNotEmpty
+          ? syncResp.message
+          : '同步订单商品失败';
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorMessage)));
+
+      // 注意：这里不解锁订单，因为：
+      // 1. 如果是因为"订单未锁定"失败，订单本来就没锁定，不需要解锁
+      // 2. 如果是因为其他原因失败（比如订单已被其他员工锁定），订单可能已经被其他操作解锁了
+      // 3. 我们只更新前端状态，不解锁后端订单，避免误操作
+      Navigator.of(context).pop(false);
+      return;
+    }
 
     // 3. 获取客户详情（含地址列表）
     final detailResp = await Request.get<Map<String, dynamic>>(
@@ -180,6 +219,15 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
           ),
         ),
       );
+      // 如果同步失败，订单可能未锁定，需要先解锁再返回
+      if (!syncResp.isSuccess) {
+        // 同步失败可能是因为订单未锁定，尝试解锁（如果已锁定）
+        try {
+          await Request.post('/employee/sales/orders/${widget.orderId}/unlock');
+        } catch (e) {
+          // 忽略解锁错误
+        }
+      }
       Navigator.of(context).pop(false);
       return;
     }
@@ -386,6 +434,7 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
     return WillPopScope(
       onWillPop: () async {
         // 如果订单已锁定且未解锁，先解锁
+        // 注意：只有在用户主动返回时才解锁
         if (_isLocked && !_hasUnlocked) {
           await _unlockOrder();
         }
@@ -922,14 +971,14 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
       final purchase = purchaseResp.data!;
       final purchaseItems = (purchase['items'] as List<dynamic>? ?? []);
       final purchaseSummary = purchase['summary'] as Map<String, dynamic>?;
-      
+
       setState(() {
         _items = purchaseItems;
         _summary = purchaseSummary;
       });
       // 刷新配送员配送费预览
       _loadRiderDeliveryFeePreview();
-      
+
       // 如果添加商品成功返回了数据，显示成功提示
       if (result != null && result['items'] != null) {
         ScaffoldMessenger.of(context).showSnackBar(

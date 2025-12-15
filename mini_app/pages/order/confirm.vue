@@ -81,10 +81,11 @@
         <text class="amount-label">配送费</text>
         <text class="amount-value" :class="deliveryFeeText === '免配送费' ? 'free-text' : ''">{{ deliveryFeeText }}</text>
       </view>
-      <view class="amount-row">
+      <!-- 积分抵扣暂时隐藏 -->
+      <!-- <view class="amount-row">
         <text class="amount-label">积分抵扣</text>
         <text class="amount-value muted">暂未使用</text>
-      </view>
+      </view> -->
       <view class="amount-row" v-if="couponDiscountText">
         <text class="amount-label">优惠券</text>
         <text class="amount-value discount-text">{{ couponDiscountText }}</text>

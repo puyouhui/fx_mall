@@ -243,19 +243,29 @@ class _OverviewTabState extends State<OverviewTab> {
 
   /// 刷新待配送订单列表（下拉刷新时调用）
   Future<void> _refreshPendingOrders() async {
-    // 同时刷新 dashboard 数据
-    if (widget.onRefreshDashboard != null) {
-      await widget.onRefreshDashboard!();
-    }
+    try {
+      // 同时刷新 dashboard 数据
+      if (widget.onRefreshDashboard != null) {
+        await widget.onRefreshDashboard!();
+      }
 
-    // 刷新待配送订单列表
-    setState(() {
-      _pendingOrders.clear();
-      _pageNum = 1;
-      _hasMore = true;
-      _isLoadingMore = false;
-    });
-    await _loadMorePendingOrders();
+      // 刷新待配送订单列表
+      setState(() {
+        _pendingOrders.clear();
+        _pageNum = 1;
+        _hasMore = true;
+        _isLoadingMore = false;
+      });
+      await _loadMorePendingOrders();
+    } catch (e) {
+      // 如果刷新失败，确保刷新指示器能够正确关闭
+      if (mounted) {
+        setState(() {
+          _isLoadingMore = false;
+        });
+      }
+      rethrow;
+    }
   }
 
   Future<void> _loadMorePendingOrders() async {
@@ -320,6 +330,7 @@ class _OverviewTabState extends State<OverviewTab> {
         onRefresh: _refreshPendingOrders,
         color: const Color(0xFF20CB6B),
       child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(), // 确保即使内容不够高也能下拉刷新
         padding: EdgeInsets.fromLTRB(
           16,
           12,

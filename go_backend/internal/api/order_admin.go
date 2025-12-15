@@ -99,6 +99,8 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 			"delivery_fee":          order.DeliveryFee,
 			"points_discount":       order.PointsDiscount,
 			"coupon_discount":       order.CouponDiscount,
+			"is_urgent":             order.IsUrgent,
+			"urgent_fee":            order.UrgentFee,
 			"total_amount":          order.TotalAmount,
 			"remark":                order.Remark,
 			"out_of_stock_strategy": order.OutOfStockStrategy,
@@ -162,45 +164,74 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 			FROM orders WHERE id = ?
 		`, order.ID).Scan(&deliveryFeeCalcJSON, &orderProfit, &netProfit)
 
+		var deliveryFeeResult *model.DeliveryFeeCalculationResult
+		var orderProfitVal, netProfitVal float64
+
 		if err == nil {
 			// 解析配送费计算结果JSON
 			if deliveryFeeCalcJSON.Valid && deliveryFeeCalcJSON.String != "" {
-				var deliveryFeeResult model.DeliveryFeeCalculationResult
-				if json.Unmarshal([]byte(deliveryFeeCalcJSON.String), &deliveryFeeResult) == nil {
-					orderData["delivery_fee_calculation"] = deliveryFeeResult
+				var result model.DeliveryFeeCalculationResult
+				if json.Unmarshal([]byte(deliveryFeeCalcJSON.String), &result) == nil {
+					deliveryFeeResult = &result
+					orderData["delivery_fee_calculation"] = result
 				}
 			}
 
 			// 读取利润信息
 			if orderProfit.Valid {
-				orderData["order_profit"] = orderProfit.Float64
+				orderProfitVal = orderProfit.Float64
+				orderData["order_profit"] = orderProfitVal
 			}
 			if netProfit.Valid {
-				orderData["net_profit"] = netProfit.Float64
+				netProfitVal = netProfit.Float64
+				orderData["net_profit"] = netProfitVal
 			}
 		}
 
 		// 如果订单中没有存储的数据，则尝试计算（这种情况应该很少）
-		if _, hasCalc := orderData["delivery_fee_calculation"]; !hasCalc {
+		if deliveryFeeResult == nil {
 			calculator, calcErr := model.NewDeliveryFeeCalculator(order.ID)
 			if calcErr == nil {
-				deliveryFeeResult, calcErr := calculator.Calculate(true) // true表示管理员视图
+				result, calcErr := calculator.Calculate(true) // true表示管理员视图
 				if calcErr == nil {
-					orderData["delivery_fee_calculation"] = deliveryFeeResult
+					deliveryFeeResult = result
+					orderData["delivery_fee_calculation"] = result
 
 					// 计算订单利润
-					orderProfit := calculator.CalculateOrderProfit()
-					orderData["order_profit"] = orderProfit
+					orderProfitVal = calculator.CalculateOrderProfit()
+					orderData["order_profit"] = orderProfitVal
 
 					// 计算减去配送费后的利润（平台实际利润）
-					netProfit := orderProfit - deliveryFeeResult.TotalPlatformCost
-					orderData["net_profit"] = netProfit
+					netProfitVal = orderProfitVal - result.TotalPlatformCost
+					orderData["net_profit"] = netProfitVal
 
 					// 异步存储计算结果，下次查询时可以直接使用
 					go func() {
 						_ = model.CalculateAndStoreOrderProfit(order.ID)
 					}()
 				}
+			}
+		}
+
+		// 简化利润计算（更直观的方式）
+		if deliveryFeeResult != nil {
+			// 平台总收入 = 实付金额
+			platformRevenue := order.TotalAmount
+			// 商品总成本 = 商品总金额 - 订单利润
+			goodsCost := order.GoodsAmount - orderProfitVal
+			// 毛利润 = 平台总收入 - 商品总成本
+			grossProfit := platformRevenue - goodsCost
+			// 配送成本 = 配送员实际所得
+			deliveryCost := deliveryFeeResult.TotalPlatformCost
+			// 净利润 = 平台总收入 - 商品总成本 - 配送成本
+			netProfitSimplified := platformRevenue - goodsCost - deliveryCost
+
+			orderData["simplified_profit"] = map[string]interface{}{
+				"platform_revenue": platformRevenue,
+				"goods_cost":       goodsCost,
+				"gross_profit":     grossProfit,
+				"delivery_cost":    deliveryCost,
+				"net_profit":       netProfitSimplified,
 			}
 		}
 
@@ -285,21 +316,23 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 		FROM orders WHERE id = ?
 	`, id).Scan(&deliveryFeeCalcJSON, &orderProfitVal, &netProfitVal)
 
+	var deliveryFeeResult *model.DeliveryFeeCalculationResult
 	if err == nil {
 		// 解析配送费计算结果JSON
 		if deliveryFeeCalcJSON.Valid && deliveryFeeCalcJSON.String != "" {
-			var deliveryFeeResult model.DeliveryFeeCalculationResult
-			if json.Unmarshal([]byte(deliveryFeeCalcJSON.String), &deliveryFeeResult) == nil {
+			var result model.DeliveryFeeCalculationResult
+			if json.Unmarshal([]byte(deliveryFeeCalcJSON.String), &result) == nil {
+				deliveryFeeResult = &result
 				deliveryFeeCalculation = map[string]interface{}{
-					"base_fee":                    deliveryFeeResult.BaseFee,
-					"isolated_fee":                deliveryFeeResult.IsolatedFee,
-					"item_fee":                    deliveryFeeResult.ItemFee,
-					"urgent_fee":                  deliveryFeeResult.UrgentFee,
-					"weather_fee":                 deliveryFeeResult.WeatherFee,
-					"delivery_fee_without_profit": deliveryFeeResult.DeliveryFeeWithoutProfit,
-					"profit_share":                deliveryFeeResult.ProfitShare,
-					"rider_payable_fee":           deliveryFeeResult.RiderPayableFee,
-					"total_platform_cost":         deliveryFeeResult.TotalPlatformCost,
+					"base_fee":                    result.BaseFee,
+					"isolated_fee":                result.IsolatedFee,
+					"item_fee":                    result.ItemFee,
+					"urgent_fee":                  result.UrgentFee,
+					"weather_fee":                 result.WeatherFee,
+					"delivery_fee_without_profit": result.DeliveryFeeWithoutProfit,
+					"profit_share":                result.ProfitShare,
+					"rider_payable_fee":           result.RiderPayableFee,
+					"total_platform_cost":         result.TotalPlatformCost,
 				}
 			}
 		}
@@ -314,34 +347,64 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 	}
 
 	// 如果订单中没有存储的数据，则尝试计算（这种情况应该很少）
-	if len(deliveryFeeCalculation) == 0 {
+	if deliveryFeeResult == nil {
 		calculator, calcErr := model.NewDeliveryFeeCalculator(id)
 		if calcErr == nil {
-			deliveryFeeResult, calcErr := calculator.Calculate(true) // true表示管理员视图
+			result, calcErr := calculator.Calculate(true) // true表示管理员视图
 			if calcErr == nil {
+				deliveryFeeResult = result
 				deliveryFeeCalculation = map[string]interface{}{
-					"base_fee":                    deliveryFeeResult.BaseFee,
-					"isolated_fee":                deliveryFeeResult.IsolatedFee,
-					"item_fee":                    deliveryFeeResult.ItemFee,
-					"urgent_fee":                  deliveryFeeResult.UrgentFee,
-					"weather_fee":                 deliveryFeeResult.WeatherFee,
-					"delivery_fee_without_profit": deliveryFeeResult.DeliveryFeeWithoutProfit,
-					"profit_share":                deliveryFeeResult.ProfitShare,
-					"rider_payable_fee":           deliveryFeeResult.RiderPayableFee,
-					"total_platform_cost":         deliveryFeeResult.TotalPlatformCost,
+					"base_fee":                    result.BaseFee,
+					"isolated_fee":                result.IsolatedFee,
+					"item_fee":                    result.ItemFee,
+					"urgent_fee":                  result.UrgentFee,
+					"weather_fee":                 result.WeatherFee,
+					"delivery_fee_without_profit": result.DeliveryFeeWithoutProfit,
+					"profit_share":                result.ProfitShare,
+					"rider_payable_fee":           result.RiderPayableFee,
+					"total_platform_cost":         result.TotalPlatformCost,
 				}
 
 				// 计算订单利润
 				orderProfit = calculator.CalculateOrderProfit()
 
 				// 计算减去配送费后的利润（平台实际利润）
-				netProfit = orderProfit - deliveryFeeResult.TotalPlatformCost
+				netProfit = orderProfit - result.TotalPlatformCost
 
 				// 异步存储计算结果，下次查询时可以直接使用
 				go func() {
 					_ = model.CalculateAndStoreOrderProfit(id)
 				}()
 			}
+		}
+	}
+
+	// 简化利润计算（更直观的方式）
+	// 平台总收入 = 实付金额（已包含所有收入和扣减）
+	// 商品总成本 = 商品总金额 - 订单利润
+	// 毛利润 = 平台总收入 - 商品总成本
+	// 配送成本 = 配送员实际所得
+	// 净利润 = 平台总收入 - 商品总成本 - 配送成本 = 毛利润 - 配送成本
+	var simplifiedProfit map[string]interface{}
+	if deliveryFeeResult != nil {
+		// 平台总收入 = 实付金额（商品金额 + 配送费 + 加急费 - 优惠券抵扣 - 积分抵扣）
+		platformRevenue := order.TotalAmount
+		// 商品总成本 = 商品总金额 - 订单利润
+		goodsCost := order.GoodsAmount - orderProfit
+		// 毛利润 = 平台总收入 - 商品总成本
+		grossProfit := platformRevenue - goodsCost
+		// 配送成本 = 配送员实际所得
+		deliveryCost := deliveryFeeResult.TotalPlatformCost
+		// 净利润 = 平台总收入 - 商品总成本 - 配送成本
+		netProfitSimplified := platformRevenue - goodsCost - deliveryCost
+
+		// 简化的利润分析
+		simplifiedProfit = map[string]interface{}{
+			"platform_revenue": platformRevenue,     // 平台总收入（实付金额）
+			"goods_cost":       goodsCost,           // 商品总成本
+			"gross_profit":     grossProfit,         // 毛利润
+			"delivery_cost":    deliveryCost,        // 配送成本
+			"net_profit":       netProfitSimplified, // 净利润
 		}
 	}
 
@@ -355,6 +418,7 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 			"delivery_fee_calculation": deliveryFeeCalculation,
 			"order_profit":             orderProfit,
 			"net_profit":               netProfit,
+			"simplified_profit":        simplifiedProfit, // 简化的利润分析（平台总收入、商品总成本、毛利润、配送成本、净利润）
 		},
 		"message": "获取成功",
 	})

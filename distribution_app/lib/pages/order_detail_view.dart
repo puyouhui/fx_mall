@@ -1355,6 +1355,9 @@ class _OrderDetailViewState extends State<OrderDetailView> {
         // 订单基本信息
         _buildOrderInfoCard(),
         const SizedBox(height: 12),
+        // 订单选项（备注、缺货处理、信任签收等）
+        _buildOrderOptionsCard(),
+        const SizedBox(height: 12),
         // 销售员信息
         _buildSalesEmployeeCard(),
         const SizedBox(height: 16), // 底部留出空间给固定按钮
@@ -2702,6 +2705,249 @@ class _OrderDetailViewState extends State<OrderDetailView> {
           ],
         ],
       ),
+    );
+  }
+
+  /// 构建订单选项卡片（显示备注、缺货处理、信任签收等）
+  Widget _buildOrderOptionsCard() {
+    final order = _orderData?['order'] as Map<String, dynamic>?;
+    final remark = (order?['remark'] as String?) ?? '';
+    final outOfStockStrategy =
+        (order?['out_of_stock_strategy'] as String?) ?? '';
+    final trustReceipt = (order?['trust_receipt'] as bool?) ?? false;
+    final hidePrice = (order?['hide_price'] as bool?) ?? false;
+    final requirePhoneContact =
+        (order?['require_phone_contact'] as bool?) ?? true;
+    final isUrgent = (order?['is_urgent'] as bool?) ?? false;
+
+    // 缺货处理策略文本
+    String outOfStockText = '';
+    switch (outOfStockStrategy) {
+      case 'cancel_item':
+        outOfStockText = '缺货商品不要，其他正常发货';
+        break;
+      case 'ship_available':
+        outOfStockText = '有货就发，缺货商品不发';
+        break;
+      case 'contact_me':
+        outOfStockText = '由客服或配送员联系我确认';
+        break;
+      default:
+        if (outOfStockStrategy.isNotEmpty) {
+          outOfStockText = outOfStockStrategy;
+        }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+            spreadRadius: 0,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '订单选项',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF20253A),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 加急订单 - 放在最前面，红色突出
+          if (isUrgent) ...[
+            _buildOptionRow(
+              label: '加急订单',
+              value: '优先为客户配送',
+              icon: Icons.flash_on_outlined,
+              highlightColor: const Color(0xFFFF5A5F), // 红色
+            ),
+            const SizedBox(height: 12),
+          ],
+          // 订单备注 - 橙色突出
+          if (remark.isNotEmpty) ...[
+            _buildOptionRow(
+              label: '订单备注',
+              value: remark,
+              icon: Icons.note_outlined,
+              highlightColor: const Color(0xFFFFA940), // 橙色
+            ),
+            const SizedBox(height: 12),
+          ],
+          // 缺货处理策略
+          if (outOfStockText.isNotEmpty) ...[
+            _buildOptionRow(
+              label: '遇到缺货时',
+              value: outOfStockText,
+              icon: Icons.warning_amber_outlined,
+            ),
+            const SizedBox(height: 12),
+          ],
+          // 其他选项
+          _buildOptionSwitch(
+            label: '信任签收',
+            value: trustReceipt,
+            description: '配送电话联系不上时，允许放门口或指定位置',
+            icon: Icons.verified_user_outlined,
+          ),
+          const SizedBox(height: 12),
+          _buildOptionSwitch(
+            label: '隐藏价格',
+            value: hidePrice,
+            description: '小票中将不显示商品价格',
+            icon: Icons.visibility_off_outlined,
+          ),
+          const SizedBox(height: 12),
+          _buildOptionSwitch(
+            label: '配送时电话联系',
+            value: requirePhoneContact,
+            description: '建议保持电话畅通，方便配送员联系',
+            icon: Icons.phone_outlined,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建选项行（文本类型）
+  Widget _buildOptionRow({
+    required String label,
+    required String value,
+    required IconData icon,
+    Color? highlightColor,
+  }) {
+    final color = highlightColor ?? const Color(0xFF4C8DF6);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(icon, size: 16, color: color),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: highlightColor != null
+                      ? color
+                      : const Color(0xFF8C92A4),
+                  fontWeight: highlightColor != null
+                      ? FontWeight.w600
+                      : FontWeight.normal,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF20253A),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 构建选项开关（布尔类型）
+  Widget _buildOptionSwitch({
+    required String label,
+    required bool value,
+    required String description,
+    required IconData icon,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: value
+                ? const Color(0xFF20CB6B).withOpacity(0.1)
+                : const Color(0xFF8C92A4).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: value ? const Color(0xFF20CB6B) : const Color(0xFF8C92A4),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: value
+                          ? const Color(0xFF20253A)
+                          : const Color(0xFF8C92A4),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: value
+                          ? const Color(0xFF20CB6B).withOpacity(0.1)
+                          : const Color(0xFF8C92A4).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      value ? '已开启' : '未开启',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: value
+                            ? const Color(0xFF20CB6B)
+                            : const Color(0xFF8C92A4),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                description,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF8C92A4)),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

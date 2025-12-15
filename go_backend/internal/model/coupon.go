@@ -346,8 +346,10 @@ func GetCouponUsageLogs(pageNum, pageSize int, keyword string, couponID int) ([]
 // CouponWithStats 带统计信息的优惠券
 type CouponWithStats struct {
 	Coupon
-	IssuedCount int `json:"issued_count"` // 已发放数量
-	UsedCount   int `json:"used_count"`   // 已使用数量
+	IssuedCount int  `json:"issued_count"` // 已发放数量
+	UsedCount   int  `json:"used_count"`   // 已使用数量
+	IsValid     bool `json:"is_valid"`     // 是否在有效期内（当前时间在valid_from和valid_to之间）
+	IsExpired   bool `json:"is_expired"`   // 是否已过期（当前时间晚于valid_to）
 }
 
 // GetAllCoupons 获取所有优惠券（后台管理，包含统计信息）
@@ -392,6 +394,13 @@ func GetAllCoupons() ([]CouponWithStats, error) {
 		} else {
 			coupon.CategoryIDs = []int{}
 		}
+
+		// 计算有效期状态
+		now := time.Now()
+		validFromTime := coupon.ValidFrom.ToTime()
+		validToTime := coupon.ValidTo.ToTime()
+		coupon.IsValid = now.After(validFromTime) && now.Before(validToTime)
+		coupon.IsExpired = now.After(validToTime)
 
 		coupons = append(coupons, coupon)
 	}
@@ -597,6 +606,33 @@ func GetUserCoupons(userID int) ([]UserCoupon, error) {
 			coupon.CategoryIDs = []int{}
 		}
 
+		// 自动检查并更新过期状态（仅对未使用的优惠券）
+		now := time.Now()
+		if uc.Status == "unused" {
+			isExpired := false
+			// 优先检查用户优惠券的 expires_at
+			if uc.ExpiresAt != nil {
+				if now.After(*uc.ExpiresAt) {
+					isExpired = true
+				}
+			} else if coupon.ID > 0 {
+				// 如果没有 expires_at，检查优惠券模板的 valid_to
+				if now.After(coupon.ValidTo.ToTime()) {
+					isExpired = true
+				}
+			}
+
+			// 如果已过期，更新状态
+			if isExpired {
+				_, _ = database.DB.Exec(`
+					UPDATE user_coupons 
+					SET status = 'expired', updated_at = NOW() 
+					WHERE id = ? AND status = 'unused'
+				`, uc.ID)
+				uc.Status = "expired"
+			}
+		}
+
 		uc.Coupon = &coupon
 		userCoupons = append(userCoupons, uc)
 	}
@@ -623,6 +659,17 @@ func UseCoupon(userID, couponID, orderID int) error {
 		return fmt.Errorf("优惠券已用完")
 	}
 
+	// 检查优惠券模板是否在有效期内
+	now := time.Now()
+	var validFrom, validTo time.Time
+	err = tx.QueryRow("SELECT valid_from, valid_to FROM coupons WHERE id = ?", couponID).Scan(&validFrom, &validTo)
+	if err != nil {
+		return fmt.Errorf("获取优惠券信息失败: %w", err)
+	}
+	if now.Before(validFrom) || now.After(validTo) {
+		return fmt.Errorf("优惠券不在有效期内")
+	}
+
 	// 检查用户优惠券记录，包括状态和有效期
 	var existingStatus string
 	var expiresAt sql.NullTime
@@ -631,9 +678,11 @@ func UseCoupon(userID, couponID, orderID int) error {
 		if existingStatus == "used" {
 			return fmt.Errorf("该优惠券已使用")
 		}
+		if existingStatus == "expired" {
+			return fmt.Errorf("该优惠券已过期")
+		}
 		// 检查用户优惠券的有效期（expires_at）
 		if expiresAt.Valid {
-			now := time.Now()
 			if now.After(expiresAt.Time) {
 				return fmt.Errorf("该优惠券已过期")
 			}
@@ -648,6 +697,79 @@ func UseCoupon(userID, couponID, orderID int) error {
 		// 更新现有记录
 		_, err = tx.Exec("UPDATE user_coupons SET status = 'used', used_at = NOW(), order_id = ?, updated_at = NOW() WHERE user_id = ? AND coupon_id = ?", orderID, userID, couponID)
 	}
+	if err != nil {
+		return err
+	}
+
+	// 更新优惠券使用计数
+	_, err = tx.Exec("UPDATE coupons SET used_count = used_count + 1, updated_at = NOW() WHERE id = ?", couponID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// UseCouponByUserCouponID 使用优惠券（通过用户优惠券ID，更精确）
+func UseCouponByUserCouponID(userCouponID, orderID int) error {
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// 获取用户优惠券信息
+	var userID, couponID int
+	var status string
+	var expiresAt sql.NullTime
+	err = tx.QueryRow(`
+		SELECT user_id, coupon_id, status, expires_at 
+		FROM user_coupons 
+		WHERE id = ?
+	`, userCouponID).Scan(&userID, &couponID, &status, &expiresAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("用户优惠券不存在")
+		}
+		return err
+	}
+
+	// 检查是否已使用
+	if status == "used" {
+		return fmt.Errorf("该优惠券已使用")
+	}
+
+	// 检查是否过期
+	now := time.Now()
+	if expiresAt.Valid {
+		if now.After(expiresAt.Time) {
+			return fmt.Errorf("该优惠券已过期")
+		}
+	}
+
+	// 检查优惠券模板是否可用
+	var coupon Coupon
+	var validFrom, validTo time.Time
+	err = tx.QueryRow("SELECT id, used_count, total_count, valid_from, valid_to FROM coupons WHERE id = ? AND status = 1", couponID).Scan(&coupon.ID, &coupon.UsedCount, &coupon.TotalCount, &validFrom, &validTo)
+	if err != nil {
+		return fmt.Errorf("优惠券不存在或已禁用")
+	}
+
+	// 检查优惠券模板是否在有效期内
+	if now.Before(validFrom) || now.After(validTo) {
+		return fmt.Errorf("优惠券不在有效期内")
+	}
+
+	if coupon.TotalCount > 0 && coupon.UsedCount >= coupon.TotalCount {
+		return fmt.Errorf("优惠券已用完")
+	}
+
+	// 更新用户优惠券记录（使用 user_coupon_id 精确更新）
+	_, err = tx.Exec(`
+		UPDATE user_coupons 
+		SET status = 'used', used_at = NOW(), order_id = ?, updated_at = NOW() 
+		WHERE id = ?
+	`, orderID, userCouponID)
 	if err != nil {
 		return err
 	}
@@ -719,6 +841,22 @@ func IssueCouponToUser(userID, couponID, quantity int, expiresAt *time.Time) err
 	err = tx.QueryRow("SELECT COUNT(*) FROM user_coupons WHERE user_id = ? AND coupon_id = ?", userID, couponID).Scan(&existingCount)
 	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("查询用户优惠券失败: %w", err)
+	}
+
+	// 如果指定了过期时间，验证过期时间
+	if expiresAt != nil {
+		// 过期时间不能早于当前时间
+		if expiresAt.Before(now) {
+			return fmt.Errorf("过期时间不能早于当前时间")
+		}
+		// 过期时间不能晚于优惠券模板的有效期结束时间
+		if expiresAt.After(coupon.ValidTo.ToTime()) {
+			return fmt.Errorf("过期时间不能晚于优惠券模板的有效期结束时间（%s）", coupon.ValidTo.ToTime().Format("2006-01-02 15:04:05"))
+		}
+		// 过期时间不能早于优惠券模板的有效期开始时间
+		if expiresAt.Before(coupon.ValidFrom.ToTime()) {
+			return fmt.Errorf("过期时间不能早于优惠券模板的有效期开始时间（%s）", coupon.ValidFrom.ToTime().Format("2006-01-02 15:04:05"))
+		}
 	}
 
 	// 插入用户优惠券记录（支持多张）

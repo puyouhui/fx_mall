@@ -202,18 +202,22 @@ func CreateOrderFromCart(c *gin.Context) {
 	}
 
 	// 创建订单成功后，使用优惠券（标记为已使用并关联订单ID）
-	// 处理免配送费券
-	if appliedCombination.DeliveryFeeCoupon != nil {
-		if err := model.UseCoupon(user.ID, appliedCombination.DeliveryFeeCoupon.CouponID, order.ID); err != nil {
+	// 处理免配送费券（使用 UserCouponID 精确更新）
+	if appliedCombination.DeliveryFeeCoupon != nil && appliedCombination.DeliveryFeeCoupon.UserCouponID > 0 {
+		if err := model.UseCouponByUserCouponID(appliedCombination.DeliveryFeeCoupon.UserCouponID, order.ID); err != nil {
 			// 如果使用失败，记录错误但不影响订单创建
-			log.Printf("标记免配送费券为已使用失败 (用户ID: %d, 优惠券ID: %d, 订单ID: %d): %v", user.ID, appliedCombination.DeliveryFeeCoupon.CouponID, order.ID, err)
+			log.Printf("标记免配送费券为已使用失败 (用户优惠券ID: %d, 订单ID: %d): %v", appliedCombination.DeliveryFeeCoupon.UserCouponID, order.ID, err)
+		} else {
+			log.Printf("成功标记免配送费券为已使用 (用户优惠券ID: %d, 订单ID: %d)", appliedCombination.DeliveryFeeCoupon.UserCouponID, order.ID)
 		}
 	}
-	// 处理金额券
-	if appliedCombination.AmountCoupon != nil {
-		if err := model.UseCoupon(user.ID, appliedCombination.AmountCoupon.CouponID, order.ID); err != nil {
+	// 处理金额券（使用 UserCouponID 精确更新）
+	if appliedCombination.AmountCoupon != nil && appliedCombination.AmountCoupon.UserCouponID > 0 {
+		if err := model.UseCouponByUserCouponID(appliedCombination.AmountCoupon.UserCouponID, order.ID); err != nil {
 			// 如果使用失败，记录错误但不影响订单创建
-			log.Printf("标记金额券为已使用失败 (用户ID: %d, 优惠券ID: %d, 订单ID: %d): %v", user.ID, appliedCombination.AmountCoupon.CouponID, order.ID, err)
+			log.Printf("标记金额券为已使用失败 (用户优惠券ID: %d, 订单ID: %d): %v", appliedCombination.AmountCoupon.UserCouponID, order.ID, err)
+		} else {
+			log.Printf("成功标记金额券为已使用 (用户优惠券ID: %d, 订单ID: %d)", appliedCombination.AmountCoupon.UserCouponID, order.ID)
 		}
 	}
 
