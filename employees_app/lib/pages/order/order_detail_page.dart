@@ -25,6 +25,9 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   Map<String, dynamic>? _address;
   Map<String, dynamic>? _deliveryEmployee;
   List<dynamic> _items = [];
+  Map<String, dynamic>? _salesCommissionPreview;
+  Map<String, dynamic>? _salesCommission;
+  Map<String, dynamic>? _deliveryFeeCalculation;
 
   // 地图相关
   final MapController _mapController = MapController();
@@ -66,6 +69,12 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         _deliveryEmployee =
             resp.data!['delivery_employee'] as Map<String, dynamic>?;
         _items = resp.data!['order_items'] as List<dynamic>? ?? [];
+        _salesCommissionPreview =
+            resp.data!['sales_commission_preview'] as Map<String, dynamic>?;
+        _salesCommission =
+            resp.data!['sales_commission'] as Map<String, dynamic>?;
+        _deliveryFeeCalculation =
+            resp.data!['delivery_fee_calculation'] as Map<String, dynamic>?;
         _loading = false;
       });
 
@@ -166,6 +175,17 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
                             const SizedBox(height: 12),
                             _buildAmountSummaryCard(),
                             const SizedBox(height: 12),
+                            // 销售分成明细
+                            if (_salesCommissionPreview != null ||
+                                _salesCommission != null) ...[
+                              _buildSalesCommissionCard(),
+                              const SizedBox(height: 12),
+                            ],
+                            // 配送员费用
+                            if (_deliveryFeeCalculation != null) ...[
+                              _buildDeliveryFeeCard(),
+                              const SizedBox(height: 12),
+                            ],
                             _buildOrderOptionsCard(),
                           ],
                         ),
@@ -729,6 +749,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     final order = _order ?? {};
     final goodsAmount = (order['goods_amount'] as num?)?.toDouble() ?? 0.0;
     final deliveryFee = (order['delivery_fee'] as num?)?.toDouble() ?? 0.0;
+    final urgentFee = (order['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+    final isUrgent = (order['is_urgent'] as bool?) ?? false;
     final pointsDiscount =
         (order['points_discount'] as num?)?.toDouble() ?? 0.0;
     final couponDiscount =
@@ -763,6 +785,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           const SizedBox(height: 10),
           _buildAmountRow('商品金额', goodsAmount),
           _buildAmountRow('配送费用', deliveryFee),
+          if (isUrgent) _buildAmountRow('加急费用', urgentFee),
           if (pointsDiscount > 0) _buildAmountRow('积分抵扣', -pointsDiscount),
           if (couponDiscount > 0) _buildAmountRow('优惠券抵扣', -couponDiscount),
           const Divider(height: 20, thickness: 0.5, color: Color(0xFFE5E7F0)),
@@ -2071,6 +2094,315 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 构建销售分成明细卡片
+  Widget _buildSalesCommissionCard() {
+    final commission = _salesCommission ?? _salesCommissionPreview;
+    if (commission == null) {
+      return const SizedBox.shrink();
+    }
+
+    final isSettled = _salesCommission != null;
+    final totalCommission =
+        (commission['total_commission'] as num?)?.toDouble() ?? 0.0;
+    final baseCommission =
+        (commission['base_commission'] as num?)?.toDouble() ?? 0.0;
+    final newCustomerBonus =
+        (commission['new_customer_bonus'] as num?)?.toDouble() ?? 0.0;
+    final tierCommission =
+        (commission['tier_commission'] as num?)?.toDouble() ?? 0.0;
+    final tierLevel = (commission['tier_level'] as int?) ?? 0;
+    final isNewCustomerOrder =
+        (commission['is_new_customer_order'] as bool?) ?? false;
+    final isValidOrder = (commission['is_valid_order'] as bool?) ?? true;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                '销售分成明细',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF20253A),
+                ),
+              ),
+              const Spacer(),
+              if (isSettled)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4C8DF6).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    '已计入',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF4C8DF6),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFA940).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    '预览',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFFFFA940),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (!isValidOrder) ...[
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF5A5F).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Color(0xFFFF5A5F)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '无效订单（利润需>5元才计入有效分成）',
+                      style: TextStyle(fontSize: 12, color: Color(0xFFFF5A5F)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          _buildCommissionRow('基础提成', baseCommission),
+          if (isNewCustomerOrder) ...[
+            const SizedBox(height: 8),
+            _buildCommissionRow('新客开发激励', newCustomerBonus, highlight: true),
+          ],
+          if (tierLevel > 0) ...[
+            const SizedBox(height: 8),
+            _buildCommissionRow(
+              '阶梯提成（阶梯$tierLevel）',
+              tierCommission,
+              highlight: true,
+            ),
+          ],
+          const Divider(height: 20, thickness: 0.5, color: Color(0xFFE5E7F0)),
+          Row(
+            children: [
+              Text(
+                isSettled ? '我的总分成' : '我的预计总分成',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF20253A),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '¥${totalCommission.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isSettled
+                      ? const Color(0xFF4C8DF6)
+                      : const Color(0xFFFFA940),
+                ),
+              ),
+            ],
+          ),
+          if (!isSettled) ...[
+            const SizedBox(height: 8),
+            Text(
+              '订单收款后才会正式计入销售分成',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCommissionRow(
+    String label,
+    double value, {
+    bool highlight = false,
+  }) {
+    return Row(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: highlight
+                ? const Color(0xFF20CB6B)
+                : const Color(0xFF40475C),
+            fontWeight: highlight ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          '¥${value.toStringAsFixed(2)}',
+          style: TextStyle(
+            fontSize: 13,
+            color: highlight
+                ? const Color(0xFF20CB6B)
+                : const Color(0xFF40475C),
+            fontWeight: highlight ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 构建配送员费用卡片
+  Widget _buildDeliveryFeeCard() {
+    if (_deliveryFeeCalculation == null) {
+      return const SizedBox.shrink();
+    }
+
+    final riderPayableFee =
+        (_deliveryFeeCalculation!['rider_payable_fee'] as num?)?.toDouble() ??
+        0.0;
+    final baseFee =
+        (_deliveryFeeCalculation!['base_fee'] as num?)?.toDouble() ?? 0.0;
+    final isolatedFee =
+        (_deliveryFeeCalculation!['isolated_fee'] as num?)?.toDouble() ?? 0.0;
+    final itemFee =
+        (_deliveryFeeCalculation!['item_fee'] as num?)?.toDouble() ?? 0.0;
+    final urgentFee =
+        (_deliveryFeeCalculation!['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+    final weatherFee =
+        (_deliveryFeeCalculation!['weather_fee'] as num?)?.toDouble() ?? 0.0;
+    final profitShare =
+        (_deliveryFeeCalculation!['profit_share'] as num?)?.toDouble() ?? 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '配送员费用',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF20253A),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (baseFee > 0) _buildDeliveryFeeRow('基础配送费', baseFee),
+          if (isolatedFee > 0) _buildDeliveryFeeRow('孤立点补贴', isolatedFee),
+          if (itemFee > 0) _buildDeliveryFeeRow('商品件数补贴', itemFee),
+          if (urgentFee > 0)
+            _buildDeliveryFeeRow('加急费用', urgentFee, highlight: true),
+          if (weatherFee > 0) _buildDeliveryFeeRow('恶劣天气补贴', weatherFee),
+          if (profitShare > 0)
+            _buildDeliveryFeeRow('额外奖励', profitShare, highlight: true),
+          const Divider(height: 20, thickness: 0.5, color: Color(0xFFE5E7F0)),
+          Row(
+            children: [
+              const Text(
+                '配送员收入',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF20253A),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '¥${riderPayableFee.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF4C8DF6),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeliveryFeeRow(
+    String label,
+    double value, {
+    bool highlight = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: highlight
+                  ? const Color(0xFF4C8DF6)
+                  : const Color(0xFF40475C),
+              fontWeight: highlight ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            '¥${value.toStringAsFixed(2)}',
+            style: TextStyle(
+              fontSize: 13,
+              color: highlight
+                  ? const Color(0xFF4C8DF6)
+                  : const Color(0xFF40475C),
+              fontWeight: highlight ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ],
       ),
     );
   }

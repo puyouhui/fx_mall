@@ -1225,6 +1225,101 @@ func InitDB() error {
 			log.Println("配送员位置历史表初始化成功")
 		}
 
+		// 创建销售分成配置表
+		createSalesCommissionConfigTableSQL := `
+		CREATE TABLE IF NOT EXISTS sales_commission_config (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    employee_code VARCHAR(10) NOT NULL UNIQUE COMMENT '销售员员工码',
+		    base_commission_rate DECIMAL(5,4) NOT NULL DEFAULT 0.4500 COMMENT '基础提成比例（默认45%）',
+		    new_customer_bonus_rate DECIMAL(5,4) NOT NULL DEFAULT 0.2000 COMMENT '新客开发激励比例（默认20%）',
+		    tier1_threshold DECIMAL(10,2) NOT NULL DEFAULT 50000.00 COMMENT '阶梯1阈值（默认50000元）',
+		    tier1_rate DECIMAL(5,4) NOT NULL DEFAULT 0.0500 COMMENT '阶梯1提成比例（默认5%）',
+		    tier2_threshold DECIMAL(10,2) NOT NULL DEFAULT 100000.00 COMMENT '阶梯2阈值（默认100000元）',
+		    tier2_rate DECIMAL(5,4) NOT NULL DEFAULT 0.1000 COMMENT '阶梯2提成比例（默认10%）',
+		    tier3_threshold DECIMAL(10,2) NOT NULL DEFAULT 200000.00 COMMENT '阶梯3阈值（默认200000元）',
+		    tier3_rate DECIMAL(5,4) NOT NULL DEFAULT 0.2000 COMMENT '阶梯3提成比例（默认20%）',
+		    min_profit_threshold DECIMAL(10,2) NOT NULL DEFAULT 5.00 COMMENT '最小利润阈值（默认5元）',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    KEY idx_employee_code (employee_code)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='销售分成配置表';
+		`
+
+		if _, err = DB.Exec(createSalesCommissionConfigTableSQL); err != nil {
+			log.Printf("创建sales_commission_config表失败: %v", err)
+		} else {
+			log.Println("销售分成配置表初始化成功")
+		}
+
+		// 创建销售分成记录表
+		createSalesCommissionsTableSQL := `
+		CREATE TABLE IF NOT EXISTS sales_commissions (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    order_id INT NOT NULL COMMENT '订单ID',
+		    employee_code VARCHAR(10) NOT NULL COMMENT '销售员员工码',
+		    user_id INT NOT NULL COMMENT '客户用户ID',
+		    order_number VARCHAR(32) NOT NULL COMMENT '订单编号',
+		    order_date DATE NOT NULL COMMENT '订单日期',
+		    settlement_date DATE DEFAULT NULL COMMENT '结算日期（订单结算时记录）',
+		    is_valid_order TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否有效订单（已结算且利润>阈值）',
+		    is_new_customer_order TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否新客户首单',
+		    order_amount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '订单金额（平台总收入）',
+		    goods_cost DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '商品总成本',
+		    delivery_cost DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '配送成本',
+		    order_profit DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '订单利润（订单金额-商品成本-配送成本）',
+		    base_commission DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '基础提成',
+		    new_customer_bonus DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '新客开发激励',
+		    tier_commission DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '阶梯提成',
+		    total_commission DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '总分成',
+		    tier_level INT NOT NULL DEFAULT 0 COMMENT '达到的阶梯等级（0-未达到，1-阶梯1，2-阶梯2，3-阶梯3）',
+		    calculation_month VARCHAR(7) NOT NULL COMMENT '计算月份（YYYY-MM格式）',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    UNIQUE KEY uk_order_employee (order_id, employee_code) COMMENT '同一订单同一销售员只能有一条记录',
+		    KEY idx_employee_code (employee_code),
+		    KEY idx_order_id (order_id),
+		    KEY idx_settlement_date (settlement_date),
+		    KEY idx_calculation_month (employee_code, calculation_month),
+		    KEY idx_is_valid_order (is_valid_order),
+		    KEY idx_order_date (order_date)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='销售分成记录表';
+		`
+
+		if _, err = DB.Exec(createSalesCommissionsTableSQL); err != nil {
+			log.Printf("创建sales_commissions表失败: %v", err)
+		} else {
+			log.Println("销售分成记录表初始化成功")
+		}
+
+		// 创建销售分成月统计表
+		createSalesCommissionMonthlyStatsTableSQL := `
+		CREATE TABLE IF NOT EXISTS sales_commission_monthly_stats (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    employee_code VARCHAR(10) NOT NULL COMMENT '销售员员工码',
+		    stat_month VARCHAR(7) NOT NULL COMMENT '统计月份（YYYY-MM格式）',
+		    total_sales_amount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '总销售额（有效订单金额）',
+		    total_valid_orders INT NOT NULL DEFAULT 0 COMMENT '有效订单数',
+		    total_new_customers INT NOT NULL DEFAULT 0 COMMENT '新客户数',
+		    total_profit DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '总利润',
+		    total_base_commission DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '总基础提成',
+		    total_new_customer_bonus DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '总新客激励',
+		    total_tier_commission DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '总阶梯提成',
+		    total_commission DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '总分成',
+		    tier_level INT NOT NULL DEFAULT 0 COMMENT '达到的阶梯等级（0-未达到，1-阶梯1，2-阶梯2，3-阶梯3）',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    UNIQUE KEY uk_employee_month (employee_code, stat_month) COMMENT '同一销售员同一月份只能有一条记录',
+		    KEY idx_employee_code (employee_code),
+		    KEY idx_stat_month (stat_month)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='销售分成月统计表';
+		`
+
+		if _, err = DB.Exec(createSalesCommissionMonthlyStatsTableSQL); err != nil {
+			log.Printf("创建sales_commission_monthly_stats表失败: %v", err)
+		} else {
+			log.Println("销售分成月统计表初始化成功")
+		}
+
 		log.Println("所有表创建成功")
 	})
 

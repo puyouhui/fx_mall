@@ -37,6 +37,7 @@ type Order struct {
 	IsIsolated           bool       `json:"is_isolated"`                      // 是否孤立订单（8公里内无其他订单）
 	DeliveryFeeSettled   bool       `json:"delivery_fee_settled"`             // 配送费是否已结算
 	SettlementDate       *time.Time `json:"settlement_date,omitempty"`        // 结算日期
+	OrderProfit          *float64   `json:"order_profit,omitempty"`           // 订单利润（商品金额-商品成本）
 	IsLocked             bool       `json:"is_locked"`                        // 是否被锁定（修改中）
 	LockedBy             *string    `json:"locked_by,omitempty"`              // 锁定者员工码
 	LockedAt             *time.Time `json:"locked_at,omitempty"`              // 锁定时间
@@ -381,7 +382,7 @@ func GetOrdersWithPagination(pageNum, pageSize int, keyword string, status strin
 
 	// 获取分页数据
 	query := `
-		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
+		SELECT id, order_number, user_id, address_id, status, delivery_employee_code, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
 		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, created_at, updated_at
 		FROM orders WHERE ` + where + ` ORDER BY id DESC LIMIT ? OFFSET ?`
@@ -397,14 +398,19 @@ func GetOrdersWithPagination(pageNum, pageSize int, keyword string, status strin
 		var order Order
 		var expectedDelivery sql.NullTime
 		var weatherInfo sql.NullString
+		var deliveryEmployeeCode sql.NullString
 		var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
 
 		err := rows.Scan(
-			&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
+			&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &deliveryEmployeeCode, &order.GoodsAmount, &order.DeliveryFee,
 			&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
 			&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
 			&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &order.CreatedAt, &order.UpdatedAt,
 		)
+		if deliveryEmployeeCode.Valid {
+			code := deliveryEmployeeCode.String
+			order.DeliveryEmployeeCode = &code
+		}
 		if err != nil {
 			return nil, 0, err
 		}
@@ -437,17 +443,19 @@ func GetOrderByID(id int) (*Order, error) {
 		SELECT id, order_number, user_id, address_id, status, delivery_employee_code, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
 		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, 
-		       is_locked, locked_by, locked_at, created_at, updated_at
+		       is_locked, locked_by, locked_at, order_profit, settlement_date, delivery_fee_settled, created_at, updated_at
 		FROM orders WHERE id = ?
 	`
-	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt, isLockedTinyInt int
+	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt, isLockedTinyInt, deliveryFeeSettledTinyInt int
 	var deliveryEmployeeCode, lockedBy sql.NullString
-	var lockedAt sql.NullTime
+	var lockedAt, settlementDate sql.NullTime
+	var orderProfit sql.NullFloat64
 	err := database.DB.QueryRow(query, id).Scan(
 		&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &deliveryEmployeeCode, &order.GoodsAmount, &order.DeliveryFee,
 		&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
 		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
-		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &isLockedTinyInt, &lockedBy, &lockedAt, &order.CreatedAt, &order.UpdatedAt,
+		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &isLockedTinyInt, &lockedBy, &lockedAt,
+		&orderProfit, &settlementDate, &deliveryFeeSettledTinyInt, &order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -461,6 +469,7 @@ func GetOrderByID(id int) (*Order, error) {
 	order.RequirePhoneContact = requirePhoneContactTinyInt == 1
 	order.IsIsolated = isIsolatedTinyInt == 1
 	order.IsLocked = isLockedTinyInt == 1
+	order.DeliveryFeeSettled = deliveryFeeSettledTinyInt == 1
 	if expectedDelivery.Valid {
 		t := expectedDelivery.Time
 		order.ExpectedDeliveryAt = &t
@@ -477,6 +486,14 @@ func GetOrderByID(id int) (*Order, error) {
 	if lockedAt.Valid {
 		t := lockedAt.Time
 		order.LockedAt = &t
+	}
+	if orderProfit.Valid {
+		profit := orderProfit.Float64
+		order.OrderProfit = &profit
+	}
+	if settlementDate.Valid {
+		t := settlementDate.Time
+		order.SettlementDate = &t
 	}
 
 	return &order, nil
@@ -599,6 +616,7 @@ func GetOrdersBySalesCode(employeeCode string, pageNum, pageSize int, status, ke
 			o.created_at,
 				o.is_locked,
 				o.locked_by,
+			o.is_urgent,
 			u.name AS user_name,
 			u.user_code,
 			a.name AS store_name,
@@ -622,6 +640,7 @@ func GetOrdersBySalesCode(employeeCode string, pageNum, pageSize int, status, ke
 				o.created_at,
 				0 AS is_locked,
 				NULL AS locked_by,
+				0 AS is_urgent,
 				u.name AS user_name,
 				u.user_code,
 				a.name AS store_name,
@@ -653,6 +672,7 @@ func GetOrdersBySalesCode(employeeCode string, pageNum, pageSize int, status, ke
 			createdAt       time.Time
 			isLockedTinyInt int
 			lockedBy        sql.NullString
+			isUrgentTinyInt int
 			userName        sql.NullString
 			userCode        sql.NullString
 			storeName       sql.NullString
@@ -668,6 +688,7 @@ func GetOrdersBySalesCode(employeeCode string, pageNum, pageSize int, status, ke
 			&createdAt,
 			&isLockedTinyInt,
 			&lockedBy,
+			&isUrgentTinyInt,
 			&userName,
 			&userCode,
 			&storeName,
@@ -687,6 +708,7 @@ func GetOrdersBySalesCode(employeeCode string, pageNum, pageSize int, status, ke
 			"created_at":    createdAt,
 			"is_locked":     isLockedTinyInt == 1,
 			"locked_by":     getStringValue(lockedBy),
+			"is_urgent":     isUrgentTinyInt == 1,
 			"user_name":     getStringValue(userName),
 			"user_code":     getStringValue(userCode),
 			"store_name":    getStringValue(storeName),
@@ -732,6 +754,7 @@ func GetPendingOrdersBySalesCode(employeeCode string, pageNum, pageSize int) ([]
 			o.status,
 			o.total_amount,
 			o.created_at,
+			o.is_urgent,
 			a.name AS store_name,
 			a.address,
 			a.phone AS contact_phone
@@ -756,11 +779,12 @@ func GetPendingOrdersBySalesCode(employeeCode string, pageNum, pageSize int) ([]
 		var status string
 		var totalAmount float64
 		var createdAt time.Time
+		var isUrgentTinyInt int
 		var storeName sql.NullString
 		var address sql.NullString
 		var contactPhone sql.NullString
 
-		if err := rows.Scan(&id, &orderNumber, &status, &totalAmount, &createdAt, &storeName, &address, &contactPhone); err != nil {
+		if err := rows.Scan(&id, &orderNumber, &status, &totalAmount, &createdAt, &isUrgentTinyInt, &storeName, &address, &contactPhone); err != nil {
 			return nil, 0, err
 		}
 
@@ -772,6 +796,7 @@ func GetPendingOrdersBySalesCode(employeeCode string, pageNum, pageSize int) ([]
 			"status":        status,
 			"total_amount":  totalAmount,
 			"created_at":    createdAt,
+			"is_urgent":     isUrgentTinyInt == 1,
 			"store_name":    getStringValue(storeName),
 			"address":       getStringValue(address),
 			"contact_phone": getStringValue(contactPhone),

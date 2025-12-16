@@ -2,11 +2,13 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"go_backend/internal/database"
 	"go_backend/internal/model"
@@ -334,15 +336,107 @@ func GetSalesOrderDetail(c *gin.Context) {
 		"user_type":  user.UserType,
 	}
 
+	// 获取配送费计算结果（用于提取配送员费用）
+	var deliveryFeeCalculation map[string]interface{}
+	var riderPayableFee float64
+	var deliveryFeeResult *model.DeliveryFeeCalculationResult
+
+	var deliveryFeeCalcJSON sql.NullString
+	err = database.DB.QueryRow(`
+		SELECT delivery_fee_calculation
+		FROM orders WHERE id = ?
+	`, id).Scan(&deliveryFeeCalcJSON)
+
+	if err == nil && deliveryFeeCalcJSON.Valid && deliveryFeeCalcJSON.String != "" {
+		var result model.DeliveryFeeCalculationResult
+		if json.Unmarshal([]byte(deliveryFeeCalcJSON.String), &result) == nil {
+			deliveryFeeResult = &result
+			riderPayableFee = result.RiderPayableFee
+			deliveryFeeCalculation = map[string]interface{}{
+				"rider_payable_fee":   result.RiderPayableFee,
+				"base_fee":            result.BaseFee,
+				"isolated_fee":        result.IsolatedFee,
+				"item_fee":            result.ItemFee,
+				"urgent_fee":          result.UrgentFee,
+				"weather_fee":         result.WeatherFee,
+				"profit_share":        result.ProfitShare,
+				"total_platform_cost": result.TotalPlatformCost,
+			}
+		}
+	}
+
+	// 获取订单利润
+	var orderProfit float64
+	var orderProfitVal sql.NullFloat64
+	err = database.DB.QueryRow(`
+		SELECT order_profit
+		FROM orders WHERE id = ?
+	`, id).Scan(&orderProfitVal)
+	if err == nil && orderProfitVal.Valid {
+		orderProfit = orderProfitVal.Float64
+	}
+
+	// 添加销售分成信息
+	var salesCommissionPreview map[string]interface{}
+	var salesCommission map[string]interface{}
+
+	if user.SalesCode != "" {
+		// 计算预览分成（所有订单都显示）
+		previewCommission := calculateSalesCommissionPreviewForSales(order, deliveryFeeResult, orderProfit, user.SalesCode)
+		if previewCommission != nil {
+			salesCommissionPreview = previewCommission
+		}
+
+		// 已收款订单：从数据库查询已计入的分成
+		if order.Status == "paid" {
+			commissions, err := model.GetSalesCommissionsByOrderIDs([]int{id})
+			if err == nil && len(commissions) > 0 && commissions[0] != nil {
+				commission := commissions[0]
+				salesCommission = map[string]interface{}{
+					"total_commission":      commission.TotalCommission,
+					"base_commission":       commission.BaseCommission,
+					"new_customer_bonus":    commission.NewCustomerBonus,
+					"tier_commission":       commission.TierCommission,
+					"tier_level":            commission.TierLevel,
+					"is_valid_order":        commission.IsValidOrder,
+					"is_new_customer_order": commission.IsNewCustomerOrder,
+					"is_settled":            commission.SettlementDate != nil,
+					"settlement_date":       commission.SettlementDate,
+					"order_profit":          commission.OrderProfit,
+					"order_amount":          commission.OrderAmount,
+					"goods_cost":            commission.GoodsCost,
+					"delivery_cost":         commission.DeliveryCost,
+					"calculation_month":     commission.CalculationMonth,
+				}
+			}
+		}
+	}
+
+	result := gin.H{
+		"order":             order,
+		"order_items":       items,
+		"address":           addressData,
+		"user":              userData,
+		"delivery_employee": deliveryEmployeeData,
+	}
+
+	// 添加配送员费用信息
+	if deliveryFeeCalculation != nil {
+		result["delivery_fee_calculation"] = deliveryFeeCalculation
+		result["rider_payable_fee"] = riderPayableFee
+	}
+
+	// 添加销售分成信息
+	if salesCommissionPreview != nil {
+		result["sales_commission_preview"] = salesCommissionPreview
+	}
+	if salesCommission != nil {
+		result["sales_commission"] = salesCommission
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": gin.H{
-			"order":             order,
-			"order_items":       items,
-			"address":           addressData,
-			"user":              userData,
-			"delivery_employee": deliveryEmployeeData,
-		},
+		"code":    200,
+		"data":    result,
 		"message": "获取成功",
 	})
 }
@@ -533,7 +627,6 @@ func SyncOrderItemsToPurchaseList(c *gin.Context) {
 	}
 
 	// 将订单商品添加到采购单
-	syncedItems := make([]model.PurchaseListItem, 0, len(orderItems))
 	for _, orderItem := range orderItems {
 		// 获取商品信息（包括规格信息）
 		product, err := model.GetProductByID(orderItem.ProductID)
@@ -592,7 +685,6 @@ func SyncOrderItemsToPurchaseList(c *gin.Context) {
 			continue
 		}
 
-		syncedItems = append(syncedItems, *item)
 	}
 
 	// 返回最新的采购单（包含配送费汇总）
@@ -613,13 +705,23 @@ func SyncOrderItemsToPurchaseList(c *gin.Context) {
 		return
 	}
 
+	// 获取加急费用（从系统设置）
+	urgentFeeStr, _ := model.GetSystemSetting("order_urgent_fee")
+	urgentFee := 0.0
+	if urgentFeeStr != "" {
+		if fee, parseErr := strconv.ParseFloat(urgentFeeStr, 64); parseErr == nil && fee > 0 {
+			urgentFee = fee
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "订单商品已同步到采购单",
 		"data": gin.H{
-			"items":   items,
-			"summary": summary,
-			"backup":  userPurchaseListBackup, // 返回备份，供修改订单完成后恢复使用（即使为空也要返回）
+			"items":      items,
+			"summary":    summary,
+			"backup":     userPurchaseListBackup, // 返回备份，供修改订单完成后恢复使用（即使为空也要返回）
+			"urgent_fee": urgentFee,              // 返回加急费用供前端显示
 		},
 	})
 	log.Printf("[SyncOrderItemsToPurchaseList] 返回备份数据，备份商品数量: %d", len(userPurchaseListBackup))
@@ -1648,12 +1750,22 @@ func GetSalesCustomerPurchaseList(c *gin.Context) {
 		return
 	}
 
+	// 获取加急费用（从系统设置）
+	urgentFeeStr, _ := model.GetSystemSetting("order_urgent_fee")
+	urgentFee := 0.0
+	if urgentFeeStr != "" {
+		if fee, parseErr := strconv.ParseFloat(urgentFeeStr, 64); parseErr == nil && fee > 0 {
+			urgentFee = fee
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,
 		"data": gin.H{
-			"items":   items,
-			"summary": summary,
-			"backup":  userPurchaseListBackup, // 返回备份，前端必须保存并在创建订单时传入
+			"items":      items,
+			"summary":    summary,
+			"backup":     userPurchaseListBackup, // 返回备份，前端必须保存并在创建订单时传入
+			"urgent_fee": urgentFee,              // 返回加急费用供前端显示
 		},
 		"message": "获取成功",
 	})
@@ -2272,7 +2384,7 @@ func GetSalesProducts(c *gin.Context) {
 	// 根据条件查询商品
 	if categoryID > 0 && keyword != "" {
 		// 同时有分类和关键词：先按分类查询，再在结果中筛选关键词
-		products, total, err = model.GetProductsByCategoryWithPagination(categoryID, pageNum, pageSize)
+		products, _, err = model.GetProductsByCategoryWithPagination(categoryID, pageNum, pageSize)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取商品失败: " + err.Error()})
 			return
@@ -2423,4 +2535,50 @@ func boolToTinyInt(v bool) int {
 		return 1
 	}
 	return 0
+}
+
+// calculateSalesCommissionPreviewForSales 计算销售分成预览（销售员端）
+func calculateSalesCommissionPreviewForSales(order *model.Order, deliveryFeeResult *model.DeliveryFeeCalculationResult, orderProfit float64, salesCode string) map[string]interface{} {
+	// 计算订单金额、商品成本、配送成本
+	orderAmount := order.TotalAmount             // 平台总收入
+	goodsCost := order.GoodsAmount - orderProfit // 商品总成本
+	deliveryCost := 0.0
+	if deliveryFeeResult != nil {
+		deliveryCost = deliveryFeeResult.TotalPlatformCost
+	}
+
+	// 判断是否新客户
+	isNewCustomer, _ := model.IsNewCustomerOrder(order.UserID, order.ID)
+
+	// 获取当月有效订单总金额（用于计算阶梯提成）
+	currentMonth := time.Now().Format("2006-01")
+	monthTotalSales, _ := model.GetMonthlyTotalSales(salesCode, currentMonth)
+
+	// 计算分成
+	calcResult, err := model.CalculateSalesCommission(
+		salesCode,
+		orderAmount,
+		goodsCost,
+		deliveryCost,
+		isNewCustomer,
+		monthTotalSales,
+	)
+	if err != nil {
+		return nil
+	}
+
+	return map[string]interface{}{
+		"total_commission":      calcResult.TotalCommission,
+		"base_commission":       calcResult.BaseCommission,
+		"new_customer_bonus":    calcResult.NewCustomerBonus,
+		"tier_commission":       calcResult.TierCommission,
+		"tier_level":            calcResult.TierLevel,
+		"is_valid_order":        calcResult.IsValidOrder,
+		"is_new_customer_order": calcResult.IsNewCustomerOrder,
+		"is_preview":            true,
+		"order_profit":          orderProfit,
+		"order_amount":          orderAmount,
+		"goods_cost":            goodsCost,
+		"delivery_cost":         deliveryCost,
+	}
 }

@@ -3,8 +3,10 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"go_backend/internal/database"
 	"go_backend/internal/model"
@@ -85,6 +87,34 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 
 	// 批量查询销售员信息
 	employeesMap, _ := model.GetEmployeesByEmployeeCodes(salesCodes)
+
+	// 收集所有配送员代码
+	deliveryCodes := make([]string, 0)
+	deliveryCodeSet := make(map[string]bool)
+	for _, order := range orders {
+		if order.DeliveryEmployeeCode != nil && *order.DeliveryEmployeeCode != "" && !deliveryCodeSet[*order.DeliveryEmployeeCode] {
+			deliveryCodes = append(deliveryCodes, *order.DeliveryEmployeeCode)
+			deliveryCodeSet[*order.DeliveryEmployeeCode] = true
+		}
+	}
+
+	// 批量查询配送员信息
+	deliveryEmployeesMap, _ := model.GetEmployeesByEmployeeCodes(deliveryCodes)
+
+	// 批量查询销售分成信息（仅已收款订单）
+	salesCommissionsMap := make(map[int]*model.SalesCommission)
+	paidOrderIDs := make([]int, 0)
+	for _, order := range orders {
+		if order.Status == "paid" {
+			paidOrderIDs = append(paidOrderIDs, order.ID)
+		}
+	}
+	if len(paidOrderIDs) > 0 {
+		commissions, _ := model.GetSalesCommissionsByOrderIDs(paidOrderIDs)
+		for _, commission := range commissions {
+			salesCommissionsMap[commission.OrderID] = commission
+		}
+	}
 
 	// 组装订单数据
 	ordersWithDetails := make([]map[string]interface{}, 0, len(orders))
@@ -235,6 +265,55 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 			}
 		}
 
+		// 添加销售分成信息
+		// 所有订单都计算预览分成，已收款订单额外显示已计入的分成
+		if user, ok := usersMap[order.UserID]; ok && user != nil && user.SalesCode != "" {
+			// 计算预览分成（所有订单都显示）
+			previewCommission := calculateSalesCommissionPreview(&order, deliveryFeeResult, orderProfitVal)
+			if previewCommission != nil {
+				orderData["sales_commission_preview"] = previewCommission
+			}
+		}
+
+		// 已收款订单：从数据库查询已计入的分成
+		if order.Status == "paid" {
+			if commission, ok := salesCommissionsMap[order.ID]; ok && commission != nil {
+				orderData["sales_commission"] = map[string]interface{}{
+					"total_commission":   commission.TotalCommission,
+					"base_commission":    commission.BaseCommission,
+					"new_customer_bonus": commission.NewCustomerBonus,
+					"tier_commission":    commission.TierCommission,
+					"is_valid_order":     commission.IsValidOrder,
+					"is_settled":         commission.SettlementDate != nil,
+				}
+			} else {
+				// 已收款但没有分成记录（可能是历史订单或没有销售员）
+				orderData["sales_commission"] = nil
+			}
+		}
+
+		// 添加配送员信息和配送费
+		if order.DeliveryEmployeeCode != nil && *order.DeliveryEmployeeCode != "" {
+			if deliveryEmployee, ok := deliveryEmployeesMap[*order.DeliveryEmployeeCode]; ok && deliveryEmployee != nil {
+				orderData["delivery_employee"] = map[string]interface{}{
+					"id":            deliveryEmployee.ID,
+					"employee_code": deliveryEmployee.EmployeeCode,
+					"name":          deliveryEmployee.Name,
+					"phone":         deliveryEmployee.Phone,
+				}
+			} else {
+				// 配送员信息不存在，只显示员工码
+				orderData["delivery_employee"] = map[string]interface{}{
+					"employee_code": *order.DeliveryEmployeeCode,
+				}
+			}
+
+			// 从配送费计算结果中提取配送员实际所得
+			if deliveryFeeResult != nil && deliveryFeeResult.RiderPayableFee > 0 {
+				orderData["rider_payable_fee"] = deliveryFeeResult.RiderPayableFee
+			}
+		}
+
 		ordersWithDetails = append(ordersWithDetails, orderData)
 	}
 
@@ -289,6 +368,20 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 			"name":      user.Name,
 			"phone":     user.Phone,
 			"user_type": user.UserType,
+			"sales_code": user.SalesCode,
+		}
+
+		// 获取销售员信息
+		if user.SalesCode != "" {
+			employee, err := model.GetEmployeeByEmployeeCode(user.SalesCode)
+			if err == nil && employee != nil {
+				userData["sales_employee"] = map[string]interface{}{
+					"id":            employee.ID,
+					"employee_code": employee.EmployeeCode,
+					"name":          employee.Name,
+					"phone":         employee.Phone,
+				}
+			}
 		}
 	}
 
@@ -408,18 +501,55 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 		}
 	}
 
+	result := gin.H{
+		"order":                    order,
+		"order_items":              items,
+		"user":                     userData,
+		"address":                  addressData,
+		"delivery_fee_calculation": deliveryFeeCalculation,
+		"order_profit":             orderProfit,
+		"net_profit":               netProfit,
+		"simplified_profit":        simplifiedProfit, // 简化的利润分析（平台总收入、商品总成本、毛利润、配送成本、净利润）
+	}
+
+	// 添加销售分成信息
+	if user != nil && user.SalesCode != "" {
+		// 计算预览分成（所有订单都显示）
+		previewCommission := calculateSalesCommissionPreview(order, deliveryFeeResult, orderProfit)
+		if previewCommission != nil {
+			result["sales_commission_preview"] = previewCommission
+		}
+
+		// 已收款订单：从数据库查询已计入的分成
+		if order.Status == "paid" {
+			commissions, err := model.GetSalesCommissionsByOrderIDs([]int{id})
+			if err == nil && len(commissions) > 0 && commissions[0] != nil {
+				commission := commissions[0]
+				result["sales_commission"] = map[string]interface{}{
+					"total_commission":      commission.TotalCommission,
+					"base_commission":       commission.BaseCommission,
+					"new_customer_bonus":    commission.NewCustomerBonus,
+					"tier_commission":       commission.TierCommission,
+					"tier_level":            commission.TierLevel,
+					"is_valid_order":        commission.IsValidOrder,
+					"is_new_customer_order": commission.IsNewCustomerOrder,
+					"is_settled":            commission.SettlementDate != nil,
+					"settlement_date":       commission.SettlementDate,
+					"order_profit":          commission.OrderProfit,
+					"order_amount":          commission.OrderAmount,
+					"goods_cost":            commission.GoodsCost,
+					"delivery_cost":         commission.DeliveryCost,
+					"calculation_month":     commission.CalculationMonth,
+				}
+			} else {
+				result["sales_commission"] = nil
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": gin.H{
-			"order":                    order,
-			"order_items":              items,
-			"user":                     userData,
-			"address":                  addressData,
-			"delivery_fee_calculation": deliveryFeeCalculation,
-			"order_profit":             orderProfit,
-			"net_profit":               netProfit,
-			"simplified_profit":        simplifiedProfit, // 简化的利润分析（平台总收入、商品总成本、毛利润、配送成本、净利润）
-		},
+		"code":    200,
+		"data":    result,
 		"message": "获取成功",
 	})
 }
@@ -484,6 +614,46 @@ func UpdateOrderStatus(c *gin.Context) {
 		return
 	}
 
+	// 如果订单状态变为 paid（已收款），需要计算销售分成
+	if req.Status == "paid" {
+		// 异步处理销售分成计算（避免阻塞）
+		go func(orderID int) {
+			// 等待一下，确保订单状态和结算日期已更新
+			time.Sleep(100 * time.Millisecond)
+
+			// 重新获取订单信息，检查是否有结算日期
+			order, err := model.GetOrderByID(orderID)
+			if err != nil {
+				log.Printf("获取订单 %d 信息失败: %v", orderID, err)
+				return
+			}
+			if order == nil {
+				log.Printf("订单 %d 不存在", orderID)
+				return
+			}
+
+			// 如果订单有结算日期，计算销售分成
+			// 如果没有结算日期，设置结算日期为当前时间
+			if order.SettlementDate == nil {
+				now := time.Now()
+				_, err = database.DB.Exec("UPDATE orders SET settlement_date = ? WHERE id = ?", now, orderID)
+				if err != nil {
+					log.Printf("设置订单 %d 结算日期失败: %v", orderID, err)
+					return
+				}
+				// 更新订单对象的结算日期
+				order.SettlementDate = &now
+			}
+
+			// 计算销售分成
+			if err := model.ProcessOrderSettlement(orderID); err != nil {
+				log.Printf("处理订单 %d 的销售分成失败: %v", orderID, err)
+			} else {
+				log.Printf("订单 %d 的销售分成计算成功", orderID)
+			}
+		}(id)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "更新成功",
@@ -524,4 +694,52 @@ func isValidStatusTransition(currentStatus, newStatus string) bool {
 	}
 
 	return false
+}
+
+// calculateSalesCommissionPreview 计算销售分成预览（未收款订单）
+func calculateSalesCommissionPreview(order *model.Order, deliveryFeeResult *model.DeliveryFeeCalculationResult, orderProfit float64) map[string]interface{} {
+	// 获取用户信息
+	user, err := model.GetMiniAppUserByID(order.UserID)
+	if err != nil || user == nil || user.SalesCode == "" {
+		return nil
+	}
+
+	// 计算订单金额、商品成本、配送成本
+	orderAmount := order.TotalAmount             // 平台总收入
+	goodsCost := order.GoodsAmount - orderProfit // 商品总成本
+	deliveryCost := 0.0
+	if deliveryFeeResult != nil {
+		deliveryCost = deliveryFeeResult.TotalPlatformCost
+	}
+
+	// 判断是否新客户（这里简化处理，实际应该查询数据库）
+	isNewCustomer := false
+
+	// 获取当月有效订单总金额（用于计算阶梯提成）
+	currentMonth := time.Now().Format("2006-01")
+	monthTotalSales, _ := model.GetMonthlyTotalSales(user.SalesCode, currentMonth)
+
+	// 计算分成
+	calcResult, err := model.CalculateSalesCommission(
+		user.SalesCode,
+		orderAmount,
+		goodsCost,
+		deliveryCost,
+		isNewCustomer,
+		monthTotalSales,
+	)
+	if err != nil {
+		return nil
+	}
+
+	return map[string]interface{}{
+		"total_commission":    calcResult.TotalCommission,
+		"base_commission":     calcResult.BaseCommission,
+		"new_customer_bonus":  calcResult.NewCustomerBonus,
+		"tier_commission":     calcResult.TierCommission,
+		"tier_level":          calcResult.TierLevel,
+		"is_valid_order":      calcResult.IsValidOrder,
+		"is_new_customer_order": calcResult.IsNewCustomerOrder,
+		"is_preview":          true,
+	}
 }

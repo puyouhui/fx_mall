@@ -1,0 +1,788 @@
+package model
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"time"
+
+	"go_backend/internal/database"
+)
+
+// SalesCommissionConfig 销售分成配置
+type SalesCommissionConfig struct {
+	ID                    int       `json:"id"`
+	EmployeeCode          string    `json:"employee_code"`
+	BaseCommissionRate   float64   `json:"base_commission_rate"`   // 基础提成比例（默认45%）
+	NewCustomerBonusRate  float64   `json:"new_customer_bonus_rate"` // 新客开发激励比例（默认20%）
+	Tier1Threshold        float64   `json:"tier1_threshold"`       // 阶梯1阈值（默认50000元）
+	Tier1Rate             float64   `json:"tier1_rate"`            // 阶梯1提成比例（默认5%）
+	Tier2Threshold        float64   `json:"tier2_threshold"`       // 阶梯2阈值（默认100000元）
+	Tier2Rate             float64   `json:"tier2_rate"`            // 阶梯2提成比例（默认10%）
+	Tier3Threshold        float64   `json:"tier3_threshold"`       // 阶梯3阈值（默认200000元）
+	Tier3Rate             float64   `json:"tier3_rate"`            // 阶梯3提成比例（默认20%）
+	MinProfitThreshold    float64   `json:"min_profit_threshold"`   // 最小利润阈值（默认5元）
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+// SalesCommission 销售分成记录
+type SalesCommission struct {
+	ID                   int        `json:"id"`
+	OrderID              int         `json:"order_id"`
+	EmployeeCode         string      `json:"employee_code"`
+	UserID               int         `json:"user_id"`
+	OrderNumber          string      `json:"order_number"`
+	OrderDate            time.Time   `json:"order_date"`
+	SettlementDate       *time.Time  `json:"settlement_date,omitempty"`
+	IsValidOrder         bool        `json:"is_valid_order"`
+	IsNewCustomerOrder   bool        `json:"is_new_customer_order"`
+	OrderAmount          float64     `json:"order_amount"`          // 平台总收入
+	GoodsCost            float64     `json:"goods_cost"`            // 商品总成本
+	DeliveryCost         float64     `json:"delivery_cost"`         // 配送成本
+	OrderProfit          float64     `json:"order_profit"`          // 订单利润
+	BaseCommission       float64     `json:"base_commission"`       // 基础提成
+	NewCustomerBonus     float64     `json:"new_customer_bonus"`    // 新客开发激励
+	TierCommission       float64     `json:"tier_commission"`       // 阶梯提成
+	TotalCommission      float64     `json:"total_commission"`     // 总分成
+	TierLevel            int         `json:"tier_level"`            // 达到的阶梯等级
+	CalculationMonth     string      `json:"calculation_month"`     // 计算月份（YYYY-MM）
+	CreatedAt            time.Time   `json:"created_at"`
+	UpdatedAt            time.Time   `json:"updated_at"`
+}
+
+// SalesCommissionMonthlyStats 销售分成月统计
+type SalesCommissionMonthlyStats struct {
+	ID                   int       `json:"id"`
+	EmployeeCode         string    `json:"employee_code"`
+	StatMonth           string    `json:"stat_month"`            // YYYY-MM格式
+	TotalSalesAmount     float64   `json:"total_sales_amount"`  // 总销售额
+	TotalValidOrders     int       `json:"total_valid_orders"`  // 有效订单数
+	TotalNewCustomers    int       `json:"total_new_customers"` // 新客户数
+	TotalProfit          float64   `json:"total_profit"`        // 总利润
+	TotalBaseCommission  float64   `json:"total_base_commission"`  // 总基础提成
+	TotalNewCustomerBonus float64  `json:"total_new_customer_bonus"` // 总新客激励
+	TotalTierCommission  float64   `json:"total_tier_commission"`  // 总阶梯提成
+	TotalCommission      float64   `json:"total_commission"`       // 总分成
+	TierLevel            int       `json:"tier_level"`              // 达到的阶梯等级
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
+}
+
+// CommissionCalculationResult 分成计算结果
+type CommissionCalculationResult struct {
+	OrderProfit          float64 `json:"order_profit"`          // 订单利润
+	BaseCommission       float64 `json:"base_commission"`       // 基础提成
+	NewCustomerBonus     float64 `json:"new_customer_bonus"`    // 新客开发激励
+	TierCommission       float64 `json:"tier_commission"`       // 阶梯提成
+	TotalCommission      float64 `json:"total_commission"`      // 总分成
+	TierLevel            int     `json:"tier_level"`            // 达到的阶梯等级
+	IsValidOrder         bool    `json:"is_valid_order"`        // 是否有效订单
+	IsNewCustomerOrder   bool    `json:"is_new_customer_order"` // 是否新客户首单
+}
+
+// GetSalesCommissionConfig 获取销售员的分成配置（如果不存在则创建默认配置）
+func GetSalesCommissionConfig(employeeCode string) (*SalesCommissionConfig, error) {
+	var config SalesCommissionConfig
+	query := `
+		SELECT id, employee_code, base_commission_rate, new_customer_bonus_rate,
+		       tier1_threshold, tier1_rate, tier2_threshold, tier2_rate,
+		       tier3_threshold, tier3_rate, min_profit_threshold,
+		       created_at, updated_at
+		FROM sales_commission_config
+		WHERE employee_code = ?
+	`
+	err := database.DB.QueryRow(query, employeeCode).Scan(
+		&config.ID, &config.EmployeeCode, &config.BaseCommissionRate, &config.NewCustomerBonusRate,
+		&config.Tier1Threshold, &config.Tier1Rate, &config.Tier2Threshold, &config.Tier2Rate,
+		&config.Tier3Threshold, &config.Tier3Rate, &config.MinProfitThreshold,
+		&config.CreatedAt, &config.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// 不存在则创建默认配置
+			return CreateDefaultSalesCommissionConfig(employeeCode)
+		}
+		return nil, err
+	}
+	return &config, nil
+}
+
+// CreateDefaultSalesCommissionConfig 创建默认的分成配置
+func CreateDefaultSalesCommissionConfig(employeeCode string) (*SalesCommissionConfig, error) {
+	config := &SalesCommissionConfig{
+		EmployeeCode:         employeeCode,
+		BaseCommissionRate:  0.45,  // 45%
+		NewCustomerBonusRate: 0.20, // 20%
+		Tier1Threshold:       50000.00,
+		Tier1Rate:           0.05,  // 5%
+		Tier2Threshold:       100000.00,
+		Tier2Rate:           0.10,  // 10%
+		Tier3Threshold:       200000.00,
+		Tier3Rate:           0.20,  // 20%
+		MinProfitThreshold:   5.00,
+	}
+
+	query := `
+		INSERT INTO sales_commission_config (
+			employee_code, base_commission_rate, new_customer_bonus_rate,
+			tier1_threshold, tier1_rate, tier2_threshold, tier2_rate,
+			tier3_threshold, tier3_rate, min_profit_threshold
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err := database.DB.Exec(query,
+		config.EmployeeCode, config.BaseCommissionRate, config.NewCustomerBonusRate,
+		config.Tier1Threshold, config.Tier1Rate, config.Tier2Threshold, config.Tier2Rate,
+		config.Tier3Threshold, config.Tier3Rate, config.MinProfitThreshold,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// 重新查询获取ID和时间戳
+	return GetSalesCommissionConfig(employeeCode)
+}
+
+// UpdateSalesCommissionConfig 更新销售员的分成配置
+func UpdateSalesCommissionConfig(employeeCode string, config *SalesCommissionConfig) error {
+	query := `
+		UPDATE sales_commission_config
+		SET base_commission_rate = ?, new_customer_bonus_rate = ?,
+		    tier1_threshold = ?, tier1_rate = ?,
+		    tier2_threshold = ?, tier2_rate = ?,
+		    tier3_threshold = ?, tier3_rate = ?,
+		    min_profit_threshold = ?,
+		    updated_at = NOW()
+		WHERE employee_code = ?
+	`
+	_, err := database.DB.Exec(query,
+		config.BaseCommissionRate, config.NewCustomerBonusRate,
+		config.Tier1Threshold, config.Tier1Rate,
+		config.Tier2Threshold, config.Tier2Rate,
+		config.Tier3Threshold, config.Tier3Rate,
+		config.MinProfitThreshold,
+		employeeCode,
+	)
+	return err
+}
+
+// HasSettledOrder 判断用户是否有已结算的有效订单
+func HasSettledOrder(userID int) (bool, error) {
+	query := `
+		SELECT COUNT(*) 
+		FROM orders o
+		WHERE o.user_id = ? 
+		  AND o.status = 'paid'
+		  AND o.settlement_date IS NOT NULL
+		  AND (o.total_amount - (o.goods_amount - COALESCE(o.order_profit, 0)) - 
+		       COALESCE(JSON_EXTRACT(o.delivery_fee_calculation, '$.total_platform_cost'), 0)) > 5
+	`
+	var count int
+	err := database.DB.QueryRow(query, userID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// IsNewCustomerOrder 判断订单是否为新客户首单
+func IsNewCustomerOrder(userID int, orderID int) (bool, error) {
+	// 查询该用户在此订单之前是否有已结算的有效订单
+	query := `
+		SELECT COUNT(*) 
+		FROM orders o
+		WHERE o.user_id = ? 
+		  AND o.id < ?
+		  AND o.status = 'paid'
+		  AND o.settlement_date IS NOT NULL
+		  AND (o.total_amount - (o.goods_amount - COALESCE(o.order_profit, 0)) - 
+		       COALESCE(JSON_EXTRACT(o.delivery_fee_calculation, '$.total_platform_cost'), 0)) > 5
+	`
+	var count int
+	err := database.DB.QueryRow(query, userID, orderID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count == 0, nil
+}
+
+// CalculateSalesCommission 计算销售分成
+// orderAmount: 平台总收入（total_amount）
+// goodsCost: 商品总成本（goods_amount - order_profit）
+// deliveryCost: 配送成本（从delivery_fee_calculation中获取total_platform_cost）
+// isNewCustomer: 是否新客户首单
+// monthTotalSales: 当月有效订单总金额（用于计算阶梯提成）
+func CalculateSalesCommission(employeeCode string, orderAmount, goodsCost, deliveryCost float64, isNewCustomer bool, monthTotalSales float64) (*CommissionCalculationResult, error) {
+	// 获取配置
+	config, err := GetSalesCommissionConfig(employeeCode)
+	if err != nil {
+		return nil, fmt.Errorf("获取分成配置失败: %v", err)
+	}
+
+	result := &CommissionCalculationResult{}
+
+	// 计算订单利润
+	result.OrderProfit = orderAmount - goodsCost - deliveryCost
+
+	// 判断是否有效订单
+	result.IsValidOrder = result.OrderProfit > config.MinProfitThreshold
+
+	// 如果不是有效订单，直接返回
+	if !result.IsValidOrder {
+		return result, nil
+	}
+
+	result.IsNewCustomerOrder = isNewCustomer
+
+	// 1. 计算基础提成
+	result.BaseCommission = result.OrderProfit * config.BaseCommissionRate
+
+	// 2. 计算新客开发激励（仅针对新客户首单）
+	if isNewCustomer {
+		result.NewCustomerBonus = result.OrderProfit * config.NewCustomerBonusRate
+	}
+
+	// 3. 计算业绩阶梯提成（全量补差方式）
+	// 基于当月有效订单总金额计算
+	tierLevel := 0
+	tierRate := 0.0
+
+	if monthTotalSales > config.Tier3Threshold {
+		tierLevel = 3
+		tierRate = config.Tier3Rate
+	} else if monthTotalSales > config.Tier2Threshold {
+		tierLevel = 2
+		tierRate = config.Tier2Rate
+	} else if monthTotalSales > config.Tier1Threshold {
+		tierLevel = 1
+		tierRate = config.Tier1Rate
+	}
+
+	result.TierLevel = tierLevel
+	if tierLevel > 0 {
+		// 阶梯提成 = 订单利润 × 阶梯比例
+		result.TierCommission = result.OrderProfit * tierRate
+	}
+
+	// 4. 计算总分成
+	result.TotalCommission = result.BaseCommission + result.NewCustomerBonus + result.TierCommission
+
+	return result, nil
+}
+
+// SaveSalesCommission 保存销售分成记录
+func SaveSalesCommission(commission *SalesCommission) error {
+	query := `
+		INSERT INTO sales_commissions (
+			order_id, employee_code, user_id, order_number, order_date,
+			settlement_date, is_valid_order, is_new_customer_order,
+			order_amount, goods_cost, delivery_cost, order_profit,
+			base_commission, new_customer_bonus, tier_commission,
+			total_commission, tier_level, calculation_month
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE
+			settlement_date = VALUES(settlement_date),
+			is_valid_order = VALUES(is_valid_order),
+			is_new_customer_order = VALUES(is_new_customer_order),
+			order_amount = VALUES(order_amount),
+			goods_cost = VALUES(goods_cost),
+			delivery_cost = VALUES(delivery_cost),
+			order_profit = VALUES(order_profit),
+			base_commission = VALUES(base_commission),
+			new_customer_bonus = VALUES(new_customer_bonus),
+			tier_commission = VALUES(tier_commission),
+			total_commission = VALUES(total_commission),
+			tier_level = VALUES(tier_level),
+			calculation_month = VALUES(calculation_month),
+			updated_at = NOW()
+	`
+	var settlementDate interface{}
+	if commission.SettlementDate != nil {
+		settlementDate = commission.SettlementDate
+	} else {
+		settlementDate = nil
+	}
+
+	isValidOrder := 0
+	if commission.IsValidOrder {
+		isValidOrder = 1
+	}
+	isNewCustomerOrder := 0
+	if commission.IsNewCustomerOrder {
+		isNewCustomerOrder = 1
+	}
+
+	_, err := database.DB.Exec(query,
+		commission.OrderID, commission.EmployeeCode, commission.UserID, commission.OrderNumber,
+		commission.OrderDate, settlementDate, isValidOrder, isNewCustomerOrder,
+		commission.OrderAmount, commission.GoodsCost, commission.DeliveryCost, commission.OrderProfit,
+		commission.BaseCommission, commission.NewCustomerBonus, commission.TierCommission,
+		commission.TotalCommission, commission.TierLevel, commission.CalculationMonth,
+	)
+	return err
+}
+
+// GetSalesCommissionsByEmployee 获取销售员的分成记录列表
+func GetSalesCommissionsByEmployee(employeeCode string, month string, pageNum, pageSize int) ([]SalesCommission, int, error) {
+	offset := (pageNum - 1) * pageSize
+
+	// 构建查询条件
+	where := "employee_code = ?"
+	args := []interface{}{employeeCode}
+
+	if month != "" {
+		where += " AND calculation_month = ?"
+		args = append(args, month)
+	}
+
+	// 查询总数
+	var total int
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM sales_commissions WHERE %s", where)
+	err := database.DB.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 查询列表
+	query := fmt.Sprintf(`
+		SELECT id, order_id, employee_code, user_id, order_number, order_date,
+		       settlement_date, is_valid_order, is_new_customer_order,
+		       order_amount, goods_cost, delivery_cost, order_profit,
+		       base_commission, new_customer_bonus, tier_commission,
+		       total_commission, tier_level, calculation_month,
+		       created_at, updated_at
+		FROM sales_commissions
+		WHERE %s
+		ORDER BY order_date DESC, id DESC
+		LIMIT ? OFFSET ?
+	`, where)
+	args = append(args, pageSize, offset)
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	commissions := make([]SalesCommission, 0)
+	for rows.Next() {
+		var commission SalesCommission
+		var settlementDate sql.NullTime
+		var isValidOrder, isNewCustomerOrder int
+
+		err := rows.Scan(
+			&commission.ID, &commission.OrderID, &commission.EmployeeCode, &commission.UserID,
+			&commission.OrderNumber, &commission.OrderDate, &settlementDate,
+			&isValidOrder, &isNewCustomerOrder,
+			&commission.OrderAmount, &commission.GoodsCost, &commission.DeliveryCost,
+			&commission.OrderProfit, &commission.BaseCommission, &commission.NewCustomerBonus,
+			&commission.TierCommission, &commission.TotalCommission, &commission.TierLevel,
+			&commission.CalculationMonth, &commission.CreatedAt, &commission.UpdatedAt,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		commission.IsValidOrder = isValidOrder == 1
+		commission.IsNewCustomerOrder = isNewCustomerOrder == 1
+		if settlementDate.Valid {
+			t := settlementDate.Time
+			commission.SettlementDate = &t
+		}
+
+		commissions = append(commissions, commission)
+	}
+
+	return commissions, total, nil
+}
+
+// GetSalesCommissionsByOrderIDs 批量获取订单的销售分成记录
+func GetSalesCommissionsByOrderIDs(orderIDs []int) ([]*SalesCommission, error) {
+	if len(orderIDs) == 0 {
+		return []*SalesCommission{}, nil
+	}
+
+	placeholders := ""
+	args := make([]interface{}, len(orderIDs))
+	for i, id := range orderIDs {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, order_id, employee_code, user_id, order_number, order_date,
+		       settlement_date, is_valid_order, is_new_customer_order,
+		       order_amount, goods_cost, delivery_cost, order_profit,
+		       base_commission, new_customer_bonus, tier_commission,
+		       total_commission, tier_level, calculation_month,
+		       created_at, updated_at
+		FROM sales_commissions
+		WHERE order_id IN (%s)
+	`, placeholders)
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	commissions := make([]*SalesCommission, 0)
+	for rows.Next() {
+		var commission SalesCommission
+		var settlementDate sql.NullTime
+		var isValidOrder, isNewCustomerOrder int
+
+		err := rows.Scan(
+			&commission.ID, &commission.OrderID, &commission.EmployeeCode, &commission.UserID,
+			&commission.OrderNumber, &commission.OrderDate, &settlementDate,
+			&isValidOrder, &isNewCustomerOrder,
+			&commission.OrderAmount, &commission.GoodsCost, &commission.DeliveryCost,
+			&commission.OrderProfit, &commission.BaseCommission, &commission.NewCustomerBonus,
+			&commission.TierCommission, &commission.TotalCommission, &commission.TierLevel,
+			&commission.CalculationMonth, &commission.CreatedAt, &commission.UpdatedAt,
+		)
+		if err != nil {
+			continue
+		}
+
+		commission.IsValidOrder = isValidOrder == 1
+		commission.IsNewCustomerOrder = isNewCustomerOrder == 1
+		if settlementDate.Valid {
+			t := settlementDate.Time
+			commission.SettlementDate = &t
+		}
+
+		commissions = append(commissions, &commission)
+	}
+
+	return commissions, nil
+}
+
+// GetMonthlyTotalSales 获取销售员指定月份的有效订单总金额
+func GetMonthlyTotalSales(employeeCode string, month string) (float64, error) {
+	query := `
+		SELECT COALESCE(SUM(order_amount), 0)
+		FROM sales_commissions
+		WHERE employee_code = ?
+		  AND calculation_month = ?
+		  AND is_valid_order = 1
+	`
+	var totalSales float64
+	err := database.DB.QueryRow(query, employeeCode, month).Scan(&totalSales)
+	if err != nil {
+		return 0, err
+	}
+	return totalSales, nil
+}
+
+// GetSalesCommissionMonthlyStats 获取销售员的分成月统计
+func GetSalesCommissionMonthlyStats(employeeCode string, month string) (*SalesCommissionMonthlyStats, error) {
+	var stats SalesCommissionMonthlyStats
+	query := `
+		SELECT id, employee_code, stat_month,
+		       total_sales_amount, total_valid_orders, total_new_customers,
+		       total_profit, total_base_commission, total_new_customer_bonus,
+		       total_tier_commission, total_commission, tier_level,
+		       created_at, updated_at
+		FROM sales_commission_monthly_stats
+		WHERE employee_code = ? AND stat_month = ?
+	`
+	err := database.DB.QueryRow(query, employeeCode, month).Scan(
+		&stats.ID, &stats.EmployeeCode, &stats.StatMonth,
+		&stats.TotalSalesAmount, &stats.TotalValidOrders, &stats.TotalNewCustomers,
+		&stats.TotalProfit, &stats.TotalBaseCommission, &stats.TotalNewCustomerBonus,
+		&stats.TotalTierCommission, &stats.TotalCommission, &stats.TierLevel,
+		&stats.CreatedAt, &stats.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &stats, nil
+}
+
+// CalculateAndSaveMonthlyStats 计算并保存月统计
+func CalculateAndSaveMonthlyStats(employeeCode string, month string) error {
+	// 查询该月的所有有效订单分成记录
+	query := `
+		SELECT 
+			COALESCE(SUM(order_amount), 0) as total_sales_amount,
+			COUNT(*) as total_valid_orders,
+			SUM(CASE WHEN is_new_customer_order = 1 THEN 1 ELSE 0 END) as total_new_customers,
+			COALESCE(SUM(order_profit), 0) as total_profit,
+			COALESCE(SUM(base_commission), 0) as total_base_commission,
+			COALESCE(SUM(new_customer_bonus), 0) as total_new_customer_bonus,
+			COALESCE(SUM(tier_commission), 0) as total_tier_commission,
+			COALESCE(SUM(total_commission), 0) as total_commission,
+			MAX(tier_level) as tier_level
+		FROM sales_commissions
+		WHERE employee_code = ? AND calculation_month = ? AND is_valid_order = 1
+	`
+
+	var stats SalesCommissionMonthlyStats
+	stats.EmployeeCode = employeeCode
+	stats.StatMonth = month
+
+	err := database.DB.QueryRow(query, employeeCode, month).Scan(
+		&stats.TotalSalesAmount, &stats.TotalValidOrders, &stats.TotalNewCustomers,
+		&stats.TotalProfit, &stats.TotalBaseCommission, &stats.TotalNewCustomerBonus,
+		&stats.TotalTierCommission, &stats.TotalCommission, &stats.TierLevel,
+	)
+	if err != nil {
+		return err
+	}
+
+	// 保存或更新统计
+	saveQuery := `
+		INSERT INTO sales_commission_monthly_stats (
+			employee_code, stat_month,
+			total_sales_amount, total_valid_orders, total_new_customers,
+			total_profit, total_base_commission, total_new_customer_bonus,
+			total_tier_commission, total_commission, tier_level
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE
+			total_sales_amount = VALUES(total_sales_amount),
+			total_valid_orders = VALUES(total_valid_orders),
+			total_new_customers = VALUES(total_new_customers),
+			total_profit = VALUES(total_profit),
+			total_base_commission = VALUES(total_base_commission),
+			total_new_customer_bonus = VALUES(total_new_customer_bonus),
+			total_tier_commission = VALUES(total_tier_commission),
+			total_commission = VALUES(total_commission),
+			tier_level = VALUES(tier_level),
+			updated_at = NOW()
+	`
+	_, err = database.DB.Exec(saveQuery,
+		stats.EmployeeCode, stats.StatMonth,
+		stats.TotalSalesAmount, stats.TotalValidOrders, stats.TotalNewCustomers,
+		stats.TotalProfit, stats.TotalBaseCommission, stats.TotalNewCustomerBonus,
+		stats.TotalTierCommission, stats.TotalCommission, stats.TierLevel,
+	)
+	return err
+}
+
+// ProcessOrderSettlement 处理订单结算时的分成计算
+func ProcessOrderSettlement(orderID int) error {
+	// 获取订单信息
+	order, err := GetOrderByID(orderID)
+	if err != nil {
+		return fmt.Errorf("获取订单失败: %v", err)
+	}
+	if order == nil {
+		return fmt.Errorf("订单不存在")
+	}
+
+	// 订单必须是已结算状态
+	if order.Status != "paid" || order.SettlementDate == nil {
+		return fmt.Errorf("订单未结算，无法计算分成")
+	}
+
+	// 获取订单对应的销售员（通过用户）
+	user, err := GetMiniAppUserByID(order.UserID)
+	if err != nil {
+		return fmt.Errorf("获取用户信息失败: %v", err)
+	}
+	if user == nil || user.SalesCode == "" {
+		// 没有销售员，不需要计算分成
+		return nil
+	}
+
+	// 查询订单的配送费计算结果（JSON字段）
+	var deliveryFeeCalcJSON sql.NullString
+	err = database.DB.QueryRow("SELECT delivery_fee_calculation FROM orders WHERE id = ?", orderID).Scan(&deliveryFeeCalcJSON)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("查询delivery_fee_calculation失败: %v", err)
+	}
+
+	// 获取订单的利润和成本信息
+	// 平台总收入 = total_amount
+	orderAmount := order.TotalAmount
+
+	// 商品总成本 = goods_amount - order_profit
+	goodsCost := order.GoodsAmount
+	if order.OrderProfit != nil && *order.OrderProfit > 0 {
+		goodsCost = order.GoodsAmount - *order.OrderProfit
+	}
+
+	// 配送成本（从delivery_fee_calculation中获取total_platform_cost）
+	deliveryCost := 0.0
+	if deliveryFeeCalcJSON.Valid && deliveryFeeCalcJSON.String != "" {
+		deliveryCost = extractDeliveryCostFromJSON(deliveryFeeCalcJSON.String)
+	}
+
+	// 判断是否新客户首单
+	isNewCustomer, err := IsNewCustomerOrder(order.UserID, orderID)
+	if err != nil {
+		log.Printf("判断是否新客户失败: %v", err)
+		isNewCustomer = false
+	}
+
+	// 计算月份（YYYY-MM格式）
+	settlementMonth := order.SettlementDate.Format("2006-01")
+
+	// 获取当月有效订单总金额（用于计算阶梯提成）
+	monthTotalSales, err := GetMonthlyTotalSales(user.SalesCode, settlementMonth)
+	if err != nil {
+		log.Printf("获取当月总销售额失败: %v", err)
+		monthTotalSales = 0
+	}
+
+	// 计算分成
+	calcResult, err := CalculateSalesCommission(
+		user.SalesCode, orderAmount, goodsCost, deliveryCost,
+		isNewCustomer, monthTotalSales,
+	)
+	if err != nil {
+		return fmt.Errorf("计算分成失败: %v", err)
+	}
+
+	// 保存分成记录
+	commission := &SalesCommission{
+		OrderID:            orderID,
+		EmployeeCode:       user.SalesCode,
+		UserID:             order.UserID,
+		OrderNumber:        order.OrderNumber,
+		OrderDate:          order.CreatedAt,
+		SettlementDate:     order.SettlementDate,
+		IsValidOrder:       calcResult.IsValidOrder,
+		IsNewCustomerOrder: calcResult.IsNewCustomerOrder,
+		OrderAmount:        orderAmount,
+		GoodsCost:          goodsCost,
+		DeliveryCost:       deliveryCost,
+		OrderProfit:        calcResult.OrderProfit,
+		BaseCommission:     calcResult.BaseCommission,
+		NewCustomerBonus:   calcResult.NewCustomerBonus,
+		TierCommission:     calcResult.TierCommission,
+		TotalCommission:   calcResult.TotalCommission,
+		TierLevel:          calcResult.TierLevel,
+		CalculationMonth:   settlementMonth,
+	}
+
+	err = SaveSalesCommission(commission)
+	if err != nil {
+		return fmt.Errorf("保存分成记录失败: %v", err)
+	}
+
+	// 重新计算当月总销售额（因为新增了订单）
+	monthTotalSales, err = GetMonthlyTotalSales(user.SalesCode, settlementMonth)
+	if err != nil {
+		log.Printf("重新获取当月总销售额失败: %v", err)
+	} else {
+		// 如果当月总销售额发生变化，需要重新计算所有订单的阶梯提成
+		// 因为阶梯提成是基于当月总销售额的
+		err = RecalculateTierCommissionsForMonth(user.SalesCode, settlementMonth, monthTotalSales)
+		if err != nil {
+			log.Printf("重新计算阶梯提成失败: %v", err)
+		}
+	}
+
+	// 更新月统计
+	err = CalculateAndSaveMonthlyStats(user.SalesCode, settlementMonth)
+	if err != nil {
+		log.Printf("更新月统计失败: %v", err)
+	}
+
+	return nil
+}
+
+// RecalculateTierCommissionsForMonth 重新计算指定月份的阶梯提成
+func RecalculateTierCommissionsForMonth(employeeCode string, month string, monthTotalSales float64) error {
+	// 获取配置
+	config, err := GetSalesCommissionConfig(employeeCode)
+	if err != nil {
+		return err
+	}
+
+	// 确定阶梯等级和比例
+	tierLevel := 0
+	tierRate := 0.0
+
+	if monthTotalSales > config.Tier3Threshold {
+		tierLevel = 3
+		tierRate = config.Tier3Rate
+	} else if monthTotalSales > config.Tier2Threshold {
+		tierLevel = 2
+		tierRate = config.Tier2Rate
+	} else if monthTotalSales > config.Tier1Threshold {
+		tierLevel = 1
+		tierRate = config.Tier1Rate
+	}
+
+	// 更新该月所有有效订单的阶梯提成
+	updateQuery := `
+		UPDATE sales_commissions
+		SET tier_commission = order_profit * ?,
+		    tier_level = ?,
+		    total_commission = base_commission + new_customer_bonus + (order_profit * ?),
+		    updated_at = NOW()
+		WHERE employee_code = ?
+		  AND calculation_month = ?
+		  AND is_valid_order = 1
+	`
+	_, err = database.DB.Exec(updateQuery, tierRate, tierLevel, tierRate, employeeCode, month)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// extractDeliveryCostFromJSON 从JSON中提取配送成本
+func extractDeliveryCostFromJSON(jsonStr string) float64 {
+	if jsonStr == "" {
+		return 0.0
+	}
+
+	var result DeliveryFeeCalculationResult
+	err := json.Unmarshal([]byte(jsonStr), &result)
+	if err != nil {
+		log.Printf("解析delivery_fee_calculation JSON失败: %v", err)
+		return 0.0
+	}
+
+	return result.TotalPlatformCost
+}
+
+// GetAllSalesCommissionMonthlyStats 获取所有销售员的分成月统计
+func GetAllSalesCommissionMonthlyStats(month string) ([]SalesCommissionMonthlyStats, error) {
+	query := `
+		SELECT id, employee_code, stat_month,
+		       total_sales_amount, total_valid_orders, total_new_customers,
+		       total_profit, total_base_commission, total_new_customer_bonus,
+		       total_tier_commission, total_commission, tier_level,
+		       created_at, updated_at
+		FROM sales_commission_monthly_stats
+		WHERE stat_month = ?
+		ORDER BY total_commission DESC
+	`
+	rows, err := database.DB.Query(query, month)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	statsList := make([]SalesCommissionMonthlyStats, 0)
+	for rows.Next() {
+		var stats SalesCommissionMonthlyStats
+		err := rows.Scan(
+			&stats.ID, &stats.EmployeeCode, &stats.StatMonth,
+			&stats.TotalSalesAmount, &stats.TotalValidOrders, &stats.TotalNewCustomers,
+			&stats.TotalProfit, &stats.TotalBaseCommission, &stats.TotalNewCustomerBonus,
+			&stats.TotalTierCommission, &stats.TotalCommission, &stats.TierLevel,
+			&stats.CreatedAt, &stats.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		statsList = append(statsList, stats)
+	}
+
+	return statsList, nil
+}
+

@@ -34,6 +34,7 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
 
   List<dynamic> _coupons = [];
   Map<String, dynamic>? _selectedCoupon;
+  double _urgentFee = 0.0; // 加急费用
 
   final TextEditingController _remarkController = TextEditingController();
 
@@ -157,6 +158,9 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
       return;
     }
 
+    // 先读取订单的加急状态，以便在调用采购单API时传入正确的参数
+    final orderIsUrgent = (order['is_urgent'] as bool?) ?? false;
+
     // 2. 将订单商品同步到采购单（确保修改订单时能正确显示商品）
     // 注意：这个API会检查订单是否已锁定，如果未锁定会返回错误
     final syncResp = await Request.post<Map<String, dynamic>>(
@@ -195,8 +199,10 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
     );
 
     // 4. 获取客户采购单（同步后应该包含订单商品）
+    // 使用订单的加急状态来获取正确的加急费用
     final purchaseResp = await Request.get<Map<String, dynamic>>(
       '/employee/sales/customers/$_customerId/purchase-list',
+      queryParams: {'is_urgent': orderIsUrgent.toString()},
       parser: (data) => data as Map<String, dynamic>,
     );
 
@@ -246,6 +252,10 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
     final addrList = (detail['addresses'] as List<dynamic>? ?? []);
     final purchaseItems = (purchase['items'] as List<dynamic>? ?? []);
     final purchaseSummary = purchase['summary'] as Map<String, dynamic>?;
+    double urgentFee = (purchase['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+    if (urgentFee <= 0 && purchaseSummary != null) {
+      urgentFee = (purchaseSummary['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+    }
     // 保存备份数据（用户进入修改订单页面时的原始采购单，不包含销售员后续的操作）
     // 注意：备份数据只在 syncResp 成功时才有，如果同步失败，备份数据可能为空
     final backup = syncResp.isSuccess && syncResp.data != null
@@ -311,6 +321,7 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
       _selectedAddressId = selectedAddressId;
       _items = purchaseItems;
       _summary = purchaseSummary;
+      _urgentFee = urgentFee;
       _coupons = coupons;
       _selectedCoupon = selectedCoupon;
       _purchaseListBackup = backup; // 保存备份数据（用户进入修改订单页面时的原始采购单）
@@ -480,6 +491,8 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
                     _buildItemsCard(),
                     const SizedBox(height: 12),
                     _buildCouponCard(),
+                    const SizedBox(height: 12),
+                    _buildUrgentCard(),
                     if (_customerId != null) ...[
                       const SizedBox(height: 12),
                       _buildSummaryCard(),
@@ -891,9 +904,15 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
 
     if (resp.isSuccess && resp.data != null) {
       final purchase = resp.data!;
+      final purchaseSummary = purchase['summary'] as Map<String, dynamic>?;
+      double urgentFee = (purchase['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+      if (urgentFee <= 0 && purchaseSummary != null) {
+        urgentFee = (purchaseSummary['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+      }
       setState(() {
         _items = (purchase['items'] as List<dynamic>? ?? []);
-        _summary = purchase['summary'] as Map<String, dynamic>?;
+        _summary = purchaseSummary;
+        _urgentFee = urgentFee;
       });
       // 刷新配送员配送费预览
       _loadRiderDeliveryFeePreview();
@@ -918,6 +937,7 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
       // 重新加载采购单
       final purchaseResp = await Request.get<Map<String, dynamic>>(
         '/employee/sales/customers/$_customerId/purchase-list',
+        queryParams: {'is_urgent': _isUrgent.toString()},
         parser: (data) => data as Map<String, dynamic>,
       );
 
@@ -925,9 +945,16 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
 
       if (purchaseResp.isSuccess && purchaseResp.data != null) {
         final purchase = purchaseResp.data!;
+        final purchaseSummary = purchase['summary'] as Map<String, dynamic>?;
+        double urgentFee = (purchase['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+        if (urgentFee <= 0 && purchaseSummary != null) {
+          urgentFee =
+              (purchaseSummary['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+        }
         setState(() {
           _items = (purchase['items'] as List<dynamic>? ?? []);
-          _summary = purchase['summary'] as Map<String, dynamic>?;
+          _summary = purchaseSummary;
+          _urgentFee = urgentFee;
         });
         // 刷新配送员配送费预览
         _loadRiderDeliveryFeePreview();
@@ -938,6 +965,39 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
           content: Text(resp.message.isNotEmpty ? resp.message : '删除失败'),
         ),
       );
+    }
+  }
+
+  /// 重新加载采购单数据（用于加急开关切换时更新加急费用）
+  Future<void> _reloadPurchaseList() async {
+    if (_customerId == null) return;
+
+    try {
+      final purchaseResp = await Request.get<Map<String, dynamic>>(
+        '/employee/sales/customers/$_customerId/purchase-list',
+        queryParams: {'is_urgent': _isUrgent.toString()},
+        parser: (data) => data as Map<String, dynamic>,
+      );
+
+      if (!mounted) return;
+
+      if (purchaseResp.isSuccess && purchaseResp.data != null) {
+        final purchase = purchaseResp.data!;
+        final purchaseSummary = purchase['summary'] as Map<String, dynamic>?;
+        double urgentFee = (purchase['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+        if (urgentFee <= 0 && purchaseSummary != null) {
+          urgentFee =
+              (purchaseSummary['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+        }
+
+        setState(() {
+          _summary = purchaseSummary;
+          _urgentFee = urgentFee;
+        });
+      }
+    } catch (e) {
+      // 静默失败，不影响主流程
+      print('重新加载采购单失败: $e');
     }
   }
 
@@ -962,6 +1022,7 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
     // 这样可以避免数据不同步的问题
     final purchaseResp = await Request.get<Map<String, dynamic>>(
       '/employee/sales/customers/$_customerId/purchase-list',
+      queryParams: {'is_urgent': _isUrgent.toString()},
       parser: (data) => data as Map<String, dynamic>,
     );
 
@@ -972,9 +1033,15 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
       final purchaseItems = (purchase['items'] as List<dynamic>? ?? []);
       final purchaseSummary = purchase['summary'] as Map<String, dynamic>?;
 
+      double urgentFee = (purchase['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+      if (urgentFee <= 0 && purchaseSummary != null) {
+        urgentFee = (purchaseSummary['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+      }
+
       setState(() {
         _items = purchaseItems;
         _summary = purchaseSummary;
+        _urgentFee = urgentFee;
       });
       // 刷新配送员配送费预览
       _loadRiderDeliveryFeePreview();
@@ -1620,6 +1687,77 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
     );
   }
 
+  /// 构建加急订单卡片
+  Widget _buildUrgentCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      '加急配送',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF20253A),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _urgentFee > 0
+                          ? '¥${_urgentFee.toStringAsFixed(2)}'
+                          : '¥0.00',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFFF6B6B),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '将优先为您配送',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF8C92A4)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Switch(
+            value: _isUrgent,
+            onChanged: (value) {
+              setState(() {
+                _isUrgent = value;
+              });
+              // 重新加载采购单数据以获取最新的加急费用
+              _reloadPurchaseList();
+              // 更新配送员配送费预览
+              _loadRiderDeliveryFeePreview();
+            },
+            activeColor: const Color(0xFFFF6B6B),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatMoney(num? value) {
     final v = (value ?? 0).toDouble();
     return v.toStringAsFixed(2);
@@ -1645,7 +1783,11 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
       totalDeliveryFee,
     );
 
-    final finalTotal = totalAmount + totalDeliveryFee - couponDiscount;
+    // 加急费用
+    final urgentFee = _isUrgent ? _urgentFee : 0.0;
+
+    final finalTotal =
+        totalAmount + totalDeliveryFee + urgentFee - couponDiscount;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1768,6 +1910,43 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
                 ),
               ],
             ),
+            if (_isUrgent) ...[
+              const SizedBox(height: 10),
+              // 加急配送费行
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '加急配送费',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF40475C),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        '将优先为您配送',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF8C92A4),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '¥${urgentFee.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFFF6B6B),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (couponDiscount > 0) ...[
               const SizedBox(height: 10),
               // 优惠券折扣行
@@ -1939,19 +2118,6 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
               setState(() {
                 _requirePhoneContact = value;
               });
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildSwitchOption(
-            title: '加急订单',
-            description: '选择后，将产生加急费用',
-            value: _isUrgent,
-            onChanged: (value) {
-              setState(() {
-                _isUrgent = value;
-              });
-              // 更新配送员配送费预览
-              _loadRiderDeliveryFeePreview();
             },
           ),
         ],

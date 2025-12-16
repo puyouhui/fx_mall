@@ -32,11 +32,21 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
   List<dynamic> _items = []; // 采购单商品
   Map<String, dynamic>? _summary; // 运费汇总
   Map<String, dynamic>? _riderDeliveryFeePreview; // 配送员配送费预览
+  Map<String, dynamic>? _salesCommissionPreview; // 销售分润预览
   List<dynamic>?
   _purchaseListBackup; // 用户原来的采购单备份（从GetSalesCustomerPurchaseList获取）
 
   List<dynamic> _coupons = []; // 客户优惠券列表
   Map<String, dynamic>? _selectedCoupon; // 选中的优惠券
+
+  double _urgentFee = 0.0; // 加急费用（从系统设置获取）
+
+  // 防抖相关
+  DateTime? _lastSalesCommissionPreviewTime; // 上次调用销售分润预览的时间
+  bool _isLoadingSalesCommissionPreview = false; // 是否正在加载销售分润预览
+
+  // 预览卡片显示/隐藏
+  bool _showPreviewCards = true; // 是否显示预估配送费和销售分润卡片
 
   final TextEditingController _remarkController = TextEditingController();
 
@@ -139,6 +149,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
     // 2. 获取客户采购单 & 运费汇总
     final purchaseResp = await Request.get<Map<String, dynamic>>(
       '/employee/sales/customers/$_customerId/purchase-list',
+      // 传递 is_urgent=true，确保返回正确的加急费用配置
+      queryParams: {'is_urgent': 'true'},
       parser: (data) => data as Map<String, dynamic>,
     );
 
@@ -190,6 +202,11 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
     final addrList = (detail['addresses'] as List<dynamic>? ?? []);
     final items = (purchase['items'] as List<dynamic>? ?? []);
     final summary = purchase['summary'] as Map<String, dynamic>?;
+    // 获取加急费用：优先使用接口返回的字段，其次尝试summary中的字段
+    double urgentFee = (purchase['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+    if (urgentFee <= 0 && summary != null) {
+      urgentFee = (summary['urgent_fee'] as num?)?.toDouble() ?? 0.0;
+    }
     // 保存备份数据（用户进入开单页面时的原始采购单，不包含销售员后续的操作）
     final backup = (purchase['backup'] as List<dynamic>? ?? []);
 
@@ -217,6 +234,7 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       _summary = summary;
       _coupons = coupons;
       _selectedCoupon = null; // 不默认选中优惠券
+      _urgentFee = urgentFee; // 设置加急费用
       // 只在第一次加载时保存备份（如果备份为空），后续调用不覆盖备份
       // 这样确保备份是用户进入开单页面时的原始状态，不包含销售员后续的任何操作
       if (_purchaseListBackup == null || _purchaseListBackup!.isEmpty) {
@@ -226,6 +244,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
     });
     // 加载配送员配送费预览
     _loadRiderDeliveryFeePreview();
+    // 加载销售分润预览
+    _loadSalesCommissionPreview();
   }
 
   Future<void> _submitOrder() async {
@@ -264,6 +284,7 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       'trust_receipt': _trustReceipt,
       'hide_price': _hidePrice,
       'require_phone_contact': _requirePhoneContact,
+      'is_urgent': _isUrgent,
       if (_selectedCoupon != null) 'coupon_id': _getCouponId(_selectedCoupon!),
       if (_purchaseListBackup != null)
         'purchase_list_backup': _purchaseListBackup, // 传入备份数据
@@ -338,6 +359,20 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
           fontSize: 18,
           fontWeight: FontWeight.w600,
         ),
+        actions: [
+          IconButton(
+            icon: Icon(
+              _showPreviewCards ? Icons.visibility_off : Icons.visibility,
+              color: Colors.white,
+            ),
+            onPressed: () {
+              setState(() {
+                _showPreviewCards = !_showPreviewCards;
+              });
+            },
+            tooltip: _showPreviewCards ? '隐藏预览' : '显示预览',
+          ),
+        ],
       ),
       body: Container(
         decoration: const BoxDecoration(
@@ -372,6 +407,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
                             _buildItemsCard(),
                             const SizedBox(height: 12),
                             _buildCouponCard(),
+                            const SizedBox(height: 12),
+                            _buildUrgentCard(),
                             if (_customerId != null) ...[
                               const SizedBox(height: 12),
                               _buildSummaryCard(),
@@ -379,8 +416,12 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
                               _buildOrderOptionsCard(),
                               const SizedBox(height: 12),
                               _buildRemarkCard(),
-                              const SizedBox(height: 12),
-                              _buildRiderDeliveryFeeCard(),
+                              if (_showPreviewCards) ...[
+                                const SizedBox(height: 12),
+                                _buildRiderDeliveryFeeCard(),
+                                const SizedBox(height: 12),
+                                _buildSalesCommissionCard(),
+                              ],
                             ],
                           ],
                         ),
@@ -527,6 +568,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
         setState(() {
           _selectedCoupon = null;
         });
+        // 更新销售分润预览
+        _loadSalesCommissionPreview();
       } else {
         // 选择优惠券
         final coupon = result['coupon'] as Map<String, dynamic>?;
@@ -534,6 +577,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
           setState(() {
             _selectedCoupon = coupon;
           });
+          // 更新销售分润预览
+          _loadSalesCommissionPreview();
         }
       }
     }
@@ -567,6 +612,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       });
       // 更新配送员配送费预览
       _loadRiderDeliveryFeePreview();
+      // 更新销售分润预览
+      _loadSalesCommissionPreview();
     }
   }
 
@@ -817,6 +864,77 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
     );
   }
 
+  /// 构建加急订单卡片
+  Widget _buildUrgentCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      '加急配送',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF20253A),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _urgentFee > 0
+                          ? '¥${_urgentFee.toStringAsFixed(2)}'
+                          : '¥0.00',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFFF6B6B),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '将优先为您配送',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF8C92A4)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Switch(
+            value: _isUrgent,
+            onChanged: (value) {
+              setState(() {
+                _isUrgent = value;
+              });
+              // 更新配送员配送费预览
+              _loadRiderDeliveryFeePreview();
+              // 更新销售分润预览
+              _loadSalesCommissionPreview();
+            },
+            activeColor: const Color(0xFFFF6B6B),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCouponCard() {
     // 计算可用优惠券数量（只统计未使用且未过期的）
     final availableCount = _coupons.where((coupon) {
@@ -1037,6 +1155,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
                                 setState(() {
                                   _selectedCoupon = null;
                                 });
+                                // 更新销售分润预览
+                                _loadSalesCommissionPreview();
                               },
                               child: const Icon(
                                 Icons.close,
@@ -1522,7 +1642,11 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       totalDeliveryFee,
     );
 
-    final finalTotal = totalAmount + totalDeliveryFee - couponDiscount;
+    // 计算加急费用
+    final urgentFee = _isUrgent ? _urgentFee : 0.0;
+
+    final finalTotal =
+        totalAmount + totalDeliveryFee + urgentFee - couponDiscount;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1645,6 +1769,43 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
                 ),
               ],
             ),
+            if (_isUrgent) ...[
+              const SizedBox(height: 10),
+              // 加急配送费行
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '加急配送费',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF40475C),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        '将优先为您配送',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF8C92A4),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '¥${urgentFee.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFFF6B6B),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (couponDiscount > 0) ...[
               const SizedBox(height: 10),
               // 优惠券折扣行
@@ -1940,6 +2101,7 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
               });
             },
           ),
+          const SizedBox(height: 12),
         ],
       ),
     );
@@ -2070,7 +2232,10 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       deliveryFee,
     );
 
-    final total = goodsAmount + deliveryFee - couponDiscount;
+    // 计算加急费用
+    final urgentFee = _isUrgent ? _urgentFee : 0.0;
+
+    final total = goodsAmount + deliveryFee + urgentFee - couponDiscount;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
@@ -2158,6 +2323,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       });
       // 更新配送员配送费预览
       _loadRiderDeliveryFeePreview();
+      // 更新销售分润预览
+      _loadSalesCommissionPreview();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2185,6 +2352,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       });
       // 更新配送员配送费预览
       _loadRiderDeliveryFeePreview();
+      // 更新销售分润预览
+      _loadSalesCommissionPreview();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2213,78 +2382,396 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
     final profitShare = (preview['profit_share'] as num?)?.toDouble() ?? 0.0;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F6FA),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE5E7F0), width: 0.5),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.motorcycle, size: 14, color: Colors.grey[600]),
-              const SizedBox(width: 6),
-              Text(
-                '配送员配送费预估',
+              const Text(
+                '预估配送费',
                 style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF20253A),
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFA940).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  '预览',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFFFA940),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
+          if (baseFee > 0) _buildDeliveryFeeRow('基础配送费', baseFee),
+          if (isolatedFee > 0) _buildDeliveryFeeRow('孤立点补贴', isolatedFee),
+          if (itemFee > 0) _buildDeliveryFeeRow('商品件数补贴', itemFee),
+          if (urgentFee > 0)
+            _buildDeliveryFeeRow('加急费用', urgentFee, highlight: true),
+          if (weatherFee > 0) _buildDeliveryFeeRow('恶劣天气补贴', weatherFee),
+          if (profitShare > 0)
+            _buildDeliveryFeeRow('额外奖励', profitShare, highlight: true),
+          const Divider(height: 20, thickness: 0.5, color: Color(0xFFE5E7F0)),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '配送员实际所得',
-                style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+              const Text(
+                '配送员收入',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF20253A),
+                ),
               ),
+              const Spacer(),
               Text(
                 '¥${riderPayableFee.toStringAsFixed(2)}',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[800],
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF4C8DF6),
                 ),
               ),
             ],
           ),
-          if (riderPayableFee > 0) ...[
-            const SizedBox(height: 6),
-            Divider(height: 1, thickness: 0.5, color: Colors.grey[300]),
-            const SizedBox(height: 6),
-            _buildFeeDetailRow('基础配送费', baseFee),
-            if (isolatedFee > 0) _buildFeeDetailRow('孤立订单补贴', isolatedFee),
-            if (itemFee > 0) _buildFeeDetailRow('件数补贴', itemFee),
-            if (urgentFee > 0) _buildFeeDetailRow('加急补贴', urgentFee),
-            if (weatherFee > 0) _buildFeeDetailRow('天气补贴', weatherFee),
-            if (profitShare > 0) _buildFeeDetailRow('利润分成', profitShare),
-          ],
         ],
       ),
     );
   }
 
-  /// 构建费用明细行
-  Widget _buildFeeDetailRow(String label, double amount) {
+  Widget _buildDeliveryFeeRow(
+    String label,
+    double value, {
+    bool highlight = false,
+  }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
           Text(
-            '¥${amount.toStringAsFixed(2)}',
-            style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: highlight
+                  ? const Color(0xFF4C8DF6)
+                  : const Color(0xFF40475C),
+              fontWeight: highlight ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            '¥${value.toStringAsFixed(2)}',
+            style: TextStyle(
+              fontSize: 13,
+              color: highlight
+                  ? const Color(0xFF4C8DF6)
+                  : const Color(0xFF40475C),
+              fontWeight: highlight ? FontWeight.w600 : FontWeight.normal,
+            ),
           ),
         ],
       ),
     );
+  }
+
+  /// 构建销售分润预览卡片
+  Widget _buildSalesCommissionCard() {
+    if (_customerId == null ||
+        _items.isEmpty ||
+        _salesCommissionPreview == null) {
+      return const SizedBox.shrink();
+    }
+
+    final preview = _salesCommissionPreview!;
+    final baseCommission =
+        (preview['base_commission'] as num?)?.toDouble() ?? 0.0;
+    final newCustomerBonus =
+        (preview['new_customer_bonus'] as num?)?.toDouble() ?? 0.0;
+    final tierCommission =
+        (preview['tier_commission'] as num?)?.toDouble() ?? 0.0;
+    final totalCommission =
+        (preview['total_commission'] as num?)?.toDouble() ?? 0.0;
+    final tierLevel = (preview['tier_level'] as int?) ?? 0;
+    final isValidOrder = (preview['is_valid_order'] as bool?) ?? false;
+    final isNewCustomerOrder =
+        (preview['is_new_customer_order'] as bool?) ?? false;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                '预计销售分润',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF20253A),
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFA940).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  '预览',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFFFA940),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (!isValidOrder) ...[
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF5A5F).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Color(0xFFFF5A5F)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '无效订单（利润需>5元才计入有效分成）',
+                      style: TextStyle(fontSize: 12, color: Color(0xFFFF5A5F)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          _buildCommissionRow('基础提成', baseCommission),
+          if (isNewCustomerOrder) ...[
+            const SizedBox(height: 8),
+            _buildCommissionRow('新客开发激励', newCustomerBonus, highlight: true),
+          ],
+          if (tierLevel > 0) ...[
+            const SizedBox(height: 8),
+            _buildCommissionRow(
+              '阶梯提成（阶梯$tierLevel）',
+              tierCommission,
+              highlight: true,
+            ),
+          ],
+          const Divider(height: 20, thickness: 0.5, color: Color(0xFFE5E7F0)),
+          Row(
+            children: [
+              const Text(
+                '我的预计总分成',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF20253A),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '¥${totalCommission.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFFFA940),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '订单收款后才会正式计入销售分成',
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCommissionRow(
+    String label,
+    double value, {
+    bool highlight = false,
+  }) {
+    return Row(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: highlight
+                ? const Color(0xFF20CB6B)
+                : const Color(0xFF40475C),
+            fontWeight: highlight ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          '¥${value.toStringAsFixed(2)}',
+          style: TextStyle(
+            fontSize: 13,
+            color: highlight
+                ? const Color(0xFF20CB6B)
+                : const Color(0xFF40475C),
+            fontWeight: highlight ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 加载销售分润预览
+  Future<void> _loadSalesCommissionPreview() async {
+    // 防抖：如果距离上次调用不到300ms，则取消本次调用
+    final now = DateTime.now();
+    if (_lastSalesCommissionPreviewTime != null &&
+        now.difference(_lastSalesCommissionPreviewTime!).inMilliseconds < 300) {
+      return;
+    }
+
+    // 如果正在加载，则取消本次调用
+    if (_isLoadingSalesCommissionPreview) {
+      return;
+    }
+
+    if (_customerId == null || _items.isEmpty) {
+      setState(() {
+        _salesCommissionPreview = null;
+      });
+      return;
+    }
+
+    // 需要地址ID和汇总信息才能计算
+    if (_selectedAddressId == null || _summary == null) {
+      setState(() {
+        _salesCommissionPreview = null;
+      });
+      return;
+    }
+
+    // 更新调用时间
+    _lastSalesCommissionPreviewTime = now;
+    _isLoadingSalesCommissionPreview = true;
+
+    try {
+      // 计算订单金额、商品成本、配送成本
+      final totalAmount =
+          (_summary!['total_amount'] as num?)?.toDouble() ?? 0.0;
+      final totalDeliveryFee =
+          (_summary!['delivery_fee'] as num?)?.toDouble() ?? 0.0;
+
+      // 计算商品成本（从商品明细中计算）
+      double goodsCost = 0.0;
+      for (var item in _items) {
+        final itemMap = item as Map<String, dynamic>;
+        final specSnapshot =
+            itemMap['spec_snapshot'] as Map<String, dynamic>? ?? {};
+        final cost = (specSnapshot['cost'] as num?)?.toDouble() ?? 0.0;
+        final quantity = (itemMap['quantity'] as int?) ?? 0;
+        goodsCost += cost * quantity;
+      }
+
+      // 计算配送成本（从配送员配送费预览中获取）
+      double deliveryCost = 0.0;
+      if (_riderDeliveryFeePreview != null) {
+        deliveryCost =
+            (_riderDeliveryFeePreview!['rider_payable_fee'] as num?)
+                ?.toDouble() ??
+            0.0;
+      }
+
+      // 计算优惠券折扣
+      final couponDiscount = _calculateCouponDiscount(
+        _selectedCoupon,
+        totalAmount,
+        totalDeliveryFee,
+      );
+
+      // 计算加急费用
+      final urgentFee = _isUrgent ? _urgentFee : 0.0;
+
+      // 平台总收入 = 商品金额 + 配送费 + 加急费 - 优惠券折扣
+      final orderAmount =
+          totalAmount + totalDeliveryFee + urgentFee - couponDiscount;
+
+      // 调用预览API
+      final resp = await Request.post<Map<String, dynamic>>(
+        '/employee/sales/commission/preview',
+        body: {
+          'order_amount': orderAmount,
+          'goods_cost': goodsCost,
+          'delivery_cost': deliveryCost,
+          'user_id': _customerId,
+        },
+        parser: (data) => data as Map<String, dynamic>,
+      );
+
+      if (!mounted) {
+        _isLoadingSalesCommissionPreview = false;
+        return;
+      }
+
+      if (resp.isSuccess && resp.data != null) {
+        setState(() {
+          _salesCommissionPreview = resp.data;
+        });
+      } else {
+        setState(() {
+          _salesCommissionPreview = null;
+        });
+      }
+    } catch (e) {
+      // 静默失败，不影响主流程
+      if (mounted) {
+        setState(() {
+          _salesCommissionPreview = null;
+        });
+      }
+    } finally {
+      _isLoadingSalesCommissionPreview = false;
+    }
   }
 
   /// 加载配送员配送费预览
@@ -2363,6 +2850,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
         });
         // 更新配送员配送费预览
         _loadRiderDeliveryFeePreview();
+        // 更新销售分润预览
+        _loadSalesCommissionPreview();
       }
     } else {
       // 如果没有返回数据（用户可能直接返回），重新加载数据以确保同步

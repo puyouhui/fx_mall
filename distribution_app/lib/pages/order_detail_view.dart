@@ -23,7 +23,8 @@ class OrderDetailView extends StatefulWidget {
   State<OrderDetailView> createState() => _OrderDetailViewState();
 }
 
-class _OrderDetailViewState extends State<OrderDetailView> {
+class _OrderDetailViewState extends State<OrderDetailView>
+    with WidgetsBindingObserver {
   bool _isLoading = true;
   Map<String, dynamic>? _orderData;
   String? _errorMessage;
@@ -71,6 +72,8 @@ class _OrderDetailViewState extends State<OrderDetailView> {
   @override
   void initState() {
     super.initState();
+    // 监听应用生命周期
+    WidgetsBinding.instance.addObserver(this);
     _loadOrderDetail();
     // 立即尝试使用缓存的位置，确保位置图标能立即显示
     _tryUseCachedPosition();
@@ -88,6 +91,70 @@ class _OrderDetailViewState extends State<OrderDetailView> {
         });
       }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // 当应用从后台返回前台时，重新启动位置跟踪
+    if (state == AppLifecycleState.resumed) {
+      print('[OrderDetailView] 应用从后台返回前台，重新启动位置跟踪');
+      _restartLocationTrackingIfNeeded();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 当页面依赖发生变化时（比如从其他页面返回），检查并重新启动位置跟踪
+    // 使用延迟确保页面已完全恢复
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        // 检查位置流是否还在运行（通过检查订阅是否存在且流控制器未关闭）
+        final isStreamActive =
+            _positionStreamSubscription != null &&
+            !_locationStreamController.isClosed;
+        if (!isStreamActive) {
+          print('[OrderDetailView] 页面重新可见，位置流未运行，重新启动位置跟踪');
+          _restartLocationTrackingIfNeeded();
+        } else {
+          // 即使流还在运行，也确保位置已发送到流中（防止位置图标消失）
+          if (_userPosition != null) {
+            print(
+              '[OrderDetailView] 页面重新可见，确保位置已发送到流中: ${_userPosition!.latitude}, ${_userPosition!.longitude}',
+            );
+            _locationStreamController.add(
+              LocationMarkerPosition(
+                latitude: _userPosition!.latitude,
+                longitude: _userPosition!.longitude,
+                accuracy: _userPosition!.accuracy,
+              ),
+            );
+          }
+        }
+      }
+    });
+  }
+
+  /// 重新启动位置跟踪（如果需要）
+  void _restartLocationTrackingIfNeeded() {
+    // 先尝试使用缓存位置立即显示
+    _tryUseCachedPosition();
+    // 如果已有位置，立即发送到流中
+    if (_userPosition != null) {
+      print(
+        '[OrderDetailView] 立即发送位置到流中: ${_userPosition!.latitude}, ${_userPosition!.longitude}',
+      );
+      _locationStreamController.add(
+        LocationMarkerPosition(
+          latitude: _userPosition!.latitude,
+          longitude: _userPosition!.longitude,
+          accuracy: _userPosition!.accuracy,
+        ),
+      );
+    }
+    // 重新启动位置跟踪
+    _startLocationTracking();
   }
 
   /// 尝试使用缓存的位置，确保位置图标能立即显示
@@ -115,6 +182,7 @@ class _OrderDetailViewState extends State<OrderDetailView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _positionStreamSubscription?.cancel();
     _locationStreamController.close();
     _mapController.dispose();
@@ -123,6 +191,8 @@ class _OrderDetailViewState extends State<OrderDetailView> {
   }
 
   Future<void> _startLocationTracking() async {
+    print('[OrderDetailView] 开始位置跟踪...');
+
     final hasPermission = await LocationService.checkAndRequestPermission();
     if (!hasPermission) {
       print('[OrderDetailView] 没有定位权限，无法启动位置跟踪');
@@ -134,6 +204,7 @@ class _OrderDetailViewState extends State<OrderDetailView> {
     }
 
     final serviceEnabled = await LocationService.checkLocationServiceEnabled();
+    print('[OrderDetailView] 定位服务状态: $serviceEnabled');
 
     try {
       // 即使定位服务未启用，也尝试使用网络定位
@@ -153,6 +224,9 @@ class _OrderDetailViewState extends State<OrderDetailView> {
           setState(() {
             _userPosition = networkPosition;
           });
+          print(
+            '[OrderDetailView] 网络定位成功 - 坐标: ${networkPosition.latitude}, ${networkPosition.longitude}',
+          );
           // 网络定位成功，启动定位流（使用低精度）
           _startPositionStreamWithFallback();
           return;
@@ -166,12 +240,13 @@ class _OrderDetailViewState extends State<OrderDetailView> {
         }
       }
 
-      // 定位服务已启用，正常启动定位流
-      // 使用多级精度策略启动定位流，从高精度开始，如果失败则降级
-      _startPositionStreamWithFallback();
-
+      // 定位服务已启用，先获取初始位置，然后再启动定位流
+      // 这样可以确保 CurrentLocationLayer 能立即显示位置
       final initialPosition = await LocationService.getCurrentLocation();
       if (initialPosition != null && mounted) {
+        print(
+          '[OrderDetailView] 初始位置获取成功 - 坐标: ${initialPosition.latitude}, ${initialPosition.longitude}',
+        );
         // 立即将初始位置发送到流中，以便 CurrentLocationLayer 能显示
         _locationStreamController.add(
           LocationMarkerPosition(
@@ -184,11 +259,16 @@ class _OrderDetailViewState extends State<OrderDetailView> {
           _userPosition = initialPosition;
         });
       } else {
+        print('[OrderDetailView] 获取初始位置失败，尝试使用缓存位置');
         // 如果获取位置失败，也尝试使用缓存位置（如果有的话）
         if (_userPosition == null) {
           _tryUseCachedPosition();
         }
       }
+
+      // 无论是否获取到初始位置，都启动定位流（用于持续更新）
+      // 使用多级精度策略启动定位流，从低精度开始，如果失败则降级
+      _startPositionStreamWithFallback();
     } catch (e) {
       print('[OrderDetailView] 启动位置跟踪失败: $e');
       // 错误处理：尝试使用低精度重新启动
@@ -197,9 +277,11 @@ class _OrderDetailViewState extends State<OrderDetailView> {
         if (_userPosition == null) {
           _tryUseCachedPosition();
         }
+        // 延迟后重新启动位置跟踪
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
-            _startPositionStreamWithFallback();
+            print('[OrderDetailView] 延迟后重新启动位置跟踪');
+            _startLocationTracking();
           }
         });
       }
@@ -208,6 +290,22 @@ class _OrderDetailViewState extends State<OrderDetailView> {
 
   /// 启动定位流（带降级策略，优先网络定位）
   void _startPositionStreamWithFallback() {
+    print('[OrderDetailView] 启动定位流（带降级策略）');
+
+    // 如果已经有位置，立即发送到流中，确保 CurrentLocationLayer 能显示
+    if (_userPosition != null) {
+      print(
+        '[OrderDetailView] 已有位置，立即发送到流中: ${_userPosition!.latitude}, ${_userPosition!.longitude}',
+      );
+      _locationStreamController.add(
+        LocationMarkerPosition(
+          latitude: _userPosition!.latitude,
+          longitude: _userPosition!.longitude,
+          accuracy: _userPosition!.accuracy,
+        ),
+      );
+    }
+
     // 优先使用网络定位（低精度），在中国更可靠
     _tryStartPositionStream(LocationAccuracy.low, () {
       // 如果低精度失败，尝试最低精度
@@ -255,6 +353,11 @@ class _OrderDetailViewState extends State<OrderDetailView> {
             ),
           ).listen(
             (Position position) {
+              print(
+                '[OrderDetailView] 位置流更新: ${position.latitude}, ${position.longitude}, 精度: ${position.accuracy}米',
+              );
+
+              // 更新位置流
               _locationStreamController.add(
                 LocationMarkerPosition(
                   latitude: position.latitude,
@@ -263,10 +366,17 @@ class _OrderDetailViewState extends State<OrderDetailView> {
                 ),
               );
 
+              final wasFirstLocation = _userPosition == null;
               if (mounted) {
                 setState(() {
                   _userPosition = position;
                 });
+              }
+
+              if (wasFirstLocation) {
+                print(
+                  '[OrderDetailView] 首次位置流更新 - 坐标: ${position.latitude}, ${position.longitude}',
+                );
               }
 
               // 如果有客户地址，调整地图视野以同时显示所有位置
@@ -648,7 +758,7 @@ class _OrderDetailViewState extends State<OrderDetailView> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_getAppBarTitle()),
+        title: _buildAppBarTitle(),
         backgroundColor: const Color(0xFF20CB6B),
         iconTheme: const IconThemeData(color: Colors.white),
         titleTextStyle: const TextStyle(
@@ -2996,7 +3106,66 @@ class _OrderDetailViewState extends State<OrderDetailView> {
     }
   }
 
-  // 获取AppBar标题（包含订单状态）
+  // 构建AppBar标题（包含订单状态和加急标识）
+  Widget _buildAppBarTitle() {
+    if (_orderData == null) {
+      return const Text('订单详情');
+    }
+
+    final order = _orderData?['order'] as Map<String, dynamic>?;
+    final status = order?['status'] as String? ?? '';
+    final isUrgent = (order?['is_urgent'] as bool?) ?? false;
+
+    final statusText = status.isNotEmpty
+        ? _formatStatusForAppBar(status)
+        : null;
+    final baseTitle = statusText != null ? '订单详情（$statusText）' : '订单详情';
+
+    // 如果是加急订单，在标题后面添加加急标签
+    if (isUrgent) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(baseTitle),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF6B6B),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.flash_on, size: 12, color: Colors.white),
+                const SizedBox(width: 2),
+                const Text(
+                  '加急',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Text(baseTitle);
+  }
+
+  // 获取AppBar标题文本（保留用于其他地方）
   String _getAppBarTitle() {
     if (_orderData == null) {
       return '订单详情';
@@ -3047,9 +3216,16 @@ class _OrderDetailViewState extends State<OrderDetailView> {
   Widget _buildActionBar() {
     final order = _orderData?['order'] as Map<String, dynamic>?;
     final status = order?['status'] as String? ?? '';
+    final isUrgent = (order?['is_urgent'] as bool?) ?? false;
 
     // 待配送订单：显示接单按钮
     if (status == 'pending_delivery' || status == 'pending') {
+      // 获取配送员收入金额
+      final deliveryFeeCalc =
+          _orderData?['delivery_fee_calculation'] as Map<String, dynamic>?;
+      final riderPayableFee =
+          (deliveryFeeCalc?['rider_payable_fee'] as num?)?.toDouble() ?? 0.0;
+
       return Container(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
         decoration: BoxDecoration(
@@ -3060,34 +3236,99 @@ class _OrderDetailViewState extends State<OrderDetailView> {
           top: false,
           child: SizedBox(
             width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isProcessing ? null : _handleAcceptOrder,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF20CB6B),
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: const Color(0xFF9EDFB9),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                ElevatedButton(
+                  onPressed: _isProcessing ? null : _handleAcceptOrder,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF20CB6B),
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: const Color(0xFF9EDFB9),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: _isProcessing
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              '接单',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (riderPayableFee > 0) ...[
+                              const SizedBox(width: 4),
+                              Text(
+                                '（¥${riderPayableFee.toStringAsFixed(2)}）',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                 ),
-                elevation: 0,
-              ),
-              child: _isProcessing
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                // 加急标识固定在右上角
+                if (isUrgent)
+                  Positioned(
+                    top: -6,
+                    right: -6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 3,
                       ),
-                    )
-                  : const Text(
-                      '接单',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF6B6B),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.flash_on,
+                            size: 12,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 2),
+                          const Text(
+                            '加急',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -3137,36 +3378,90 @@ class _OrderDetailViewState extends State<OrderDetailView> {
                 flex: 3,
                 child: SizedBox(
                   height: 50, // 固定高度，与问题上报按钮一致
-                  child: ElevatedButton(
-                    onPressed: _isProcessing ? null : _handleCompleteDelivery,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF20CB6B),
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: const Color(0xFF9EDFB9),
-                      padding: EdgeInsets.zero, // 移除padding，使用固定高度
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: _isProcessing
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _isProcessing
+                              ? null
+                              : _handleCompleteDelivery,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF20CB6B),
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: const Color(0xFF9EDFB9),
+                            padding: EdgeInsets.zero, // 移除padding，使用固定高度
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                          )
-                        : const Text(
-                            '配送完成',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                            elevation: 0,
+                          ),
+                          child: _isProcessing
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Text(
+                                  '配送完成',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                        ),
+                      ),
+                      // 加急标识固定在右上角
+                      if (isUrgent)
+                        Positioned(
+                          top: -6,
+                          right: -6,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF6B6B),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.white, width: 2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.flash_on,
+                                  size: 12,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 2),
+                                const Text(
+                                  '加急',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -3201,13 +3496,24 @@ class _OrderDetailViewState extends State<OrderDetailView> {
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.inventory_2, size: 20),
-                  SizedBox(width: 8),
-                  Text(
+                children: [
+                  const Icon(Icons.inventory_2, size: 20),
+                  const SizedBox(width: 8),
+                  const Text(
                     '批量取货',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
+                  if (isUrgent) ...[
+                    const SizedBox(width: 6),
+                    const Text(
+                      '加急',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color.fromRGBO(241, 196, 15, 1),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

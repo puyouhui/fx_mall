@@ -100,9 +100,9 @@ class _EditOrderListPageState extends State<EditOrderListPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(response.message.isNotEmpty
-                ? response.message
-                : '加载订单列表失败'),
+            content: Text(
+              response.message.isNotEmpty ? response.message : '加载订单列表失败',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -165,242 +165,266 @@ class _EditOrderListPageState extends State<EditOrderListPage> {
                 ),
               )
             : _orders.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.edit_note_outlined,
-                          size: 64,
-                          color: Colors.grey[400],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          '暂无可修改的订单',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '只有待配送状态的订单可以修改',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[500],
-                          ),
-                        ),
-                      ],
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.edit_note_outlined,
+                      size: 64,
+                      color: Colors.grey[400],
                     ),
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _orders.length + (_hasMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= _orders.length) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  Color(0xFF20CB6B)),
-                            ),
+                    const SizedBox(height: 16),
+                    Text(
+                      '暂无可修改的订单',
+                      style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '只有待配送状态的订单可以修改',
+                      style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
+              )
+            : ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: _orders.length + (_hasMore ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index >= _orders.length) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF20CB6B),
                           ),
-                        );
-                      }
+                        ),
+                      ),
+                    );
+                  }
 
-                      final order = _orders[index];
-                      final orderId = order['id'] as int?;
-                      final orderNumber = order['order_number'] as String? ?? '';
-                      final totalAmount = order['total_amount'] as num? ?? 0;
-                      final status = order['status'] as String? ?? '';
-                      final createdAt = order['created_at'] as String?;
-                      final storeName = order['store_name'] as String? ?? '未知门店';
-                      final address = order['address'] as String? ?? '';
-                      final isLocked = (order['is_locked'] as bool?) ?? false;
-                      final lockedBy = order['locked_by'] as String?;
+                  final order = _orders[index];
+                  final orderId = order['id'] as int?;
+                  final orderNumber = order['order_number'] as String? ?? '';
+                  final totalAmount = order['total_amount'] as num? ?? 0;
+                  final status = order['status'] as String? ?? '';
+                  final createdAt = order['created_at'] as String?;
+                  final storeName = order['store_name'] as String? ?? '未知门店';
+                  final address = order['address'] as String? ?? '';
+                  final isLocked = (order['is_locked'] as bool?) ?? false;
+                  final lockedBy = order['locked_by'] as String?;
+                  final isUrgent = (order['is_urgent'] as bool?) ?? false;
 
-                      return InkWell(
-                        onTap: orderId != null
-                            ? () {
-                                Navigator.of(context).push(
+                  return InkWell(
+                    onTap: orderId != null
+                        ? () {
+                            Navigator.of(context)
+                                .push(
                                   MaterialPageRoute(
-                                    builder: (_) => OrderDetailPage(
-                                      orderId: orderId,
-                                    ),
+                                    builder: (_) =>
+                                        OrderDetailPage(orderId: orderId),
                                   ),
-                                ).then((_) {
+                                )
+                                .then((_) {
                                   // 返回时刷新列表
                                   _loadOrders(reset: true);
                                 });
-                              }
-                            : null,
+                          }
+                        : null,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.04),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 订单编号和状态
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              // 订单编号和状态
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      '订单号：$orderNumber',
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF20253A),
-                                      ),
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFFA940)
-                                          .withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      _formatStatus(status),
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFFFFA940),
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              // 门店名称
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.store,
-                                    size: 16,
-                                    color: Color(0xFF8C92A4),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      storeName,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        color: Color(0xFF20253A),
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (address.isNotEmpty) ...[
-                                const SizedBox(height: 6),
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                              Expanded(
+                                child: Row(
                                   children: [
-                                    const Icon(
-                                      Icons.location_on_outlined,
-                                      size: 16,
-                                      color: Color(0xFF8C92A4),
-                                    ),
-                                    const SizedBox(width: 6),
                                     Expanded(
                                       child: Text(
-                                        address,
+                                        '订单号：$orderNumber',
                                         style: const TextStyle(
-                                          fontSize: 13,
-                                          color: Color(0xFF8C92A4),
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF20253A),
                                         ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ],
-                              const SizedBox(height: 12),
-                              // 金额和时间
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    '¥${_formatMoney(totalAmount)}',
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF20CB6B),
-                                    ),
-                                  ),
-                                  Text(
-                                    _formatDateTime(createdAt),
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF8C92A4),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              // 锁定提示
-                              if (isLocked) ...[
-                                const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.lock_outline,
-                                        size: 14,
-                                        color: Colors.orange,
-                                      ),
+                                    if (isUrgent) ...[
                                       const SizedBox(width: 6),
-                                      Text(
-                                        lockedBy != null
-                                            ? '正在被修改中（员工：$lockedBy）'
-                                            : '正在被修改中',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.orange,
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFF6B6B),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          '加急',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.white,
+                                          ),
                                         ),
                                       ),
                                     ],
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(
+                                    0xFFFFA940,
+                                  ).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  _formatStatus(status),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFFFFA940),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          // 门店名称
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.store,
+                                size: 16,
+                                color: Color(0xFF8C92A4),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  storeName,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Color(0xFF20253A),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (address.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.location_on_outlined,
+                                  size: 16,
+                                  color: Color(0xFF8C92A4),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    address,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFF8C92A4),
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ],
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          // 金额和时间
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '¥${_formatMoney(totalAmount)}',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF20CB6B),
+                                ),
+                              ),
+                              Text(
+                                _formatDateTime(createdAt),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF8C92A4),
+                                ),
+                              ),
                             ],
                           ),
-                        ),
-                      );
-                    },
-                  ),
+                          // 锁定提示
+                          if (isLocked) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.lock_outline,
+                                    size: 14,
+                                    color: Colors.orange,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    lockedBy != null
+                                        ? '正在被修改中（员工：$lockedBy）'
+                                        : '正在被修改中',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.orange,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
       ),
     );
   }
 }
-

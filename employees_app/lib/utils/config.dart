@@ -11,7 +11,7 @@ class Config {
   // ============================================
 
   // 真机调试（局域网 IP）
-  static const String devBaseUrl = 'http://192.168.31.129:8082';
+  static const String devBaseUrl = 'http://192.168.2.207:8082';
 
   // Android 模拟器（访问宿主机）
   static const String emulatorBaseUrl = 'http://10.0.2.2:8082';

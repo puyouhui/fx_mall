@@ -60,8 +60,12 @@ func GetDeliveryOrders(c *gin.Context) {
 			where = "status = ? AND delivery_employee_code = ?"
 			args = append(args, status, employee.EmployeeCode)
 		} else if status == "delivered" || status == "shipped" {
-			where = "(status = ? OR status = 'shipped')"
-			args = append(args, "delivered")
+			where = "(status = ? OR status = 'shipped') AND delivery_employee_code = ?"
+			args = append(args, "delivered", employee.EmployeeCode)
+		} else if status == "completed" {
+			// 已完成订单：包括delivered和paid状态，只返回当前配送员的订单
+			where = "(status = ? OR status = ?) AND delivery_employee_code = ?"
+			args = append(args, "delivered", "paid", employee.EmployeeCode)
 		} else {
 			where = "status = ?"
 			args = append(args, status)
@@ -72,8 +76,10 @@ func GetDeliveryOrders(c *gin.Context) {
 	}
 
 	// 过滤掉已锁定的订单（正在被修改的订单不能接单）
-	// 使用COALESCE处理NULL值，如果字段不存在会报错，需要在错误处理中处理
-	where += " AND COALESCE(is_locked, 0) = 0"
+	// 注意：历史订单（completed状态）不需要过滤锁定状态
+	if status != "completed" {
+		where += " AND COALESCE(is_locked, 0) = 0"
+	}
 	log.Printf("[GetDeliveryOrders] 查询条件: %s, 参数: %v", where, args)
 	// #region agent log - 检查是否有已锁定的订单被查询
 	checkLockedQuery := "SELECT id, is_locked, locked_by, locked_at FROM orders WHERE status IN ('pending_delivery', 'pending') AND COALESCE(is_locked, 0) = 1 LIMIT 5"
@@ -108,11 +114,16 @@ func GetDeliveryOrders(c *gin.Context) {
 	}
 
 	// 获取分页数据
+	// 历史订单按创建时间倒序排列，其他订单按创建时间正序排列
+	orderBy := "ORDER BY created_at ASC"
+	if status == "completed" {
+		orderBy = "ORDER BY created_at DESC"
+	}
 	query := `
 		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
 		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, created_at, updated_at
-		FROM orders WHERE ` + where + ` ORDER BY created_at ASC LIMIT ? OFFSET ?`
+		FROM orders WHERE ` + where + ` ` + orderBy + ` LIMIT ? OFFSET ?`
 	args = append(args, pageSize, offset)
 
 	rows, err := database.DB.Query(query, args...)

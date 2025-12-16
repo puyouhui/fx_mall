@@ -258,4 +258,26 @@ class OrderApi {
       data: response.data,
     );
   }
+
+  // 获取历史订单（已完成的订单：delivered、paid状态）
+  static Future<ApiResponse<Map<String, dynamic>>> getHistoryOrders({
+    int pageNum = 1,
+    int pageSize = 20,
+  }) async {
+    final response = await Request.get<Map<String, dynamic>>(
+      '/employee/delivery/orders',
+      queryParams: {
+        'pageNum': pageNum.toString(),
+        'pageSize': pageSize.toString(),
+        'status': 'completed', // 使用completed状态获取所有已完成的订单
+      },
+      parser: (data) => data as Map<String, dynamic>,
+    );
+
+    return ApiResponse<Map<String, dynamic>>(
+      code: response.code,
+      message: response.message,
+      data: response.data,
+    );
+  }
 }

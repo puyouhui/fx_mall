@@ -164,6 +164,24 @@ class Request {
     http.Response response, {
     T Function(dynamic)? parser,
   }) {
+    // 检查 HTTP 状态码 401（未授权）
+    if (response.statusCode == 401) {
+      // Token 失效或缺少身份凭证，清除本地存储并跳转登录页
+      Storage.clearAll();
+      _navigateToLogin();
+      // 尝试解析错误消息
+      String message = '缺少身份凭证，请重新登录';
+      try {
+        if (response.body.isNotEmpty) {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          message = data['message'] as String? ?? message;
+        }
+      } catch (e) {
+        // 解析失败，使用默认消息
+      }
+      return ApiResponse<T>(code: 401, message: message);
+    }
+
     // 检查响应状态码
     if (response.statusCode == 404) {
       return ApiResponse<T>(
@@ -197,8 +215,10 @@ class Request {
       final responseData = data['data'];
 
       if (code == 401) {
-        // Token 失效，清除本地存储
+        // Token 失效或缺少身份凭证，清除本地存储并跳转登录页
         Storage.clearAll();
+        // 使用全局导航键跳转到登录页
+        _navigateToLogin();
       } else if (code == 403) {
         // 账号被禁用或其他状态导致不能使用，清除本地存储并跳转登录页
         Storage.clearAll();

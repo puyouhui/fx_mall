@@ -329,143 +329,143 @@ class _OverviewTabState extends State<OverviewTab> {
       child: RefreshIndicator(
         onRefresh: _refreshPendingOrders,
         color: const Color(0xFF20CB6B),
-      child: SingleChildScrollView(
+        child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(), // 确保即使内容不够高也能下拉刷新
-        padding: EdgeInsets.fromLTRB(
-          16,
-          12,
-          16,
-          16 + MediaQuery.of(context).padding.bottom, // 添加底部安全区域内边距
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 统计区
-            Row(
-              children: [
-                Expanded(
-                  child: StatTile(
-                    label: '我的客户',
-                    value: customerCount.toString(),
-                    accentColor: const Color(0xFF20CB6B),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            12,
+            16,
+            16 + MediaQuery.of(context).padding.bottom, // 添加底部安全区域内边距
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 统计区
+              Row(
+                children: [
+                  Expanded(
+                    child: StatTile(
+                      label: '我的客户',
+                      value: customerCount.toString(),
+                      accentColor: const Color(0xFF20CB6B),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: StatTile(
-                    label: '我的订单总数',
-                    value: orderTotal.toString(),
-                    accentColor: const Color(0xFF4C8DF6),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: StatTile(
+                      label: '我的订单总数',
+                      value: orderTotal.toString(),
+                      accentColor: const Color(0xFF4C8DF6),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: StatTile(
-                    label: '待配送订单',
-                    value: orderPendingDelivery.toString(),
-                    accentColor: const Color(0xFFFFA940),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: StatTile(
+                      label: '待配送订单',
+                      value: orderPendingDelivery.toString(),
+                      accentColor: const Color(0xFFFFA940),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: StatTile(
-                    label: '今日新增订单',
-                    value: orderToday.toString(),
-                    accentColor: const Color(0xFFFF5A5F),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: StatTile(
+                      label: '今日新增订单',
+                      value: orderToday.toString(),
+                      accentColor: const Color(0xFFFF5A5F),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
 
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            // 常用功能
-            Container(
-              width: double.infinity,
+              // 常用功能
+              Container(
+                width: double.infinity,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 14,
                 ),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '常用功能',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF20253A),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Column(
-                    children: [
-                      // 第一行：4个按钮（1. 新客资料 2. 产品查询 3. 销售开单 4. 修改订单）
-                      Row(
-                        children: [
-                          // 1. 新客资料
-                          QuickActionItem(
-                            icon: Icons.person_add_alt_1_outlined,
-                            iconColor: const Color(0xFFFFA940),
-                            label: '新客资料',
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const CustomerProfilePage(),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          // 2. 产品查询
-                          QuickActionItem(
-                            icon: Icons.search,
-                            iconColor: const Color(0xFF20CB6B),
-                            label: '产品查询',
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const ProductSearchPage(),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          // 3. 销售开单
-                          QuickActionItem(
-                            icon: Icons.receipt_long_outlined,
-                            iconColor: const Color(0xFF4C8DF6),
-                            label: '销售开单',
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '常用功能',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF20253A),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Column(
+                      children: [
+                        // 第一行：4个按钮（1. 新客资料 2. 产品查询 3. 销售开单 4. 修改订单）
+                        Row(
+                          children: [
+                            // 1. 新客资料
+                            QuickActionItem(
+                              icon: Icons.person_add_alt_1_outlined,
+                              iconColor: const Color(0xFFFFA940),
+                              label: '新客资料',
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const CustomerProfilePage(),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            // 2. 产品查询
+                            QuickActionItem(
+                              icon: Icons.search,
+                              iconColor: const Color(0xFF20CB6B),
+                              label: '产品查询',
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const ProductSearchPage(),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            // 3. 销售开单
+                            QuickActionItem(
+                              icon: Icons.receipt_long_outlined,
+                              iconColor: const Color(0xFF4C8DF6),
+                              label: '销售开单',
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
                                     builder: (_) =>
                                         const SalesCreateOrderPage(),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          // 4. 修改订单
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            // 4. 修改订单
                             QuickActionItem(
-                            icon: Icons.edit_note_outlined,
+                              icon: Icons.edit_note_outlined,
                               iconColor: const Color(0xFF7C4DFF),
-                            label: '修改订单',
+                              label: '修改订单',
                               onTap: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
@@ -473,145 +473,145 @@ class _OverviewTabState extends State<OverviewTab> {
                                   ),
                                 );
                               },
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      // 第二行：我的客户 + 送优惠券 + 订单查询 + 收益查询
-                      Row(
-                        children: [
-                          QuickActionItem(
-                            icon: Icons.people_alt_outlined,
-                            iconColor: const Color(0xFF20CB6B),
-                            label: '我的客户',
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('正在进入我的客户列表...'),
-                                  duration: Duration(milliseconds: 800),
-                                ),
-                              );
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const CustomerListPage(),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          QuickActionItem(
-                            icon: Icons.card_giftcard,
-                            iconColor: const Color(0xFFFF5A5F),
-                            label: '送优惠券',
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const CouponSendPage(),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          QuickActionItem(
-                            icon: Icons.receipt_long,
-                            iconColor: const Color(0xFF4C8DF6),
-                            label: '订单查询',
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const OrderListPage(),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          const QuickActionItem(
-                            icon: Icons.trending_up,
-                            iconColor: Color(0xFFFFA940),
-                            label: '收益查询',
-                            // TODO: 接收益查询页面
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // 待配送订单列表
-            if (isSales) ...[
-              const Text(
-                '待配送订单',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        // 第二行：我的客户 + 送优惠券 + 订单查询 + 收益查询
+                        Row(
+                          children: [
+                            QuickActionItem(
+                              icon: Icons.people_alt_outlined,
+                              iconColor: const Color(0xFF20CB6B),
+                              label: '我的客户',
+                              onTap: () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('正在进入我的客户列表...'),
+                                    duration: Duration(milliseconds: 800),
+                                  ),
+                                );
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const CustomerListPage(),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            QuickActionItem(
+                              icon: Icons.card_giftcard,
+                              iconColor: const Color(0xFFFF5A5F),
+                              label: '送优惠券',
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const CouponSendPage(),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            QuickActionItem(
+                              icon: Icons.receipt_long,
+                              iconColor: const Color(0xFF4C8DF6),
+                              label: '订单查询',
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const OrderListPage(),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            const QuickActionItem(
+                              icon: Icons.trending_up,
+                              iconColor: Color(0xFFFFA940),
+                              label: '收益查询',
+                              // TODO: 接收益查询页面
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              if (_pendingOrders.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(16),
+
+              const SizedBox(height: 20),
+
+              // 待配送订单列表
+              if (isSales) ...[
+                const Text(
+                  '待配送订单',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
                   ),
-                  child: Center(
-                    child: Text(
-                      _initialized ? '暂无待配送订单' : '加载中...',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF8C92A4),
-                      ),
+                ),
+                const SizedBox(height: 8),
+                if (_pendingOrders.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                  ),
-                )
-              else
-                Column(
-                  children: [
-                    ..._pendingOrders.map(
-                      (order) => OrderPreviewRow(order: order),
-                    ),
-                    if (_isLoadingMore)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        child: Center(
-                          child: SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
+                    child: Center(
+                      child: Text(
+                        _initialized ? '暂无待配送订单' : '加载中...',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF8C92A4),
                         ),
                       ),
-                    if (!_hasMore && _pendingOrders.isNotEmpty)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Center(
-                          child: Text(
-                            '没有更多了',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF8C92A4),
+                    ),
+                  )
+                else
+                  Column(
+                    children: [
+                      ..._pendingOrders.map(
+                        (order) => OrderPreviewRow(order: order),
+                      ),
+                      if (_isLoadingMore)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Center(
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-            ],
+                      if (!_hasMore && _pendingOrders.isNotEmpty)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Center(
+                            child: Text(
+                              '没有更多了',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF8C92A4),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+              ],
 
-            if (!isSales && !isDelivery) ...[
-              const SizedBox(height: 8),
-              const Text(
-                '当前账号未配置销售员或配送员角色，统计数据有限。',
-                style: TextStyle(fontSize: 12, color: Colors.white70),
-              ),
+              if (!isSales && !isDelivery) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  '当前账号未配置销售员或配送员角色，统计数据有限。',
+                  style: TextStyle(fontSize: 12, color: Colors.white70),
+                ),
+              ],
             ],
-          ],
           ),
         ),
       ),
@@ -632,6 +632,7 @@ class OrderPreviewRow extends StatelessWidget {
     final itemCount = order['item_count'] as int? ?? 0;
     final address = order['address'] as String? ?? '';
     final createdAtRaw = order['created_at']?.toString() ?? '';
+    final isUrgent = (order['is_urgent'] as bool?) ?? false;
 
     String createdTimeText = createdAtRaw;
     if (createdAtRaw.isNotEmpty) {
@@ -668,122 +669,149 @@ class OrderPreviewRow extends StatelessWidget {
           : null,
       borderRadius: BorderRadius.circular(18),
       child: Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFA940).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 6),
             ),
-            child: const Icon(
-              Icons.local_shipping_outlined,
-              color: Color(0xFFFFA940),
-              size: 22,
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFA940).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.local_shipping_outlined,
+                color: Color(0xFFFFA940),
+                size: 22,
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 门店名称
-                Text(
-                  storeName,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF20253A),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 门店名称
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          storeName,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF20253A),
+                          ),
+                        ),
+                      ),
+                      if (isUrgent) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF6B6B),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            '加急',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ),
-                const SizedBox(height: 6),
-                // 地址 + 下单时间（图标左侧对齐）
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (address.isNotEmpty)
+                  const SizedBox(height: 6),
+                  // 地址 + 下单时间（图标左侧对齐）
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (address.isNotEmpty)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.location_on_outlined,
+                              size: 14,
+                              color: Color(0xFF8C92A4),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                address,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF8C92A4),
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      const SizedBox(height: 4),
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Icon(
-                            Icons.location_on_outlined,
-                            size: 14,
+                            Icons.access_time,
+                            size: 12,
                             color: Color(0xFF8C92A4),
                           ),
                           const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              address,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Color(0xFF8C92A4),
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                          Text(
+                            '下单时间：$createdTimeText',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF8C92A4),
                             ),
                           ),
                         ],
                       ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.access_time,
-                          size: 12,
-                          color: Color(0xFF8C92A4),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  // 底部：左侧商品数量，右侧总价（右下角）
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '共 $itemCount 件商品',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF5C6478),
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '下单时间：$createdTimeText',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF8C92A4),
-                          ),
+                      ),
+                      Text(
+                        '¥$totalAmountText',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFFF5A5F),
                         ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                // 底部：左侧商品数量，右侧总价（右下角）
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '共 $itemCount 件商品',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF5C6478),
                       ),
-                    ),
-                    Text(
-                      '¥$totalAmountText',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFFF5A5F),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
         ),
       ),
     );

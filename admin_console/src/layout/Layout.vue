@@ -80,6 +80,12 @@
             </el-icon>
             <span>配送费结算</span>
           </el-menu-item>
+          <el-menu-item index="/sales-commission">
+            <el-icon>
+              <Money />
+            </el-icon>
+            <span>销售分成管理</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <!-- 用户管理 -->

@@ -396,6 +396,7 @@ class _OrderListPageState extends State<OrderListPage> {
     final storeName = order['store_name'] as String? ?? '';
     final address = order['address'] as String? ?? '';
     final createdAt = order['created_at']?.toString() ?? '';
+    final isUrgent = (order['is_urgent'] as bool?) ?? false;
 
     String statusText = status;
     Color statusColor = const Color(0xFF8C92A4);
@@ -464,14 +465,41 @@ class _OrderListPageState extends State<OrderListPage> {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    storeName.isNotEmpty ? storeName : '门店名称未填写',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF20253A),
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          storeName.isNotEmpty ? storeName : '门店名称未填写',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF20253A),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isUrgent) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF6B6B),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            '加急',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 if (orderNumber.isNotEmpty)

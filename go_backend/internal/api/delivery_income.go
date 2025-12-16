@@ -2,10 +2,12 @@ package api
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"time"
 
 	"go_backend/internal/database"
+	"go_backend/internal/model"
 
 	"github.com/gin-gonic/gin"
 )
@@ -304,6 +306,38 @@ func BatchSettleDeliveryFees(c *gin.Context) {
 
 	// 记录操作日志（可选）
 	_ = ok // 管理员已验证
+
+	// 对于已结算的订单，如果状态是paid，计算销售分成
+	// 查询已结算且状态为paid的订单ID（使用更新后的条件）
+	settledOrderQuery := "delivery_employee_code = ? AND status = 'paid' AND delivery_fee_settled = 1 AND settlement_date IS NOT NULL"
+	settledOrderArgs := []interface{}{req.EmployeeCode}
+	if len(req.OrderIDs) > 0 {
+		placeholders := ""
+		for i, id := range req.OrderIDs {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += "?"
+			settledOrderArgs = append(settledOrderArgs, id)
+		}
+		settledOrderQuery += " AND id IN (" + placeholders + ")"
+	}
+	
+	settledOrderRows, err := database.DB.Query("SELECT id FROM orders WHERE "+settledOrderQuery, settledOrderArgs...)
+	if err == nil {
+		defer settledOrderRows.Close()
+		for settledOrderRows.Next() {
+			var orderID int
+			if err := settledOrderRows.Scan(&orderID); err == nil {
+				// 异步处理销售分成计算（避免阻塞）
+				go func(id int) {
+					if err := model.ProcessOrderSettlement(id); err != nil {
+						log.Printf("处理订单 %d 的销售分成失败: %v", id, err)
+					}
+				}(orderID)
+			}
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,

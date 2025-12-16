@@ -99,8 +99,61 @@
               实付: ¥{{ formatMoney(scope.row.total_amount) }}
             </div>
             <div style="color: #909399; font-size: 12px; margin-top: 4px;">
-              配送费: ¥{{ formatMoney(scope.row.delivery_fee) }}
+              <span v-if="scope.row.delivery_fee > 0">
+                配送费: ¥{{ formatMoney(scope.row.delivery_fee) }}
+              </span>
+              <span v-else style="color: #67c23a;">
+                配送费: 免费配送
+              </span>
             </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="销售分成" width="150" align="center">
+          <template #default="scope">
+            <!-- 已收款订单：显示已计入的分成 -->
+            <div v-if="scope.row.status === 'paid' && scope.row.sales_commission">
+              <div style="color: #409eff; font-weight: 600; font-size: 14px;">
+                已计入: ¥{{ formatMoney(scope.row.sales_commission.total_commission) }}
+              </div>
+              <div v-if="!scope.row.sales_commission.is_valid_order" style="color: #909399; font-size: 11px; margin-top: 2px;">
+                无效订单
+              </div>
+              <!-- 如果预览和已计入不一致，显示预览值 -->
+              <div v-if="scope.row.sales_commission_preview && 
+                         Math.abs(scope.row.sales_commission_preview.total_commission - scope.row.sales_commission.total_commission) > 0.01" 
+                   style="color: #909399; font-size: 11px; margin-top: 2px;">
+                预览: ¥{{ formatMoney(scope.row.sales_commission_preview.total_commission) }}
+              </div>
+            </div>
+            <!-- 未收款订单：显示预览分成 -->
+            <div v-else-if="scope.row.sales_commission_preview">
+              <div style="color: #e6a23c; font-weight: 600; font-size: 14px;">
+                预计: ¥{{ formatMoney(scope.row.sales_commission_preview.total_commission) }}
+              </div>
+              <div style="color: #909399; font-size: 11px; margin-top: 2px;">
+                预览（收款后计入）
+              </div>
+              <div v-if="!scope.row.sales_commission_preview.is_valid_order" style="color: #f56c6c; font-size: 11px; margin-top: 2px;">
+                无效订单
+              </div>
+            </div>
+            <span v-else style="color: #c0c4cc;">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="配送员和配送费" width="180" align="center">
+          <template #default="scope">
+            <div v-if="scope.row.delivery_employee">
+              <div style="font-weight: 600; font-size: 14px; color: #606266;">
+                {{ scope.row.delivery_employee.name || scope.row.delivery_employee.employee_code }}
+              </div>
+              <div v-if="scope.row.delivery_employee.employee_code" style="color: #909399; font-size: 11px; margin-top: 2px;">
+                {{ scope.row.delivery_employee.employee_code }}
+              </div>
+              <div v-if="scope.row.rider_payable_fee && scope.row.rider_payable_fee > 0" style="color: #67c23a; font-weight: 600; font-size: 13px; margin-top: 4px;">
+                配送费: ¥{{ formatMoney(scope.row.rider_payable_fee) }}
+              </div>
+            </div>
+            <span v-else style="color: #c0c4cc;">-</span>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="下单时间" min-width="160">
@@ -108,7 +161,7 @@
             {{ formatDate(scope.row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right" align="left">
+        <el-table-column label="操作" width="140" fixed="right" align="left">
           <template #default="scope">
             <div class="action-buttons">
               <el-button type="primary" link @click="handleViewDetail(scope.row.id)">
@@ -182,67 +235,67 @@
         <el-tabs v-model="activeTab" type="border-card">
           <!-- 基本信息标签页 -->
           <el-tab-pane label="基本信息" name="basic">
-            <!-- 订单基本信息 -->
+        <!-- 订单基本信息 -->
             <el-descriptions :column="2" border style="margin-bottom: 20px;">
-              <el-descriptions-item label="订单ID">{{ orderDetail.order?.id }}</el-descriptions-item>
-              <el-descriptions-item label="订单编号">{{ orderDetail.order?.order_number || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="订单状态">
-                <el-tag :type="getStatusType(orderDetail.order?.status)">
-                  {{ formatStatus(orderDetail.order?.status) }}
-                </el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="下单时间">{{ formatDate(orderDetail.order?.created_at) }}</el-descriptions-item>
-              <el-descriptions-item label="更新时间">{{ formatDate(orderDetail.order?.updated_at) }}</el-descriptions-item>
-            </el-descriptions>
+          <el-descriptions-item label="订单ID">{{ orderDetail.order?.id }}</el-descriptions-item>
+          <el-descriptions-item label="订单编号">{{ orderDetail.order?.order_number || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="订单状态">
+            <el-tag :type="getStatusType(orderDetail.order?.status)">
+              {{ formatStatus(orderDetail.order?.status) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="下单时间">{{ formatDate(orderDetail.order?.created_at) }}</el-descriptions-item>
+          <el-descriptions-item label="更新时间">{{ formatDate(orderDetail.order?.updated_at) }}</el-descriptions-item>
+        </el-descriptions>
 
-            <!-- 用户信息 -->
-            <el-divider content-position="left">用户信息</el-divider>
+        <!-- 用户信息 -->
+        <el-divider content-position="left">用户信息</el-divider>
             <el-descriptions :column="2" border style="margin-bottom: 20px;" v-if="orderDetail.user">
-              <el-descriptions-item label="用户ID">{{ orderDetail.user.id }}</el-descriptions-item>
-              <el-descriptions-item label="用户编号">用户{{ orderDetail.user.user_code || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="姓名">{{ orderDetail.user.name || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="手机号">{{ orderDetail.user.phone || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="用户类型">
-                <el-tag :type="orderDetail.user.user_type === 'wholesale' ? 'warning' : 'success'">
-                  {{ orderDetail.user.user_type === 'wholesale' ? '批发用户' : '零售用户' }}
-                </el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="销售员" v-if="orderDetail.user.sales_employee">
-                <el-tag type="info">
-                  {{ orderDetail.user.sales_employee.name || orderDetail.user.sales_employee.employee_code }}
-                  <span v-if="orderDetail.user.sales_employee.employee_code" style="margin-left: 4px;">
-                    ({{ orderDetail.user.sales_employee.employee_code }})
-                  </span>
-                </el-tag>
-              </el-descriptions-item>
-            </el-descriptions>
+          <el-descriptions-item label="用户ID">{{ orderDetail.user.id }}</el-descriptions-item>
+          <el-descriptions-item label="用户编号">用户{{ orderDetail.user.user_code || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="姓名">{{ orderDetail.user.name || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="手机号">{{ orderDetail.user.phone || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="用户类型">
+            <el-tag :type="orderDetail.user.user_type === 'wholesale' ? 'warning' : 'success'">
+              {{ orderDetail.user.user_type === 'wholesale' ? '批发用户' : '零售用户' }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="销售员" v-if="orderDetail.user.sales_employee">
+            <el-tag type="info">
+              {{ orderDetail.user.sales_employee.name || orderDetail.user.sales_employee.employee_code }}
+              <span v-if="orderDetail.user.sales_employee.employee_code" style="margin-left: 4px;">
+                ({{ orderDetail.user.sales_employee.employee_code }})
+              </span>
+            </el-tag>
+          </el-descriptions-item>
+        </el-descriptions>
 
-            <!-- 收货地址 -->
-            <el-divider content-position="left">收货地址</el-divider>
+        <!-- 收货地址 -->
+        <el-divider content-position="left">收货地址</el-divider>
             <el-descriptions :column="2" border style="margin-bottom: 20px;" v-if="orderDetail.address">
-              <el-descriptions-item label="地址名称">{{ orderDetail.address.name || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="联系人">{{ orderDetail.address.contact || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="手机号">{{ orderDetail.address.phone || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="详细地址" :span="2">{{ orderDetail.address.address || '-' }}</el-descriptions-item>
-            </el-descriptions>
+          <el-descriptions-item label="地址名称">{{ orderDetail.address.name || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="联系人">{{ orderDetail.address.contact || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="手机号">{{ orderDetail.address.phone || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="详细地址" :span="2">{{ orderDetail.address.address || '-' }}</el-descriptions-item>
+        </el-descriptions>
 
-            <!-- 订单明细 -->
-            <el-divider content-position="left">订单明细</el-divider>
+        <!-- 订单明细 -->
+        <el-divider content-position="left">订单明细</el-divider>
             <el-table :data="orderDetail.order_items" border stripe style="margin-bottom: 20px;">
-              <el-table-column prop="product_name" label="商品名称" min-width="150" />
-              <el-table-column prop="spec_name" label="规格" width="120" />
-              <el-table-column prop="quantity" label="数量" width="80" align="center" />
-              <el-table-column prop="unit_price" label="单价" width="100" align="right">
-                <template #default="scope">
-                  ¥{{ scope.row.unit_price?.toFixed(2) || '0.00' }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="subtotal" label="小计" width="100" align="right">
-                <template #default="scope">
-                  ¥{{ scope.row.subtotal?.toFixed(2) || '0.00' }}
-                </template>
-              </el-table-column>
-            </el-table>
+          <el-table-column prop="product_name" label="商品名称" min-width="150" />
+          <el-table-column prop="spec_name" label="规格" width="120" />
+          <el-table-column prop="quantity" label="数量" width="80" align="center" />
+          <el-table-column prop="unit_price" label="单价" width="100" align="right">
+            <template #default="scope">
+              ¥{{ scope.row.unit_price?.toFixed(2) || '0.00' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="subtotal" label="小计" width="100" align="right">
+            <template #default="scope">
+              ¥{{ scope.row.subtotal?.toFixed(2) || '0.00' }}
+            </template>
+          </el-table-column>
+        </el-table>
 
             <!-- 其他信息 -->
             <el-divider content-position="left">其他信息</el-divider>
@@ -271,31 +324,31 @@
 
           <!-- 金额信息标签页 -->
           <el-tab-pane label="金额信息" name="amount">
-            <!-- 金额汇总 -->
-            <el-divider content-position="left">金额汇总</el-divider>
+        <!-- 金额汇总 -->
+        <el-divider content-position="left">金额汇总</el-divider>
             <el-descriptions :column="1" border style="margin-bottom: 20px;">
-              <el-descriptions-item label="商品金额">
-                ¥{{ orderDetail.order?.goods_amount?.toFixed(2) || '0.00' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="配送费">
-                ¥{{ orderDetail.order?.delivery_fee?.toFixed(2) || '0.00' }}
-              </el-descriptions-item>
+          <el-descriptions-item label="商品金额">
+            ¥{{ orderDetail.order?.goods_amount?.toFixed(2) || '0.00' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="配送费">
+            ¥{{ orderDetail.order?.delivery_fee?.toFixed(2) || '0.00' }}
+          </el-descriptions-item>
               <el-descriptions-item label="加急费" v-if="orderDetail.order?.is_urgent && (orderDetail.order?.urgent_fee || 0) > 0">
                 <el-tag type="danger" size="small">¥{{ orderDetail.order?.urgent_fee?.toFixed(2) || '0.00' }}</el-tag>
               </el-descriptions-item>
               <el-descriptions-item label="积分抵扣" v-if="(orderDetail.order?.points_discount || 0) > 0">
                 <span style="color: #f56c6c;">-¥{{ orderDetail.order?.points_discount?.toFixed(2) || '0.00' }}</span>
-              </el-descriptions-item>
+          </el-descriptions-item>
               <el-descriptions-item label="优惠券抵扣" v-if="(orderDetail.order?.coupon_discount || 0) > 0">
                 <span style="color: #f56c6c;">-¥{{ orderDetail.order?.coupon_discount?.toFixed(2) || '0.00' }}</span>
-              </el-descriptions-item>
-              <el-descriptions-item label="实付金额" label-class-name="total-amount-label">
-                <span class="total-amount">¥{{ orderDetail.order?.total_amount?.toFixed(2) || '0.00' }}</span>
-              </el-descriptions-item>
-            </el-descriptions>
+          </el-descriptions-item>
+          <el-descriptions-item label="实付金额" label-class-name="total-amount-label">
+            <span class="total-amount">¥{{ orderDetail.order?.total_amount?.toFixed(2) || '0.00' }}</span>
+          </el-descriptions-item>
+        </el-descriptions>
 
             <!-- 利润信息（简化版） -->
-            <el-divider content-position="left">利润信息</el-divider>
+        <el-divider content-position="left">利润信息</el-divider>
             <el-descriptions :column="1" border v-if="orderDetail.simplified_profit && Object.keys(orderDetail.simplified_profit).length > 0">
               <el-descriptions-item label="平台总收入（实付金额）" label-class-name="revenue-label">
                 <span class="revenue-amount">¥{{ (orderDetail.simplified_profit.platform_revenue || 0).toFixed(2) }}</span>
@@ -316,10 +369,10 @@
                   = 平台总收入(¥{{ (orderDetail.simplified_profit.platform_revenue || 0).toFixed(2) }}) 
                   - 商品总成本(¥{{ (orderDetail.simplified_profit.goods_cost || 0).toFixed(2) }})
                 </div>
-              </el-descriptions-item>
+          </el-descriptions-item>
               <el-descriptions-item label="配送成本" label-class-name="delivery-cost-label">
                 <span class="delivery-cost-amount">¥{{ (orderDetail.simplified_profit.delivery_cost || 0).toFixed(2) }}</span>
-              </el-descriptions-item>
+          </el-descriptions-item>
               <el-descriptions-item label="净利润（平台总收入 - 商品总成本 - 配送成本）" label-class-name="net-profit-label">
                 <span class="net-profit-amount" :class="{ 'profit-positive': (orderDetail.simplified_profit.net_profit || 0) >= 0, 'profit-negative': (orderDetail.simplified_profit.net_profit || 0) < 0 }">
                   ¥{{ (orderDetail.simplified_profit.net_profit || 0).toFixed(2) }}
@@ -332,46 +385,207 @@
                 <div style="margin-top: 4px; font-size: 12px; font-weight: 600;" :style="{ color: (orderDetail.simplified_profit.net_profit || 0) >= 0 ? '#67c23a' : '#f56c6c' }">
                   {{ (orderDetail.simplified_profit.net_profit || 0) >= 0 ? '✓ 平台盈利' : '✗ 平台亏损' }}
                 </div>
-              </el-descriptions-item>
-            </el-descriptions>
-            <el-empty v-else description="利润信息暂不可用" :image-size="80" />
+          </el-descriptions-item>
+        </el-descriptions>
+        <el-empty v-else description="利润信息暂不可用" :image-size="80" />
           </el-tab-pane>
 
           <!-- 配送费详情标签页 -->
           <el-tab-pane label="配送费详情" name="delivery">
-            <el-descriptions :column="1" border v-if="orderDetail.delivery_fee_calculation && Object.keys(orderDetail.delivery_fee_calculation).length > 0">
-              <el-descriptions-item label="基础配送费">
-                ¥{{ (orderDetail.delivery_fee_calculation.base_fee || 0).toFixed(2) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="孤立订单补贴" v-if="orderDetail.delivery_fee_calculation.isolated_fee > 0">
-                <el-tag type="warning" size="small">+¥{{ (orderDetail.delivery_fee_calculation.isolated_fee || 0).toFixed(2) }}</el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="件数补贴" v-if="orderDetail.delivery_fee_calculation.item_fee > 0">
-                <el-tag type="info" size="small">+¥{{ (orderDetail.delivery_fee_calculation.item_fee || 0).toFixed(2) }}</el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="加急订单补贴" v-if="orderDetail.delivery_fee_calculation.urgent_fee > 0">
-                <el-tag type="danger" size="small">+¥{{ (orderDetail.delivery_fee_calculation.urgent_fee || 0).toFixed(2) }}</el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="极端天气补贴" v-if="orderDetail.delivery_fee_calculation.weather_fee > 0">
-                <el-tag type="warning" size="small">+¥{{ (orderDetail.delivery_fee_calculation.weather_fee || 0).toFixed(2) }}</el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="配送员实际所得（预估配送费）" label-class-name="rider-fee-label">
-                <span class="rider-fee">
-                  ¥{{ (orderDetail.delivery_fee_calculation.rider_payable_fee || 0).toFixed(2) }}
-                  <span v-if="orderDetail.delivery_fee_calculation.profit_share > 0" style="color: #67c23a; margin-left: 8px; font-size: 14px;">
-                    （包含利润分成¥{{ (orderDetail.delivery_fee_calculation.profit_share || 0).toFixed(2) }}）
+        <el-descriptions :column="1" border v-if="orderDetail.delivery_fee_calculation && Object.keys(orderDetail.delivery_fee_calculation).length > 0">
+          <el-descriptions-item label="基础配送费">
+            ¥{{ (orderDetail.delivery_fee_calculation.base_fee || 0).toFixed(2) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="孤立订单补贴" v-if="orderDetail.delivery_fee_calculation.isolated_fee > 0">
+            <el-tag type="warning" size="small">+¥{{ (orderDetail.delivery_fee_calculation.isolated_fee || 0).toFixed(2) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="件数补贴" v-if="orderDetail.delivery_fee_calculation.item_fee > 0">
+            <el-tag type="info" size="small">+¥{{ (orderDetail.delivery_fee_calculation.item_fee || 0).toFixed(2) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="加急订单补贴" v-if="orderDetail.delivery_fee_calculation.urgent_fee > 0">
+            <el-tag type="danger" size="small">+¥{{ (orderDetail.delivery_fee_calculation.urgent_fee || 0).toFixed(2) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="极端天气补贴" v-if="orderDetail.delivery_fee_calculation.weather_fee > 0">
+            <el-tag type="warning" size="small">+¥{{ (orderDetail.delivery_fee_calculation.weather_fee || 0).toFixed(2) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="配送员实际所得（预估配送费）" label-class-name="rider-fee-label">
+            <span class="rider-fee">
+              ¥{{ (orderDetail.delivery_fee_calculation.rider_payable_fee || 0).toFixed(2) }}
+              <span v-if="orderDetail.delivery_fee_calculation.profit_share > 0" style="color: #67c23a; margin-left: 8px; font-size: 14px;">
+                （包含利润分成¥{{ (orderDetail.delivery_fee_calculation.profit_share || 0).toFixed(2) }}）
+              </span>
+            </span>
+          </el-descriptions-item>
+          <el-descriptions-item label="利润分成明细" v-if="orderDetail.delivery_fee_calculation.profit_share > 0">
+            <el-tag type="success" size="small">+¥{{ (orderDetail.delivery_fee_calculation.profit_share || 0).toFixed(2) }}</el-tag>
+            <span style="margin-left: 8px; color: #909399; font-size: 12px;">(已包含在预估配送费中，仅管理员可见)</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="平台总成本" label-class-name="platform-cost-label">
+            <span class="platform-cost">¥{{ (orderDetail.delivery_fee_calculation.total_platform_cost || 0).toFixed(2) }}</span>
+          </el-descriptions-item>
+        </el-descriptions>
+        <el-empty v-else description="配送费计算信息暂不可用" :image-size="80" />
+          </el-tab-pane>
+
+          <!-- 销售分成标签页 -->
+          <el-tab-pane label="销售分成" name="sales_commission">
+            <!-- 已收款订单：显示已计入的分成 -->
+            <div v-if="orderDetail.order?.status === 'paid' && orderDetail.sales_commission">
+              <el-descriptions :column="1" border>
+                <el-descriptions-item label="销售员" v-if="orderDetail.user?.sales_employee">
+                  <el-tag type="info">
+                    {{ orderDetail.user.sales_employee.name || orderDetail.user.sales_employee.employee_code }}
+                    <span v-if="orderDetail.user.sales_employee.employee_code" style="margin-left: 4px;">
+                      ({{ orderDetail.user.sales_employee.employee_code }})
+                    </span>
+                  </el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="订单状态">
+                  <el-tag :type="orderDetail.sales_commission.is_valid_order ? 'success' : 'info'">
+                    {{ orderDetail.sales_commission.is_valid_order ? '有效订单' : '无效订单' }}
+                  </el-tag>
+                  <span v-if="!orderDetail.sales_commission.is_valid_order" style="color: #909399; margin-left: 8px; font-size: 12px;">
+                    (订单利润不满足最小阈值)
                   </span>
-                </span>
-              </el-descriptions-item>
-              <el-descriptions-item label="利润分成明细" v-if="orderDetail.delivery_fee_calculation.profit_share > 0">
-                <el-tag type="success" size="small">+¥{{ (orderDetail.delivery_fee_calculation.profit_share || 0).toFixed(2) }}</el-tag>
-                <span style="margin-left: 8px; color: #909399; font-size: 12px;">(已包含在预估配送费中，仅管理员可见)</span>
-              </el-descriptions-item>
-              <el-descriptions-item label="平台总成本" label-class-name="platform-cost-label">
-                <span class="platform-cost">¥{{ (orderDetail.delivery_fee_calculation.total_platform_cost || 0).toFixed(2) }}</span>
-              </el-descriptions-item>
-            </el-descriptions>
-            <el-empty v-else description="配送费计算信息暂不可用" :image-size="80" />
+                </el-descriptions-item>
+                <el-descriptions-item label="是否新客户首单">
+                  <el-tag :type="orderDetail.sales_commission.is_new_customer_order ? 'warning' : 'info'">
+                    {{ orderDetail.sales_commission.is_new_customer_order ? '是' : '否' }}
+                  </el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="结算状态">
+                  <el-tag :type="orderDetail.sales_commission.is_settled ? 'success' : 'info'">
+                    {{ orderDetail.sales_commission.is_settled ? '已结算' : '未结算' }}
+                  </el-tag>
+                  <span v-if="orderDetail.sales_commission.settlement_date" style="color: #909399; margin-left: 8px; font-size: 12px;">
+                    {{ formatDate(orderDetail.sales_commission.settlement_date) }}
+                  </span>
+                </el-descriptions-item>
+                <el-descriptions-item label="计算月份">
+                  {{ orderDetail.sales_commission.calculation_month || '-' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="订单金额（平台总收入）">
+                  ¥{{ (orderDetail.sales_commission.order_amount || 0).toFixed(2) }}
+                </el-descriptions-item>
+                <el-descriptions-item label="商品总成本">
+                  ¥{{ (orderDetail.sales_commission.goods_cost || 0).toFixed(2) }}
+                </el-descriptions-item>
+                <el-descriptions-item label="配送成本">
+                  ¥{{ (orderDetail.sales_commission.delivery_cost || 0).toFixed(2) }}
+                </el-descriptions-item>
+                <el-descriptions-item label="订单利润">
+                  <span style="font-weight: 600; color: #409eff;">
+                    ¥{{ (orderDetail.sales_commission.order_profit || 0).toFixed(2) }}
+                  </span>
+                  <div style="margin-top: 4px; font-size: 12px; color: #909399;">
+                    = 订单金额(¥{{ (orderDetail.sales_commission.order_amount || 0).toFixed(2) }}) 
+                    - 商品总成本(¥{{ (orderDetail.sales_commission.goods_cost || 0).toFixed(2) }}) 
+                    - 配送成本(¥{{ (orderDetail.sales_commission.delivery_cost || 0).toFixed(2) }})
+                  </div>
+                </el-descriptions-item>
+                <el-descriptions-item label="基础提成（45%）">
+                  <span style="color: #606266;">
+                    ¥{{ (orderDetail.sales_commission.base_commission || 0).toFixed(2) }}
+                  </span>
+                  <div style="margin-top: 4px; font-size: 12px; color: #909399;">
+                    = 订单利润(¥{{ (orderDetail.sales_commission.order_profit || 0).toFixed(2) }}) × 45%
+                  </div>
+                </el-descriptions-item>
+                <el-descriptions-item label="新客开发激励（20%）" v-if="orderDetail.sales_commission.is_new_customer_order && (orderDetail.sales_commission.new_customer_bonus || 0) > 0">
+                  <el-tag type="warning" size="small">
+                    +¥{{ (orderDetail.sales_commission.new_customer_bonus || 0).toFixed(2) }}
+                  </el-tag>
+                  <div style="margin-top: 4px; font-size: 12px; color: #909399;">
+                    = 订单利润(¥{{ (orderDetail.sales_commission.order_profit || 0).toFixed(2) }}) × 20%
+                  </div>
+                </el-descriptions-item>
+                <el-descriptions-item label="阶梯提成" v-if="orderDetail.sales_commission.tier_level > 0 && (orderDetail.sales_commission.tier_commission || 0) > 0">
+                  <el-tag :type="orderDetail.sales_commission.tier_level >= 3 ? 'danger' : orderDetail.sales_commission.tier_level >= 2 ? 'warning' : 'success'" size="small">
+                    阶梯{{ orderDetail.sales_commission.tier_level }}: +¥{{ (orderDetail.sales_commission.tier_commission || 0).toFixed(2) }}
+                  </el-tag>
+                  <div style="margin-top: 4px; font-size: 12px; color: #909399;">
+                    基于当月总销售额达到阶梯{{ orderDetail.sales_commission.tier_level }}阈值
+                  </div>
+                </el-descriptions-item>
+                <el-descriptions-item label="总分成" label-class-name="total-commission-label">
+                  <span class="total-commission" style="font-size: 18px; font-weight: 700; color: #409eff;">
+                    ¥{{ (orderDetail.sales_commission.total_commission || 0).toFixed(2) }}
+                  </span>
+                  <div style="margin-top: 4px; font-size: 12px; color: #909399;">
+                    = 基础提成(¥{{ (orderDetail.sales_commission.base_commission || 0).toFixed(2) }})
+                    <span v-if="(orderDetail.sales_commission.new_customer_bonus || 0) > 0">
+                      + 新客激励(¥{{ (orderDetail.sales_commission.new_customer_bonus || 0).toFixed(2) }})
+                    </span>
+                    <span v-if="(orderDetail.sales_commission.tier_commission || 0) > 0">
+                      + 阶梯提成(¥{{ (orderDetail.sales_commission.tier_commission || 0).toFixed(2) }})
+                    </span>
+                  </div>
+                </el-descriptions-item>
+              </el-descriptions>
+            </div>
+            <!-- 未收款订单：显示预览分成 -->
+            <div v-else-if="orderDetail.sales_commission_preview">
+              <el-descriptions :column="1" border>
+                <el-descriptions-item label="销售员" v-if="orderDetail.user?.sales_employee">
+                  <el-tag type="info">
+                    {{ orderDetail.user.sales_employee.name || orderDetail.user.sales_employee.employee_code }}
+                    <span v-if="orderDetail.user.sales_employee.employee_code" style="margin-left: 4px;">
+                      ({{ orderDetail.user.sales_employee.employee_code }})
+                    </span>
+                  </el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="订单状态">
+                  <el-tag :type="orderDetail.sales_commission_preview.is_valid_order ? 'success' : 'info'">
+                    {{ orderDetail.sales_commission_preview.is_valid_order ? '有效订单（预计）' : '无效订单（预计）' }}
+                  </el-tag>
+                  <span v-if="!orderDetail.sales_commission_preview.is_valid_order" style="color: #909399; margin-left: 8px; font-size: 12px;">
+                    (订单利润不满足最小阈值)
+                  </span>
+                </el-descriptions-item>
+                <el-descriptions-item label="提示">
+                  <el-alert
+                    type="warning"
+                    :closable="false"
+                    show-icon
+                  >
+                    <template #title>
+                      <span style="font-size: 13px;">此订单尚未收款，以下为预计分成。订单收款后才会正式计入销售员的有效分成。</span>
+                    </template>
+                  </el-alert>
+                </el-descriptions-item>
+                <el-descriptions-item label="预计基础提成（45%）">
+                  <span style="color: #e6a23c;">
+                    ¥{{ (orderDetail.sales_commission_preview.base_commission || 0).toFixed(2) }}
+                  </span>
+                </el-descriptions-item>
+                <el-descriptions-item label="预计新客开发激励（20%）" v-if="orderDetail.sales_commission_preview.is_new_customer_order && (orderDetail.sales_commission_preview.new_customer_bonus || 0) > 0">
+                  <el-tag type="warning" size="small">
+                    +¥{{ (orderDetail.sales_commission_preview.new_customer_bonus || 0).toFixed(2) }}
+                  </el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="预计阶梯提成" v-if="orderDetail.sales_commission_preview.tier_level > 0 && (orderDetail.sales_commission_preview.tier_commission || 0) > 0">
+                  <el-tag :type="orderDetail.sales_commission_preview.tier_level >= 3 ? 'danger' : orderDetail.sales_commission_preview.tier_level >= 2 ? 'warning' : 'success'" size="small">
+                    阶梯{{ orderDetail.sales_commission_preview.tier_level }}: +¥{{ (orderDetail.sales_commission_preview.tier_commission || 0).toFixed(2) }}
+                  </el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="预计总分成" label-class-name="total-commission-label">
+                  <span class="total-commission" style="font-size: 18px; font-weight: 700; color: #e6a23c;">
+                    ¥{{ (orderDetail.sales_commission_preview.total_commission || 0).toFixed(2) }}
+                  </span>
+                  <div style="margin-top: 4px; font-size: 12px; color: #909399;">
+                    = 基础提成(¥{{ (orderDetail.sales_commission_preview.base_commission || 0).toFixed(2) }})
+                    <span v-if="(orderDetail.sales_commission_preview.new_customer_bonus || 0) > 0">
+                      + 新客激励(¥{{ (orderDetail.sales_commission_preview.new_customer_bonus || 0).toFixed(2) }})
+                    </span>
+                    <span v-if="(orderDetail.sales_commission_preview.tier_commission || 0) > 0">
+                      + 阶梯提成(¥{{ (orderDetail.sales_commission_preview.tier_commission || 0).toFixed(2) }})
+                    </span>
+                  </div>
+                </el-descriptions-item>
+              </el-descriptions>
+            </div>
+            <!-- 无销售分成信息 -->
+            <el-empty v-else description="暂无销售分成信息（订单可能没有关联销售员）" :image-size="80" />
           </el-tab-pane>
         </el-tabs>
       </div>

@@ -120,6 +120,14 @@ const routes = [
         }
       },
       {
+        path: 'sales-commission',
+        name: 'SalesCommission',
+        component: () => import('../views/SalesCommission.vue'),
+        meta: {
+          title: '销售分成管理'
+        }
+      },
+      {
         path: 'employee-locations',
         name: 'EmployeeLocations',
         component: () => import('../views/EmployeeLocations.vue'),

@@ -212,6 +212,12 @@ func main() {
 				protectedGroup.GET("/delivery-income/stats", api.GetDeliveryIncomeStatsForAdmin) // 获取配送员收入统计（管理员）
 				protectedGroup.POST("/delivery-income/settle", api.BatchSettleDeliveryFees)      // 批量结算配送费
 
+				// 销售分成管理（管理员）
+				protectedGroup.GET("/sales-commission/stats", api.AdminGetSalesCommissionStats)        // 获取销售员的分成统计（可查看所有销售员）
+				protectedGroup.GET("/sales-commission/list", api.AdminGetSalesCommissions)            // 获取销售员的分成记录列表
+				protectedGroup.GET("/sales-commission/config", api.AdminGetSalesCommissionConfig)     // 获取销售员的分成配置
+				protectedGroup.PUT("/sales-commission/config", api.AdminUpdateSalesCommissionConfig)  // 更新销售员的分成配置
+
 				// 员工位置管理
 				protectedGroup.GET("/employee-locations", api.GetEmployeeLocations)    // 获取所有员工位置
 				protectedGroup.GET("/employee-locations/:id", api.GetEmployeeLocation) // 获取指定员工位置
@@ -293,6 +299,12 @@ func main() {
 				employeeProtectedGroup.PUT("/sales/orders/:id", api.UpdateOrderForCustomer)                                      // 修改订单
 				employeeProtectedGroup.POST("/sales/orders/:id/cancel", api.CancelSalesOrder)                                    // 取消订单
 				employeeProtectedGroup.GET("/delivery-employee-location/:code", api.GetEmployeeLocationByCode)                   // 获取配送员位置（员工端）
+
+				// 销售分成相关接口
+				employeeProtectedGroup.POST("/sales/commission/preview", api.PreviewSalesCommission)                              // 预览销售分成（开单时）
+				employeeProtectedGroup.GET("/sales/commission/list", api.GetSalesCommissions)                                     // 获取销售员的分成记录列表
+				employeeProtectedGroup.GET("/sales/commission/stats", api.GetSalesCommissionMonthlyStats)                         // 获取销售员的分成月统计
+				employeeProtectedGroup.GET("/sales/commission/config", api.GetSalesCommissionConfig)                               // 获取销售员的分成配置
 			}
 		}
 	}

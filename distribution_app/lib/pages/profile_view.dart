@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../utils/storage.dart';
 import 'income_stats_view.dart';
+import 'order_history_view.dart';
 
 /// 我的 页面视图
 class ProfileView extends StatefulWidget {
@@ -180,7 +181,12 @@ class _ProfileViewState extends State<ProfileView> {
                               icon: Icons.history_outlined,
                               title: '历史订单',
                               onTap: () {
-                                // TODO: 跳转历史订单页
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const OrderHistoryView(),
+                                  ),
+                                );
                               },
                             ),
                             Divider(
