@@ -38,6 +38,13 @@ export function updateAdminAddress(id, data) {
   })
 }
 
+export function deleteAdminAddress(id) {
+  return request({
+    url: `/admin/mini-app/addresses/${id}`,
+    method: 'delete'
+  })
+}
+
 export function getSalesEmployees() {
   return request({
     url: '/admin/employees/sales',

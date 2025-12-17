@@ -191,14 +191,22 @@
                   >
                     <div class="address-header">
                       <el-tag v-if="address.is_default" type="success" size="small">默认地址</el-tag>
+                      <span style="margin-left: auto;"></span>
                       <el-button 
                         type="primary" 
                         link 
                         size="small" 
                         @click="handleEditAddress(address)"
-                        style="margin-left: auto;"
                       >
                         编辑
+                      </el-button>
+                      <el-button
+                        type="danger"
+                        link
+                        size="small"
+                        @click="handleDeleteAddress(address)"
+                      >
+                        删除
                       </el-button>
                     </div>
                     <el-descriptions :column="2" border class="address-descriptions">
@@ -686,9 +694,9 @@
 
 <script setup>
 import { reactive, ref, onMounted, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Picture, Plus } from '@element-plus/icons-vue'
-import { getMiniUsers, getMiniUserDetail, updateMiniUser, getAdminAddressDetail, updateAdminAddress, getSalesEmployees, uploadUserAvatar, getUserCoupons, geocodeAddress, reverseGeocode } from '../api/miniUsers'
+import { getMiniUsers, getMiniUserDetail, updateMiniUser, getAdminAddressDetail, updateAdminAddress, deleteAdminAddress, getSalesEmployees, uploadUserAvatar, getUserCoupons, geocodeAddress, reverseGeocode } from '../api/miniUsers'
 import { getMapSettings } from '../api/settings'
 import { getCoupons, issueCouponToUser } from '../api/coupons'
 
@@ -1033,6 +1041,37 @@ const handleEditAddress = async (address) => {
   addressEditForm.isDefault = address.is_default || false
   
   addressEditDialogVisible.value = true
+}
+
+const handleDeleteAddress = async (address) => {
+  if (!userDetail.value || !address) return
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除该地址吗？\n\n地址名称：${address.name || '-'}\n联系人：${address.contact || '-'}\n电话：${address.phone || '-'}\n详细地址：${address.address || '-'}`,
+      '删除地址',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消'
+      }
+    )
+  } catch {
+    return
+  }
+
+  try {
+    const res = await deleteAdminAddress(address.id)
+    if (res.code === 200) {
+      ElMessage.success('地址已删除')
+      await handleViewDetail(userDetail.value.id)
+    } else {
+      ElMessage.error(res.message || '删除失败')
+    }
+  } catch (error) {
+    console.error('删除地址失败:', error)
+    ElMessage.error(error?.response?.data?.message || '删除失败，请稍后再试')
+  }
 }
 
 const handleGeocodeAddress = async () => {

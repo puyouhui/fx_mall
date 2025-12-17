@@ -16,6 +16,9 @@ class ApiResponse<T> {
 }
 
 class Request {
+  // 防止短时间内重复跳转登录页
+  static bool _isNavigatingToLogin = false;
+
   // 获取请求头
   static Future<Map<String, String>> _getHeaders({
     bool needAuth = true,
@@ -58,7 +61,7 @@ class Request {
         headers: await _getHeaders(needAuth: needAuth),
       );
 
-      return _handleResponse<T>(response, parser: parser);
+      return _handleResponse<T>(response, parser: parser, needAuth: needAuth);
     } catch (e) {
       return ApiResponse<T>(code: 500, message: '网络请求失败: ${e.toString()}');
     }
@@ -79,7 +82,7 @@ class Request {
         body: body != null ? jsonEncode(body) : null,
       );
 
-      return _handleResponse<T>(response, parser: parser);
+      return _handleResponse<T>(response, parser: parser, needAuth: needAuth);
     } catch (e) {
       return ApiResponse<T>(code: 500, message: '网络请求失败: ${e.toString()}');
     }
@@ -100,7 +103,7 @@ class Request {
         body: body != null ? jsonEncode(body) : null,
       );
 
-      return _handleResponse<T>(response, parser: parser);
+      return _handleResponse<T>(response, parser: parser, needAuth: needAuth);
     } catch (e) {
       return ApiResponse<T>(code: 500, message: '网络请求失败: ${e.toString()}');
     }
@@ -119,7 +122,7 @@ class Request {
         headers: await _getHeaders(needAuth: needAuth),
       );
 
-      return _handleResponse<T>(response, parser: parser);
+      return _handleResponse<T>(response, parser: parser, needAuth: needAuth);
     } catch (e) {
       return ApiResponse<T>(code: 500, message: '网络请求失败: ${e.toString()}');
     }
@@ -150,7 +153,7 @@ class Request {
 
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);
-      return _handleResponse<Map<String, dynamic>>(response);
+      return _handleResponse<Map<String, dynamic>>(response, needAuth: needAuth);
     } catch (e) {
       return ApiResponse<Map<String, dynamic>>(
         code: 500,
@@ -163,12 +166,16 @@ class Request {
   static ApiResponse<T> _handleResponse<T>(
     http.Response response, {
     T Function(dynamic)? parser,
+    bool needAuth = true,
   }) {
     // 检查 HTTP 状态码 401（未授权）
     if (response.statusCode == 401) {
-      // Token 失效或缺少身份凭证，清除本地存储并跳转登录页
-      Storage.clearAll();
-      _navigateToLogin();
+      // needAuth=false（如登录接口）时，不要跳转登录页，避免在登录页发生“重复跳转”
+      if (needAuth) {
+        // Token 失效或缺少身份凭证，清除本地存储并跳转登录页
+        Storage.clearAll();
+        _navigateToLogin();
+      }
       // 尝试解析错误消息
       String message = '缺少身份凭证，请重新登录';
       try {
@@ -215,15 +222,21 @@ class Request {
       final responseData = data['data'];
 
       if (code == 401) {
-        // Token 失效或缺少身份凭证，清除本地存储并跳转登录页
-        Storage.clearAll();
-        // 使用全局导航键跳转到登录页
-        _navigateToLogin();
+        // needAuth=false（如登录接口）时，不要跳转登录页，避免在登录页发生“重复跳转”
+        if (needAuth) {
+          // Token 失效或缺少身份凭证，清除本地存储并跳转登录页
+          Storage.clearAll();
+          // 使用全局导航键跳转到登录页
+          _navigateToLogin();
+        }
       } else if (code == 403) {
-        // 账号被禁用或其他状态导致不能使用，清除本地存储并跳转登录页
-        Storage.clearAll();
-        // 使用全局导航键跳转到登录页
-        _navigateToLogin();
+        // needAuth=false（如登录接口）时，不要跳转登录页，避免在登录页发生“重复跳转”
+        if (needAuth) {
+          // 账号被禁用或其他状态导致不能使用，清除本地存储并跳转登录页
+          Storage.clearAll();
+          // 使用全局导航键跳转到登录页
+          _navigateToLogin();
+        }
       }
 
       T? parsedData;
@@ -258,10 +271,24 @@ class Request {
   // 跳转到登录页
   static void _navigateToLogin() {
     if (navigatorKey?.currentState != null) {
+      // 已在登录页或正在跳转中：直接忽略，避免重复跳转
+      final overlayContext = navigatorKey!.currentState!.overlay?.context;
+      final currentRouteName =
+          overlayContext != null ? ModalRoute.of(overlayContext)?.settings.name : null;
+      if (currentRouteName == '/login' || _isNavigatingToLogin) {
+        return;
+      }
+
+      _isNavigatingToLogin = true;
       navigatorKey!.currentState!.pushNamedAndRemoveUntil(
         '/login',
         (route) => false,
       );
+
+      // 允许后续在必要时再次跳转（防抖，避免并发401/403触发多次）
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _isNavigatingToLogin = false;
+      });
     }
   }
 }

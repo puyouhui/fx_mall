@@ -1,7 +1,5 @@
-import 'dart:io';
-
+import 'package:employees_app/pages/customer/customer_address_edit_page.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:employees_app/utils/request.dart';
 
 /// 新客资料完善页面
@@ -41,8 +39,6 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
     '其它',
   ];
   String? _selectedStoreType;
-
-  final ImagePicker _imagePicker = ImagePicker();
 
   // 用户类型：retail（零售） / wholesale（批发）
   String? _userType;
@@ -185,510 +181,40 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
     await _searchByUserCode();
   }
 
-  Future<void> _showAddressDialog({Map<String, dynamic>? address}) async {
+  Future<void> _openAddressEditPage({Map<String, dynamic>? address}) async {
     if (_user == null) return;
 
     final userId = _user!['id'] as int;
-    final nameController = TextEditingController(
-      text: address?['name'] as String? ?? '',
+    final initialIsDefault = address == null
+        ? _addresses.isEmpty
+        : ((address['is_default'] as bool?) ?? false);
+
+    final profileDraft = <String, dynamic>{
+      'name': _nameController.text.trim(),
+      'phone': _phoneController.text.trim(),
+      'storeType': _selectedStoreType ?? '',
+      'userType': _userType ?? '',
+    };
+
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CustomerAddressEditPage(
+          userId: userId,
+          address: address,
+          profileDraft: profileDraft,
+          defaultSelected: initialIsDefault,
+        ),
+      ),
     );
-    final contactController = TextEditingController(
-      text: address?['contact'] as String? ?? '',
-    );
-    final phoneController = TextEditingController(
-      text: address?['phone'] as String? ?? '',
-    );
-    final addrController = TextEditingController(
-      text: address?['address'] as String? ?? '',
-    );
-    final avatarController = TextEditingController(
-      text: address?['avatar'] as String? ?? '',
-    );
-    String avatarUrl = avatarController.text;
-    // 如果是新增地址且用户没有地址，默认选中"默认地址"
-    bool isDefault = address != null
-        ? (address['is_default'] as bool?) ?? false
-        : _addresses.isEmpty;
-    bool isUploading = false;
 
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setStateDialog) {
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 400),
-                padding: const EdgeInsets.all(20),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        address == null ? '新增地址' : '编辑地址',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF20253A),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      TextField(
-                        controller: nameController,
-                        decoration: InputDecoration(
-                          labelText: '地址名称',
-                          hintText: '例如：西山区-南亚傣味火锅店',
-                          filled: true,
-                          fillColor: const Color(0xFFF7F8FA),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: contactController,
-                        decoration: InputDecoration(
-                          labelText: '收货人',
-                          filled: true,
-                          fillColor: const Color(0xFFF7F8FA),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: phoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration: InputDecoration(
-                          labelText: '收货电话',
-                          filled: true,
-                          fillColor: const Color(0xFFF7F8FA),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: addrController,
-                        maxLines: 2,
-                        decoration: InputDecoration(
-                          labelText: '详细地址',
-                          filled: true,
-                          fillColor: const Color(0xFFF7F8FA),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        '门头照片',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF20253A),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: isUploading
-                                  ? null
-                                  : () async {
-                                      final picked = await _imagePicker
-                                          .pickImage(
-                                            source: ImageSource.camera,
-                                          );
-                                      if (picked == null) return;
-
-                                      setStateDialog(() {
-                                        isUploading = true;
-                                      });
-
-                                      final uploadResp =
-                                          await Request.uploadFile(
-                                            '/employee/upload/address-avatar',
-                                            File(picked.path),
-                                          );
-
-                                      setStateDialog(() {
-                                        isUploading = false;
-                                      });
-
-                                      if (uploadResp.isSuccess &&
-                                          uploadResp.data != null) {
-                                        final data = uploadResp.data!;
-                                        final url =
-                                            (data['avatar'] ?? data['imageUrl'])
-                                                as String;
-                                        setStateDialog(() {
-                                          avatarUrl = url;
-                                          avatarController.text = url;
-                                        });
-                                      } else {
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                uploadResp.message.isNotEmpty
-                                                    ? uploadResp.message
-                                                    : '图片上传失败',
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    },
-                              icon: const Icon(
-                                Icons.camera_alt,
-                                size: 18,
-                                color: Color(0xFF20CB6B),
-                              ),
-                              label: const Text(
-                                '拍照',
-                                style: TextStyle(color: Color(0xFF20CB6B)),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(
-                                  color: Color(0xFF20CB6B),
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: isUploading
-                                  ? null
-                                  : () async {
-                                      final picked = await _imagePicker
-                                          .pickImage(
-                                            source: ImageSource.gallery,
-                                          );
-                                      if (picked == null) return;
-
-                                      setStateDialog(() {
-                                        isUploading = true;
-                                      });
-
-                                      final uploadResp =
-                                          await Request.uploadFile(
-                                            '/employee/upload/address-avatar',
-                                            File(picked.path),
-                                          );
-
-                                      setStateDialog(() {
-                                        isUploading = false;
-                                      });
-
-                                      if (uploadResp.isSuccess &&
-                                          uploadResp.data != null) {
-                                        final data = uploadResp.data!;
-                                        final url =
-                                            (data['avatar'] ?? data['imageUrl'])
-                                                as String;
-                                        setStateDialog(() {
-                                          avatarUrl = url;
-                                          avatarController.text = url;
-                                        });
-                                      } else {
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                uploadResp.message.isNotEmpty
-                                                    ? uploadResp.message
-                                                    : '图片上传失败',
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    },
-                              icon: const Icon(
-                                Icons.photo_library,
-                                size: 18,
-                                color: Color(0xFF20CB6B),
-                              ),
-                              label: const Text(
-                                '相册选择',
-                                style: TextStyle(color: Color(0xFF20CB6B)),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(
-                                  color: Color(0xFF20CB6B),
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (isUploading) ...[
-                        const SizedBox(height: 12),
-                        const LinearProgressIndicator(
-                          minHeight: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Color(0xFF20CB6B),
-                          ),
-                        ),
-                      ],
-                      if (avatarUrl.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            avatarUrl,
-                            height: 100,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Checkbox(
-                            value: isDefault,
-                            activeColor: const Color(0xFF20CB6B),
-                            onChanged: (val) {
-                              setStateDialog(() {
-                                isDefault = val ?? false;
-                              });
-                            },
-                          ),
-                          const Text(
-                            '设为默认地址',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFF40475C),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 12,
-                              ),
-                            ),
-                            child: const Text(
-                              '取消',
-                              style: TextStyle(color: Color(0xFF8C92A4)),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          ElevatedButton(
-                            onPressed: () async {
-                              // 验证必填字段
-                              if (contactController.text.trim().isEmpty) {
-                                ScaffoldMessenger.of(ctx).showSnackBar(
-                                  const SnackBar(content: Text('请输入收货人')),
-                                );
-                                return;
-                              }
-                              if (phoneController.text.trim().isEmpty) {
-                                ScaffoldMessenger.of(ctx).showSnackBar(
-                                  const SnackBar(content: Text('请输入收货电话')),
-                                );
-                                return;
-                              }
-                              if (addrController.text.trim().isEmpty) {
-                                ScaffoldMessenger.of(ctx).showSnackBar(
-                                  const SnackBar(content: Text('请输入详细地址')),
-                                );
-                                return;
-                              }
-
-                              // 先保存外层的客户基础信息（姓名、电话、店铺类型、客户类型）
-                              // 确保新增/编辑地址后，再次查询不会把已填写的基础资料清空
-                              try {
-                                if (_user != null) {
-                                  final profileBody = <String, dynamic>{
-                                    'name': _nameController.text.trim(),
-                                    'phone': _phoneController.text.trim(),
-                                    'storeType': _selectedStoreType ?? '',
-                                    'userType': _userType ?? '',
-                                  };
-                                  final profileResp = await Request.put<dynamic>(
-                                    '/employee/sales/customers/$userId/profile',
-                                    body: profileBody,
-                                  );
-                                  if (!profileResp.isSuccess) {
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(ctx).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            profileResp.message.isNotEmpty
-                                                ? profileResp.message
-                                                : '基础资料保存失败',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                    return;
-                                  }
-                                }
-                              } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(ctx).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        '基础资料保存失败: ${e.toString()}',
-                                      ),
-                                    ),
-                                  );
-                                }
-                                return;
-                              }
-
-                              final body = <String, dynamic>{
-                                'name': nameController.text.trim(),
-                                'contact': contactController.text.trim(),
-                                'phone': phoneController.text.trim(),
-                                'address': addrController.text.trim(),
-                                'avatar': avatarController.text.trim(),
-                                'isDefault': isDefault,
-                              };
-
-                              try {
-                                if (address == null) {
-                                  final response = await Request.post<dynamic>(
-                                    '/employee/sales/customers/$userId/addresses',
-                                    body: body,
-                                  );
-                                  if (!response.isSuccess) {
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(ctx).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            response.message.isNotEmpty
-                                                ? response.message
-                                                : '地址保存失败',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                    return;
-                                  }
-                                } else {
-                                  final addrId = address['id'] as int;
-                                  final response = await Request.put<dynamic>(
-                                    '/employee/sales/addresses/$addrId',
-                                    body: body,
-                                  );
-                                  if (!response.isSuccess) {
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(ctx).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            response.message.isNotEmpty
-                                                ? response.message
-                                                : '地址更新失败',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                    return;
-                                  }
-                                }
-
-                                if (mounted) {
-                                  Navigator.of(ctx).pop();
-                                  // 重新查询用户信息以刷新地址列表
-                                  await _searchByUserCode();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        address == null ? '地址新增成功' : '地址更新成功',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(ctx).showSnackBar(
-                                    SnackBar(
-                                      content: Text('操作失败: ${e.toString()}'),
-                                    ),
-                                  );
-                                }
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF20CB6B),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 12,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              elevation: 0,
-                            ),
-                            child: const Text('保存'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
+    if (changed == true) {
+      await _searchByUserCode();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(address == null ? '地址新增成功' : '地址更新成功')),
         );
-      },
-    );
+      }
+    }
   }
 
   Widget _buildAddressList() {
@@ -884,7 +410,7 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
                     ),
                   const SizedBox(width: 8),
                   TextButton(
-                    onPressed: () => _showAddressDialog(address: addr),
+                    onPressed: () => _openAddressEditPage(address: addr),
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
@@ -1263,7 +789,7 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
                                         ),
                                       ),
                                       TextButton.icon(
-                                        onPressed: () => _showAddressDialog(),
+                                        onPressed: () => _openAddressEditPage(),
                                         icon: const Icon(
                                           Icons.add,
                                           size: 18,

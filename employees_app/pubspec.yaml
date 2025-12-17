@@ -63,6 +63,9 @@ dependencies:
   flutter_map: ^8.0.0
   latlong2: ^0.9.1
 
+  # 定位（用于地图选点页：自动定位到我的位置）
+  geolocator: ^13.0.1
+
   # URL启动器（拨打电话等）
   url_launcher: ^6.3.1
 

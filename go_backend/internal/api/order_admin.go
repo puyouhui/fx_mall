@@ -502,14 +502,14 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 	}
 
 	result := gin.H{
-		"order":                    order,
-		"order_items":              items,
-		"user":                     userData,
-		"address":                  addressData,
-		"delivery_fee_calculation": deliveryFeeCalculation,
-		"order_profit":             orderProfit,
-		"net_profit":               netProfit,
-		"simplified_profit":        simplifiedProfit, // 简化的利润分析（平台总收入、商品总成本、毛利润、配送成本、净利润）
+			"order":                    order,
+			"order_items":              items,
+			"user":                     userData,
+			"address":                  addressData,
+			"delivery_fee_calculation": deliveryFeeCalculation,
+			"order_profit":             orderProfit,
+			"net_profit":               netProfit,
+			"simplified_profit":        simplifiedProfit, // 简化的利润分析（平台总收入、商品总成本、毛利润、配送成本、净利润）
 	}
 
 	// 添加销售分成信息
@@ -712,12 +712,27 @@ func calculateSalesCommissionPreview(order *model.Order, deliveryFeeResult *mode
 		deliveryCost = deliveryFeeResult.TotalPlatformCost
 	}
 
-	// 判断是否新客户（这里简化处理，实际应该查询数据库）
-	isNewCustomer := false
+	// 判断是否新客户首单（正确查询数据库）
+	isNewCustomer, err := model.IsNewCustomerOrder(order.UserID, order.ID)
+	if err != nil {
+		log.Printf("判断是否新客户失败: %v", err)
+		isNewCustomer = false
+	}
 
-	// 获取当月有效订单总金额（用于计算阶梯提成）
-	currentMonth := time.Now().Format("2006-01")
-	monthTotalSales, _ := model.GetMonthlyTotalSales(user.SalesCode, currentMonth)
+	// 确定计算月份：
+	// 1. 如果订单已结算，使用结算月份（与已计入的分成保持一致）
+	// 2. 如果订单未结算，使用当前月份
+	var calculationMonth string
+	if order.Status == "paid" && order.SettlementDate != nil {
+		// 已收款订单：使用结算月份，确保预览分成与已计入分成一致
+		calculationMonth = order.SettlementDate.Format("2006-01")
+	} else {
+		// 未收款订单：使用当前月份
+		calculationMonth = time.Now().Format("2006-01")
+	}
+
+	// 获取指定月份的有效订单总金额（用于计算阶梯提成）
+	monthTotalSales, _ := model.GetMonthlyTotalSales(user.SalesCode, calculationMonth)
 
 	// 计算分成
 	calcResult, err := model.CalculateSalesCommission(
@@ -733,13 +748,14 @@ func calculateSalesCommissionPreview(order *model.Order, deliveryFeeResult *mode
 	}
 
 	return map[string]interface{}{
-		"total_commission":    calcResult.TotalCommission,
-		"base_commission":     calcResult.BaseCommission,
-		"new_customer_bonus":  calcResult.NewCustomerBonus,
-		"tier_commission":     calcResult.TierCommission,
-		"tier_level":          calcResult.TierLevel,
-		"is_valid_order":      calcResult.IsValidOrder,
+		"total_commission":      calcResult.TotalCommission,
+		"base_commission":       calcResult.BaseCommission,
+		"new_customer_bonus":    calcResult.NewCustomerBonus,
+		"tier_commission":       calcResult.TierCommission,
+		"tier_level":            calcResult.TierLevel,
+		"is_valid_order":        calcResult.IsValidOrder,
 		"is_new_customer_order": calcResult.IsNewCustomerOrder,
-		"is_preview":          true,
+		"is_preview":            true,
+		"calculation_month":     calculationMonth,
 	}
 }

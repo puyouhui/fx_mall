@@ -528,7 +528,7 @@ class _OverviewTabState extends State<OverviewTab> {
                             const QuickActionItem(
                               icon: Icons.trending_up,
                               iconColor: Color(0xFFFFA940),
-                              label: '收益查询',
+                              label: '分成查询',
                               // TODO: 接收益查询页面
                             ),
                           ],

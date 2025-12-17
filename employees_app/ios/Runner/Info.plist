@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>用于在地图选点时定位到您的当前位置，便于快速选择地址。</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>用于在地图选点时定位到您的当前位置，便于快速选择地址。</string>
 </dict>
 </plist>

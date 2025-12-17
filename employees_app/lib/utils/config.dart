@@ -21,8 +21,10 @@ class Config {
 
   // 编译期环境变量：APP_ENV
   // 不传时默认当成 emulator
-  static const String _env =
-      String.fromEnvironment('APP_ENV', defaultValue: 'emulator');
+  static const String _env = String.fromEnvironment(
+    'APP_ENV',
+    defaultValue: 'emulator',
+  );
 
   // 当前使用的 BASE_URL（对外只用这个）
   static String get baseUrl {

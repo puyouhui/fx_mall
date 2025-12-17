@@ -175,6 +175,7 @@ func main() {
 				protectedGroup.POST("/mini-app/users/:id/avatar", api.UploadMiniAppUserAvatarByAdmin) // 管理员上传用户头像
 				protectedGroup.GET("/mini-app/addresses/:id", api.GetAdminAddressByID)                // 管理员获取地址详情
 				protectedGroup.PUT("/mini-app/addresses/:id", api.UpdateAdminAddress)                 // 管理员更新地址
+				protectedGroup.DELETE("/mini-app/addresses/:id", api.DeleteAdminAddress)              // 管理员删除地址
 				protectedGroup.POST("/mini-app/addresses/avatar", api.UploadAddressAvatarByAdmin)     // 管理员上传地址头像（门头照片）
 				protectedGroup.POST("/mini-app/addresses/geocode", api.GeocodeAddress)                // 地址解析（将地址文本转换为经纬度）
 				protectedGroup.POST("/mini-app/addresses/reverse-geocode", api.ReverseGeocode)        // 逆地理编码（将经纬度转换为地址）
@@ -217,6 +218,9 @@ func main() {
 				protectedGroup.GET("/sales-commission/list", api.AdminGetSalesCommissions)            // 获取销售员的分成记录列表
 				protectedGroup.GET("/sales-commission/config", api.AdminGetSalesCommissionConfig)     // 获取销售员的分成配置
 				protectedGroup.PUT("/sales-commission/config", api.AdminUpdateSalesCommissionConfig)  // 更新销售员的分成配置
+
+				// 仪表盘统计
+				protectedGroup.GET("/dashboard/stats", api.GetDashboardStats) // 获取仪表盘统计数据
 
 				// 员工位置管理
 				protectedGroup.GET("/employee-locations", api.GetEmployeeLocations)    // 获取所有员工位置
@@ -286,6 +290,7 @@ func main() {
 				employeeProtectedGroup.POST("/sales/customers/:id/addresses", api.CreateSalesCustomerAddress)                    // 为客户新增地址
 				employeeProtectedGroup.PUT("/sales/addresses/:id", api.UpdateSalesCustomerAddress)                               // 更新客户地址
 				employeeProtectedGroup.POST("/upload/address-avatar", api.UploadAddressAvatarByEmployee)                         // 上传门头照
+				employeeProtectedGroup.POST("/addresses/reverse-geocode", api.ReverseGeocode)                                    // 逆地理编码（将经纬度转换为地址，用于选点回填）
 				employeeProtectedGroup.POST("/sales/orders", api.CreateOrderForCustomer)                                         // 为客户创建订单
 				employeeProtectedGroup.GET("/sales/products", api.GetSalesProducts)                                              // 获取商品列表
 				employeeProtectedGroup.GET("/sales/pending-orders", api.GetMyPendingOrders)                                      // 获取待配送订单列表

@@ -438,6 +438,87 @@ func UpdateAdminAddress(c *gin.Context) {
 	})
 }
 
+// DeleteAdminAddress 管理员删除地址
+// 注意：为避免历史订单详情丢失地址信息，这里会阻止删除已被订单引用的地址。
+func DeleteAdminAddress(c *gin.Context) {
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供地址ID"})
+		return
+	}
+
+	var id int
+	_, err := fmt.Sscanf(idStr, "%d", &id)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "地址ID格式错误"})
+		return
+	}
+
+	// 先获取地址信息，确认地址存在并获取userID
+	address, err := model.GetAddressByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取地址信息失败: " + err.Error()})
+		return
+	}
+	if address == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "地址不存在"})
+		return
+	}
+
+	// 如果地址被订单引用，则不允许删除（避免历史订单展示缺失）
+	var usedCount int
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM orders WHERE address_id = ?`, id).Scan(&usedCount); err == nil {
+		if usedCount > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "该地址已被订单引用，无法删除"})
+			return
+		}
+	}
+
+	// 执行删除
+	if err := model.DeleteAddress(id, address.UserID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "删除地址失败: " + err.Error()})
+		return
+	}
+
+	// 如果删掉的是默认地址，且用户还有其他地址但没有默认，则自动把最新地址设为默认
+	remaining, _ := model.GetAddressesByUserID(address.UserID)
+	if len(remaining) > 0 {
+		hasDefault := false
+		for _, a := range remaining {
+			if a.IsDefault {
+				hasDefault = true
+				break
+			}
+		}
+		if !hasDefault {
+			_ = model.SetDefaultAddress(remaining[0].ID, address.UserID)
+		}
+	}
+
+	// 重新统计地址数量，更新资料完善状态（与小程序端保持一致）
+	user, _ := model.GetMiniAppUserByID(address.UserID)
+	addressCount, err := model.CountAddressesByUserID(address.UserID)
+	if err == nil && user != nil {
+		profileCompleted := addressCount >= 1
+		userType := user.UserType
+		if !profileCompleted && userType == "retail" {
+			userType = "unknown"
+		} else if profileCompleted && (userType == "" || userType == "unknown") {
+			userType = "retail"
+		}
+		database.DB.Exec(`
+			UPDATE mini_app_users 
+			SET profile_completed = ?, user_type = ?, updated_at = NOW()
+			WHERE id = ?
+		`, profileCompleted, userType, address.UserID)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "删除成功",
+	})
+}
+
 type updateMiniAppUserByAdminRequest struct {
 	Name             string  `json:"name"`
 	Phone            string  `json:"phone"`
