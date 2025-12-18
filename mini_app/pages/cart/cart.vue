@@ -13,10 +13,13 @@
 		</view>
 		<view class="cart-body">
 			<view class="tabs">
-				<view class="tab active">今日添加</view>
-				<view class="tab">我常买</view>
-				<view class="tab" :class="{ active: isEditing }" @click="toggleEdit">{{ isEditing ? '完成' : '编辑' }}
+				<view class="tabs-left">
+					<view class="tab ">全部产品</view>
+					<view class="tab_edit" :class="{ active: isEditing }" @click="toggleEdit">{{ isEditing ? '完成' : '编辑'
+						}}</view>
+					<view class="tab_delete" v-if="isEditing" @click="batchDelete">批量删除</view>
 				</view>
+				<view class="tab tab-frequent" @click="goToFrequent">我常买</view>
 			</view>
 
 			<view class="cart-list" v-if="cartItems.length > 0">
@@ -31,20 +34,23 @@
 							<text class="item-price">¥{{ getDisplayPrice(item).toFixed(2) }}</text>
 						</view>
 						<text class="item-spec" v-if="item.spec_name">{{ item.spec_name }}</text>
-					<view class="blocked-badge" v-if="isItemBlocked(item)">
-						<text class="icon">!</text>
-						<text>该商品不参与免配送费</text>
-					</view>
+						<view class="blocked-badge" v-if="isItemBlocked(item) && actualDeliveryFee > 0">
+							<text class="icon">!</text>
+							<text>该商品不参与免配送费</text>
+						</view>
 						<text class="item-tags">支持采购 · 现货供应</text>
 						<view class="item-actions">
-							<view class="qty-control">
-								<view class="qty-btn" @click="decreaseItem(item)">-</view>
+							<view class="qty-control" v-if="!isEditing">
+								<view class="qty-btn minus" @click="decreaseItem(item)">
+									<image src="/static/icon/minus.png" class="qty-icon" />
+								</view>
 								<text class="qty-value">{{ item.quantity }}</text>
-								<view class="qty-btn" @click="increaseItem(item)">+</view>
+								<view class="qty-btn plus" @click="increaseItem(item)">
+									<uni-icons type="plusempty" size="16" color="#fff"></uni-icons>
+								</view>
 							</view>
 							<view class="item-delete" v-if="isEditing" @click="deleteItem(item)">
-								<uni-icons type="trash" size="16" color="#ff4d4f"></uni-icons>
-								<text>移除</text>
+								<uni-icons type="trash" size="22" color="#fff"></uni-icons>
 							</view>
 						</view>
 					</view>
@@ -59,47 +65,43 @@
 			</view>
 
 			<!-- 配送费信息 -->
-			<view class="assistant-card" v-if="cartItems.length > 0 && deliverySummary && !showFeeDetail">
-				<view class="assistant-header">
-					<text class="assistant-title">配送费</text>
-					<text class="assistant-amount" :class="{ free: actualDeliveryFee === 0 }">
-						{{ actualDeliveryFee === 0 ? '免配送费' : '¥' + deliveryFeeText }}
-					</text>
-				</view>
-				<text class="assistant-desc" v-if="deliverySummary.is_free_shipping">
-					已满足满 ¥{{ freeShippingThresholdText }} 免配送费
-				</text>
-				<text class="assistant-desc" v-else-if="selectedDeliveryFeeCoupon">
-					已使用免配送费券，当前订单免配送费
-				</text>
-				<text class="assistant-desc" v-else>
-					还差 ¥{{ shortOfAmount }} 可免配送费
-				</text>
-				<view class="assistant-tips" v-if="deliveryTips.length">
-					<view class="assistant-tip" v-for="tip in deliveryTips" :key="tipKey(tip)">
-						<text class="tip-name">{{ formatTipName(tip) }}</text>
-						<text class="tip-qty" v-if="tip.required_quantity">
-							{{ tip.current_quantity || 0 }} / {{ tip.required_quantity }} 件
+			<view class="assistant-card" v-if="cartItems.length > 0 && deliverySummary && !showFeeDetail"
+				@touchmove.stop.prevent>
+				<view class="assistant-row">
+					<view class="assistant-left">
+						<text class="assistant-title"><text class="title-red">凑单</text><text
+								class="title-black">助手</text></text>
+						<text class="assistant-divider">|</text>
+						<text class="assistant-hint"
+							v-if="!deliverySummary.is_free_shipping && !selectedDeliveryFeeCoupon">
+							还差<text class="assistant-amount">{{ shortOfAmount }}元</text>免基础配送费
 						</text>
+						<text class="assistant-hint free" v-else>您已享受基础配送费优惠</text>
+					</view>
+					<view class="assistant-btn" @click.stop="goToIndex">
+						<text>{{ (deliverySummary.is_free_shipping || selectedDeliveryFeeCoupon) ? '再看看' : '去凑单'
+							}}</text>
 					</view>
 				</view>
 			</view>
 
-			<view class="bottom-bar" v-if="cartItems.length > 0" @click="openFeeDetail">
+			<view class="bottom-bar" v-if="cartItems.length > 0" @click="openFeeDetail" @touchmove.stop.prevent>
 				<view class="bottom-left">
 					<view class="select-all" @click.stop="selectAll">
+						<!-- <text class="selected-count">共{{ selectedQuantity }} 件</text> -->
 						<view class="select-main">
 							<view
 								:class="['select-dot', { active: selectedIds.length === cartItems.length && cartItems.length > 0 }]">
 							</view>
 							<text>全选</text>
 						</view>
-						<text class="selected-count">已选 {{ selectedQuantity }} 件</text>
 					</view>
 					<view class="bottom-total">
 						<text class="bottom-amount">¥{{ finalAmount }}</text>
-						<text class="bottom-discount" v-if="actualDeliveryFee > 0">（含配送费 ¥{{ actualDeliveryFee.toFixed(2) }}）</text>
-						<text class="bottom-discount" v-else-if="totalDiscount > 0">（已优惠 ¥{{ totalDiscount }}）</text>
+						<text class="bottom-discount" v-if="actualDeliveryFee > 0">含配送费 ¥{{ actualDeliveryFee.toFixed(2)
+							}}</text>
+						<text class="bottom-discount-amount" v-else-if="totalDiscount > 0">已优惠 ¥{{ totalDiscount
+							}}</text>
 					</view>
 				</view>
 				<button class="checkout-btn" @click.stop="goCheckout">去下单</button>
@@ -114,14 +116,16 @@
 					<text class="fee-modal-close" @click="closeFeeDetail">×</text>
 				</view>
 				<view class="fee-modal-body">
-					<scroll-view scroll-y style="max-height: 400rpx; margin-bottom: 20rpx;" v-if="cartItems.length">
-						<view class="fee-item" v-for="item in cartItems" :key="item.id">
+					<scroll-view scroll-y style="max-height: 400rpx; margin-bottom: 20rpx;"
+						v-if="selectedCartItems.length">
+						<view class="fee-item" v-for="item in selectedCartItems" :key="item.id">
 							<view class="fee-item-info">
 								<text class="fee-item-name">{{ item.product_name }}</text>
 								<text class="fee-item-spec" v-if="item.spec_name">{{ item.spec_name }}</text>
 							</view>
 							<view class="fee-item-amount">
-								<text class="fee-item-price">¥{{ getDisplayPrice(item).toFixed(2) }} × {{ item.quantity }}</text>
+								<text class="fee-item-price">¥{{ getDisplayPrice(item).toFixed(2) }} × {{ item.quantity
+									}}</text>
 								<text class="fee-item-total">¥{{ getItemTotal(item) }}</text>
 							</view>
 						</view>
@@ -146,7 +150,8 @@
 							<text class="coupon-label">金额券</text>
 							<view class="coupon-selector" @click="showCouponSelector = true">
 								<text v-if="selectedAmountCoupon" class="coupon-selected">
-									{{ formatCouponName(selectedAmountCoupon) }} (减¥{{ formatCouponDiscount(selectedAmountCoupon) }})
+									{{ formatCouponName(selectedAmountCoupon) }} (减¥{{
+										formatCouponDiscount(selectedAmountCoupon) }})
 								</text>
 								<text v-else class="coupon-placeholder">选择优惠券</text>
 								<text class="coupon-change">切换</text>
@@ -178,20 +183,14 @@
 					<view class="coupon-type-section" v-if="availableDeliveryFeeCoupons.length > 0">
 						<text class="coupon-type-title">免配送费券</text>
 						<view class="coupon-list">
-							<view 
-								class="coupon-option" 
-								:class="{ active: !selectedDeliveryFeeCoupon }"
-								@click="selectDeliveryFeeCoupon(null)"
-							>
+							<view class="coupon-option" :class="{ active: !selectedDeliveryFeeCoupon }"
+								@click="selectDeliveryFeeCoupon(null)">
 								<text>不使用</text>
 							</view>
-							<view 
-								class="coupon-option" 
-								v-for="coupon in availableDeliveryFeeCoupons" 
+							<view class="coupon-option" v-for="coupon in availableDeliveryFeeCoupons"
 								:key="coupon.user_coupon_id"
 								:class="{ active: selectedDeliveryFeeCoupon?.user_coupon_id === coupon.user_coupon_id }"
-								@click="selectDeliveryFeeCoupon(coupon)"
-							>
+								@click="selectDeliveryFeeCoupon(coupon)">
 								<text class="coupon-option-name">{{ coupon.name }}</text>
 								<text class="coupon-option-desc" v-if="coupon.reason">{{ coupon.reason }}</text>
 							</view>
@@ -201,20 +200,14 @@
 					<view class="coupon-type-section" v-if="availableAmountCoupons.length > 0">
 						<text class="coupon-type-title">金额券</text>
 						<view class="coupon-list">
-							<view 
-								class="coupon-option" 
-								:class="{ active: !selectedAmountCoupon }"
-								@click="selectAmountCoupon(null)"
-							>
+							<view class="coupon-option" :class="{ active: !selectedAmountCoupon }"
+								@click="selectAmountCoupon(null)">
 								<text>不使用</text>
 							</view>
-							<view 
-								class="coupon-option" 
-								v-for="coupon in availableAmountCoupons" 
+							<view class="coupon-option" v-for="coupon in availableAmountCoupons"
 								:key="coupon.user_coupon_id"
 								:class="{ active: selectedAmountCoupon?.user_coupon_id === coupon.user_coupon_id, disabled: !coupon.is_available }"
-								@click="coupon.is_available && selectAmountCoupon(coupon)"
-							>
+								@click="coupon.is_available && selectAmountCoupon(coupon)">
 								<view class="coupon-option-content">
 									<text class="coupon-option-name">{{ coupon.name }}</text>
 									<text class="coupon-option-value">减¥{{ coupon.discount_value.toFixed(2) }}</text>
@@ -276,19 +269,16 @@ export default {
 		// 监听选中商品变化，重新计算配送费
 		selectedIds: {
 			handler(newIds, oldIds) {
-				// 避免初始化时触发
-				if (oldIds && oldIds.length === 0 && newIds.length > 0) {
-					return
-				}
 				// 如果选中商品发生变化，重新获取配送费摘要
 				if (newIds && newIds.length > 0 && this.cartItems.length > 0) {
 					this.updateDeliveryFeeForSelected()
-				} else if (newIds.length === 0) {
+				} else if (newIds && newIds.length === 0) {
 					// 如果没有选中商品，清空配送费摘要
 					this.deliverySummary = null
 				}
 			},
-			immediate: false
+			immediate: false,
+			deep: true
 		}
 	},
 	computed: {
@@ -310,6 +300,9 @@ export default {
 				.filter(item => this.selectedIds.includes(item.id))
 				.reduce((total, item) => total + this.getDisplayPrice(item) * (item.quantity || 0), 0)
 				.toFixed(2)
+		},
+		selectedCartItems() {
+			return this.cartItems.filter(item => this.selectedIds.includes(item.id))
 		},
 		deliveryFeeText() {
 			if (!this.deliverySummary) return '0.00'
@@ -394,37 +387,46 @@ export default {
 					this.blockedItemIds = [];
 					return;
 				}
-				const previousSelection = new Set(this.selectedIds);
+				// 从本地存储读取之前保存的选中状态和已知商品ID
+				const savedSelectedIds = uni.getStorageSync('cartSelectedIds') || [];
+				const savedKnownIds = uni.getStorageSync('cartKnownIds') || [];
+				const previousSelection = new Set(savedSelectedIds);
+				const previousKnown = new Set(savedKnownIds);
+
 				// 先获取所有商品列表（不传item_ids，获取全部）
 				const { items } = await fetchPurchaseList(this.token);
 				this.cartItems = items;
 				this.blockedItemIds = [];
 				if (items.length === 0) {
 					this.selectedIds = [];
+					this.saveSelectedIds([], []);
 					this.deliverySummary = null;
 					this.availableCoupons = [];
 					this.selectedDeliveryFeeCoupon = null;
 					this.selectedAmountCoupon = null;
 				} else {
-					// 新加入的商品自动选中
 					// 获取当前商品ID集合
-					const currentItemIds = new Set(items.map(item => item.id));
-					// 找出新加入的商品（在当前列表中但不在之前选中列表中的）
+					const currentItemIds = items.map(item => item.id);
+					// 找出新加入的商品（在当前列表中但不在之前已知的商品列表中）
 					const newItemIds = items
-						.filter(item => !previousSelection.has(item.id))
+						.filter(item => !previousKnown.has(item.id))
 						.map(item => item.id);
-					
-					if (previousSelection.size > 0) {
-					const retained = items
-						.filter(item => previousSelection.has(item.id))
-						.map(item => item.id);
+
+					if (previousKnown.size > 0) {
+						// 保留之前保存的选中状态（只保留仍存在的商品）
+						const retained = items
+							.filter(item => previousSelection.has(item.id))
+							.map(item => item.id);
 						// 保留之前的选中状态，并自动选中新加入的商品
 						this.selectedIds = [...retained, ...newItemIds];
-				} else {
+					} else {
 						// 首次加载或没有之前的选中状态，自动选中所有商品
-					this.selectedIds = items.map(item => item.id);
-				}
-					
+						this.selectedIds = items.map(item => item.id);
+					}
+
+					// 保存选中状态和已知商品ID
+					this.saveSelectedIds(this.selectedIds, currentItemIds);
+
 					// 根据选中的商品重新获取配送费摘要（包括优惠券信息）
 					if (this.selectedIds.length > 0) {
 						await this.updateDeliveryFeeForSelected();
@@ -438,6 +440,12 @@ export default {
 				});
 			} finally {
 				this.loading = false;
+			}
+		},
+		saveSelectedIds(selectedIds, knownIds) {
+			uni.setStorageSync('cartSelectedIds', selectedIds);
+			if (knownIds !== undefined) {
+				uni.setStorageSync('cartKnownIds', knownIds);
 			}
 		},
 		getDisplayPrice(item) {
@@ -456,6 +464,7 @@ export default {
 			} else {
 				this.selectedIds.push(item.id)
 			}
+			this.saveSelectedIds(this.selectedIds)
 		},
 		selectAll() {
 			if (this.selectedIds.length === this.cartItems.length) {
@@ -463,6 +472,7 @@ export default {
 			} else {
 				this.selectedIds = this.cartItems.map(item => item.id)
 			}
+			this.saveSelectedIds(this.selectedIds)
 		},
 		getItemTotal(item) {
 			if (!item) return '0.00'
@@ -534,6 +544,16 @@ export default {
 		toggleEdit() {
 			this.isEditing = !this.isEditing
 		},
+		goToFrequent() {
+			uni.navigateTo({
+				url: '/pages/frequent/frequent'
+			});
+		},
+		goToIndex() {
+			uni.switchTab({
+				url: '/pages/index/index'
+			});
+		},
 		async increaseItem(item) {
 			if (!item) return
 			await this.handleQuantityChange(item, (item.quantity || 0) + 1)
@@ -549,6 +569,7 @@ export default {
 		},
 		async handleQuantityChange(item, quantity) {
 			if (!item || !this.token) return
+			uni.vibrateShort({ type: 'light' })
 			try {
 				await updatePurchaseListQuantity({ token: this.token, itemId: item.id, quantity })
 				await this.loadCart()
@@ -570,6 +591,32 @@ export default {
 							this.loadCart();
 						} catch (error) {
 							console.error('删除采购单项失败:', error);
+							uni.showToast({ title: '删除失败，请稍后再试', icon: 'none' });
+						}
+					}
+				}
+			});
+		},
+		batchDelete() {
+			if (!this.selectedIds.length) {
+				uni.showToast({ title: '请先选择商品', icon: 'none' });
+				return;
+			}
+			uni.showModal({
+				title: '确认删除',
+				content: `确定要删除选中的 ${this.selectedIds.length} 个商品吗？`,
+				success: async (res) => {
+					if (res.confirm) {
+						try {
+							for (const itemId of this.selectedIds) {
+								await deletePurchaseListItemById({ token: this.token, itemId });
+							}
+							uni.showToast({ title: '删除成功', icon: 'success' });
+							this.selectedIds = [];
+							this.saveSelectedIds([]);
+							this.loadCart();
+						} catch (error) {
+							console.error('批量删除失败:', error);
 							uni.showToast({ title: '删除失败，请稍后再试', icon: 'none' });
 						}
 					}
@@ -649,11 +696,16 @@ export default {
 </script>
 
 <style>
+body {
+	overflow: hidden;
+}
+
 .cart-page {
 	height: 100vh;
 	display: flex;
 	flex-direction: column;
 	background: linear-gradient(180deg, #e7fff3 0%, #f8f9fb 40%, #f5f6f8 100%);
+	overflow: hidden;
 }
 
 .cart-body {
@@ -663,6 +715,7 @@ export default {
 	padding: 24rpx;
 	box-sizing: border-box;
 	min-height: 0;
+	overflow: hidden;
 }
 
 .cart-header {
@@ -683,7 +736,7 @@ export default {
 
 .header-left {
 	display: flex;
-	flex-direction:row;
+	flex-direction: row;
 	align-items: flex-end;
 	justify-content: flex-end;
 }
@@ -719,8 +772,14 @@ export default {
 
 .tabs {
 	display: flex;
-	gap: 16rpx;
+	justify-content: space-between;
+	align-items: center;
 	margin-bottom: 24rpx;
+}
+
+.tabs-left {
+	display: flex;
+	gap: 16rpx;
 }
 
 .tab {
@@ -731,8 +790,40 @@ export default {
 	background: #fff;
 }
 
+.tab_all {
+	padding: 12rpx 32rpx;
+}
+
+.tab_edit {
+	padding: 12rpx 32rpx;
+	border-radius: 999rpx;
+	font-size: 26rpx;
+	color: #20cb6b;
+	background: #fff;
+	font-weight: 600;
+}
+
+.tab_edit.active {
+	background: #20cb6b;
+	color: #fff;
+}
+
+.tab_delete {
+	padding: 12rpx 32rpx;
+	border-radius: 999rpx;
+	font-size: 26rpx;
+	color: #fff;
+	background: #ff4d4f;
+	font-weight: 500;
+}
+
 .tab.active {
 	background: #dff9ef;
+}
+
+.tab-frequent {
+	background: transparent;
+	color: #20CB6B;
 	color: #20cb6b;
 	font-weight: 600;
 }
@@ -740,7 +831,7 @@ export default {
 .cart-list {
 	flex: 1;
 	overflow-y: auto;
-	padding-bottom: 40rpx;
+	padding-bottom: 260rpx;
 }
 
 .cart-item {
@@ -871,33 +962,48 @@ export default {
 .qty-control {
 	display: flex;
 	align-items: center;
-	background: #f7f8fa;
-	border-radius: 999rpx;
+	gap: 10rpx;
 }
 
 .qty-btn {
 	width: 56rpx;
 	height: 56rpx;
+	border-radius: 50%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 32rpx;
-	color: #333;
+}
+
+.qty-btn.minus {
+	background: #F7F8F9;
+	/* border: 1rpx solid rgba(32, 203, 107, 0.3); */
+}
+
+.qty-btn.plus {
+	background: #20CB6B;
+}
+
+.qty-icon {
+	width: 28rpx;
+	height: 28rpx;
 }
 
 .qty-value {
 	font-size: 28rpx;
 	font-weight: 600;
 	color: #1a1a1a;
-	padding: 0 10rpx;
+	min-width: 40rpx;
+	text-align: center;
 }
 
 .item-delete {
+	width: 56rpx;
+	height: 56rpx;
+	border-radius: 50%;
+	background: #ff4d4f;
 	display: flex;
 	align-items: center;
-	gap: 6rpx;
-	font-size: 24rpx;
-	color: #ff4d4f;
+	justify-content: center;
 }
 
 .empty-cart {
@@ -917,73 +1023,86 @@ export default {
 }
 
 .assistant-card {
-	background: #fff;
-	border-radius: 24rpx;
-	padding: 24rpx;
-	margin-bottom: 16rpx;
-	box-shadow: 0 12rpx 24rpx rgba(24,39,75,0.06);
-	display: flex;
-	flex-direction: column;
-	gap: 12rpx;
+	position: fixed;
+	left: 24rpx;
+	right: 24rpx;
+	bottom: 130rpx;
+	background: #FFEFF0;
+	border-radius: 16rpx 16rpx 0 0;
+	padding: 16rpx 24rpx;
+	z-index: 99;
+	box-shadow: 0 -4rpx 20rpx rgba(0, 0, 0, 0.06);
 }
 
-.assistant-header {
+.assistant-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+}
+
+.assistant-left {
+	display: flex;
+	align-items: center;
+	gap: 12rpx;
+	flex: 1;
 }
 
 .assistant-title {
-	font-weight: 600;
 	font-size: 28rpx;
-	color: #303133;
+	font-weight: 700;
+}
+
+.title-red {
+	color: #e74c3c;
+}
+
+.title-black {
+	color: #333;
+}
+
+.assistant-divider {
+	font-size: 24rpx;
+	color: #ddd;
+	padding: 0 10rpx;
+}
+
+.assistant-hint {
+	font-size: 24rpx;
+	color: #666;
+}
+
+.assistant-hint.free {
+	color: #555;
 }
 
 .assistant-amount {
-	font-size: 36rpx;
+	color: #e74c3c;
 	font-weight: 600;
-	color: #ff4d4f;
 }
 
-.assistant-amount.free {
-	color: #20cb6b;
-}
-
-.assistant-desc {
+.assistant-btn {
+	padding: 8rpx 32rpx;
+	border: 2rpx solid #e74c3c;
+	border-radius: 999rpx;
+	color: #e74c3c;
 	font-size: 26rpx;
-	color: #606266;
-}
-
-.assistant-tips {
-	background: #f5f7fb;
-	border-radius: 16rpx;
-	padding: 12rpx 16rpx;
-	display: flex;
-	flex-direction: column;
-	gap: 10rpx;
-}
-
-.assistant-tip {
-	display: flex;
-	justify-content: space-between;
-	font-size: 24rpx;
-	color: #606266;
-}
-
-.tip-name {
 	font-weight: 500;
 }
 
-.tip-qty {
-	color: #909399;
-}
-
 .bottom-bar {
+	position: fixed;
+	left: 0;
+	bottom: 0;
+	width: 100%;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	background: #f7f8fa;
-	padding: 24rpx 0;
+	background: #fff;
+	padding: 24rpx;
+	box-sizing: border-box;
+	box-shadow: 0 -4rpx 20rpx rgba(0, 0, 0, 0.06);
+	z-index: 100;
+	border-bottom: 1rpx solid #F0F0F0;
 }
 
 .bottom-left {
@@ -991,15 +1110,19 @@ export default {
 	align-items: center;
 	justify-content: space-between;
 	gap: 24rpx;
+	flex: 1;
+	padding-right: 20rpx;
 }
 
 .select-all {
+	width: 100rpx;
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
 	gap: 6rpx;
 	font-size: 26rpx;
 	color: #606266;
+	height: 100%;
 }
 
 .select-main {
@@ -1009,7 +1132,7 @@ export default {
 }
 
 .selected-count {
-	font-size: 24rpx;
+	font-size: 22rpx;
 	color: #909399;
 	margin-left: 8rpx;
 }
@@ -1037,6 +1160,11 @@ export default {
 	color: #c0c4cc;
 }
 
+.bottom-discount-amount {
+	font-size: 24rpx;
+	color: #20cb6b;
+}
+
 .bottom-actions {
 	display: flex;
 	gap: 16rpx;
@@ -1047,12 +1175,13 @@ export default {
 	background: linear-gradient(135deg, #20cb6b, #17b76b);
 	color: #fff;
 	font-weight: 600;
-	flex: 1;
+	width: 280rpx;
 	height: 86rpx;
 	line-height: 86rpx;
 	border-radius: 999rpx;
 	border: none;
 	font-size: 30rpx;
+	margin: 0;
 }
 
 .fee-modal-container {
@@ -1064,6 +1193,7 @@ export default {
 	display: flex;
 	align-items: flex-end;
 	justify-content: center;
+	border-bottom: 1rpx solid #F0F0F0;
 }
 
 .fee-modal-mask {
@@ -1106,6 +1236,7 @@ export default {
 	flex-direction: column;
 	gap: 20rpx;
 }
+
 .fee-item {
 	display: flex;
 	justify-content: space-between;

@@ -52,6 +52,12 @@
             </el-icon>
             <span>轮播图管理</span>
           </el-menu-item>
+          <el-menu-item index="/hot-search-keywords">
+            <el-icon>
+              <Search />
+            </el-icon>
+            <span>热门搜索</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <!-- 订单管理 -->
@@ -224,7 +230,8 @@ import {
   Ticket,
   Document,
   Box,
-  Location
+  Location,
+  Search
 } from '@element-plus/icons-vue'
 import { logout, getAdminInfo } from '../api/auth'
 import { ElMessage } from 'element-plus'

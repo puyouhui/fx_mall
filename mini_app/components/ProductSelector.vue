@@ -1,8 +1,8 @@
 <template>
   <view>
-    <view class="ps-modal" v-if="isVisible" @click="closeModal">
-      <view class="ps-overlay"></view>
-      <view class="ps-content" @click.stop>
+    <view class="ps-modal" v-if="isVisible" @click="closeModal" @touchmove.stop.prevent>
+      <view class="ps-overlay" @touchmove.stop.prevent></view>
+      <view class="ps-content" @click.stop @touchmove.stop>
         <view class="ps-header">
           <text class="ps-title">选择规格</text>
           <view class="ps-close" @click.stop="closeModal">
@@ -58,7 +58,7 @@
                 v-if="getSpecQuantity(spec) === 0"
                 @click.stop="increaseSpecQuantity(spec)"
               >
-                <uni-icons type="plusempty" size="22" color="#20CB6B"></uni-icons>
+                <uni-icons type="plusempty" size="22" color="#fff"></uni-icons>
               </view>
               <view v-else class="ps-spec-qty">
                 <view class="ps-spec-btn" @click.stop="decreaseSpecQuantity(spec)">
@@ -431,10 +431,15 @@ const formatSpecPrice = (spec, priceType = 'retail') => {
   return parseFloat(price || 0).toFixed(2)
 }
 
+const vibrate = () => {
+  uni.vibrateShort({ type: 'light' })
+}
+
 const increaseSpecQuantity = async (spec) => {
   if (!spec || !spec.id) return
   const ready = await ensureUserReady()
   if (!ready) return
+  vibrate()
   quantityMap.value = {
     ...quantityMap.value,
     [spec.id]: getSpecQuantity(spec) + 1
@@ -445,6 +450,7 @@ const decreaseSpecQuantity = (spec) => {
   if (!spec || !spec.id) return
   const current = getSpecQuantity(spec)
   if (current <= 0) return
+  vibrate()
   quantityMap.value = {
     ...quantityMap.value,
     [spec.id]: current - 1
@@ -454,11 +460,13 @@ const decreaseSpecQuantity = (spec) => {
 const increaseSingleQuantity = async () => {
   const ready = await ensureUserReady()
   if (!ready) return
+  vibrate()
   singleQuantity.value++
 }
 
 const decreaseSingleQuantity = () => {
   if (singleQuantity.value > 1) {
+    vibrate()
     singleQuantity.value--
   }
 }
@@ -505,6 +513,7 @@ const addToCart = async () => {
       quantity: singleQuantity.value
       })
     }
+  uni.vibrateShort({ type: 'medium' })
   uni.showToast({ title: '已添加到采购单', icon: 'success' })
   closeModal()
   } catch (error) {
@@ -574,7 +583,7 @@ defineExpose({
 
 .ps-info {
   display: flex;
-  margin: 30rpx 0;
+  margin: 24rpx 0;
 }
 
 .ps-image {
@@ -613,7 +622,9 @@ defineExpose({
   font-weight: 600;
   color: #ff4d4f;
 }
-.ps-specs,
+.ps-specs{
+  padding: 0;
+}
 .ps-quantity {
   padding: 24rpx 0;
 }
@@ -711,14 +722,13 @@ defineExpose({
 }
 
 .ps-spec-add {
-  width: 56rpx;
-  height: 56rpx;
+  width: 64rpx;
+  height: 64rpx;
   border-radius: 50%;
-  border: 1rpx dashed #20CB6B;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
+  background: #20CB6B;
 }
 
 .ps-spec-qty {
@@ -728,14 +738,15 @@ defineExpose({
 }
 
 .ps-spec-btn {
-  width: 52rpx;
-  height: 52rpx;
+  width: 64rpx;
+  height: 64rpx;
   border-radius: 50%;
-  border: 1rpx solid rgba(32, 203, 107, 0.3);
+  /* border: 1rpx solid rgba(32, 203, 107, 0.3); */
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(32, 203, 107, 0.08);
+  /* background: rgba(32, 203, 107, 0.08); */
+  background-color: #F7F8F9;
 }
 
 .ps-spec-btn.plus {
@@ -744,8 +755,10 @@ defineExpose({
 }
 
 .ps-spec-qty-text {
-  font-size: 28rpx;
+  font-size: 32rpx;
   font-weight: 600;
+  min-width: 48rpx;
+  text-align: center;
 }
 
 .ps-quantity-single {
@@ -798,7 +811,7 @@ defineExpose({
   background: linear-gradient(90deg, #20CB6B, #12a458);
   border-radius: 999rpx;
   text-align: center;
-  padding: 20rpx 0;
+  padding: 28rpx 0;
   color: #fff;
   font-size: 30rpx;
   font-weight: 600;

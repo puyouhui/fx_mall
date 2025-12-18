@@ -844,6 +844,7 @@ export default {
 	background-position: center;
 	color: #fff;
 	box-shadow: none;
+	line-height: 48rpx;
 }
 
 .price-icon {
@@ -856,6 +857,7 @@ export default {
 .price-number {
 	color: #fff;
 	font-weight: bold;
+	padding-top: 3rpx;
 }
 
 .price-symbol {
@@ -1004,8 +1006,8 @@ export default {
 }
 
 .add-btn {
-	width: 30px;
-	height: 30px;
+	width: 32px;
+	height: 32px;
 	background-color: #20CB6B;
 	color: #fff;
 	font-size: 36rpx;

@@ -177,3 +177,17 @@ export const searchProducts = (keyword, pageNum = 1, pageSize = 10) => {
     };
   });
 };
+
+/**
+ * 获取热门搜索关键词
+ * @returns Promise 热门搜索关键词列表
+ */
+export const getHotSearchKeywords = () => {
+  return get('/hot-search-keywords').catch(error => {
+    console.error('获取热门搜索关键词失败:', error);
+    return {
+      code: 200,
+      data: []
+    };
+  });
+};

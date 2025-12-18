@@ -79,6 +79,9 @@ func main() {
 			miniAppProtectedGroup.DELETE("/purchase-list/:id", api.DeletePurchaseListItem)
 			miniAppProtectedGroup.DELETE("/purchase-list", api.ClearPurchaseList)
 
+			// 常购商品接口
+			miniAppProtectedGroup.GET("/frequent-products", api.GetFrequentProducts)
+
 			// 订单接口
 			miniAppProtectedGroup.POST("/orders", api.CreateOrderFromCart)   // 从当前采购单创建订单
 			miniAppProtectedGroup.GET("/orders", api.GetUserOrders)          // 获取用户订单列表
@@ -98,6 +101,7 @@ func main() {
 		// 商品相关接口
 		apiGroup.GET("/products/search/suggestions", api.SearchProductSuggestions) // 搜索商品建议
 		apiGroup.GET("/products/search", api.SearchProducts)                       // 搜索商品
+		apiGroup.GET("/hot-search-keywords", api.GetHotSearchKeywords)             // 获取热门搜索关键词
 		apiGroup.GET("/products/:id", api.GetProductDetail)                        // 根据商品ID获取商品详情
 
 		// 管理员相关接口
@@ -143,6 +147,12 @@ func main() {
 				protectedGroup.PUT("/hot-products/:id", api.UpdateHotProduct)      // 更新热销产品关联
 				protectedGroup.DELETE("/hot-products/:id", api.DeleteHotProduct)   // 删除热销产品关联
 				protectedGroup.PUT("/hot-products/sort", api.UpdateHotProductSort) // 批量更新热销产品排序
+
+				// 热门搜索关键词管理接口
+				protectedGroup.GET("/hot-search-keywords", api.GetAllHotSearchKeywordsForAdmin)     // 获取所有热门搜索关键词
+				protectedGroup.POST("/hot-search-keywords", api.CreateHotSearchKeyword)             // 创建热门搜索关键词
+				protectedGroup.PUT("/hot-search-keywords/:id", api.UpdateHotSearchKeyword)          // 更新热门搜索关键词
+				protectedGroup.DELETE("/hot-search-keywords/:id", api.DeleteHotSearchKeyword)       // 删除热门搜索关键词
 
 				// 配送费设置
 				protectedGroup.GET("/delivery-fee/settings", api.GetDeliveryFeeSettings)           // 获取配送费基础设置

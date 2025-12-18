@@ -181,6 +181,7 @@ func UpdateCategory(c *gin.Context) {
 	category.ParentID = updateData.ParentID
 	category.Sort = updateData.Sort
 	category.Status = updateData.Status
+	category.Icon = updateData.Icon
 
 	// 更新分类
 	if err := model.UpdateCategory(category); err != nil {

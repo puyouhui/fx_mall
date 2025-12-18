@@ -73,14 +73,11 @@
             </view>
           </view>
 
-          <!-- 处理商品 -->
+          <!-- 特惠推荐 -->
           <view class="processing-products">
             <view class="section-title processing-title">
               <view class="title-left">
-                <!-- <view class="bag-icon">
-                  <text class="bag-text">🛍</text>
-                </view> -->
-                <text class="title-text">处理商品</text>
+                <text class="title-text">特惠推荐</text>
               </view>
               <view class="more">
                 <text class="more-text">全部</text>
@@ -88,13 +85,10 @@
               </view>
             </view>
             <view class="processing-product-list">
-              <view class="product-item" v-for="(product, index) in processingProducts" :key="index" @click="goToProductDetail(product.id)">
+              <view class="product-item" v-for="(product, index) in featuredProducts" :key="index" @click="goToProductDetail(product.id)">
                 <image :src="product.images[0] || '/static/test/product1.jpg'" class="product-image" mode="aspectFill"></image>
                 <view class="product-info">
-                  <view class="product-name-row">
-                    <text class="product-name">{{ product.name }}</text>
-                    <view class="trust-badge">放心购</view>
-                  </view>
+                  <text class="product-name">{{ product.name }}</text>
                   <view class="product-bottom-info">
                     <text class="product-price">¥{{ product.displayPrice || product.price }}</text>
                     <view class="add-btn" @click.stop="onAddBtnClick(product)">
@@ -164,14 +158,21 @@
         </view>
       </view>
     </view>
+
+    <ProductSelector ref="productSelector" />
   </view>
 </template>
 
 <script>
-import { getProductDetail, searchProducts, searchProductSuggestions } from '../../api/products';
+import { getProductDetail, searchProducts, searchProductSuggestions, getHotSearchKeywords } from '../../api/products';
+import { getHotProducts, getSpecialProducts } from '../../api/index';
 import { addItemToPurchaseList } from '../../utils/purchaseList';
+import ProductSelector from '../../components/ProductSelector.vue';
 
 export default {
+  components: {
+    ProductSelector
+  },
   data() {
     return {
       statusBarHeight: 0, // 状态栏高度
@@ -181,19 +182,9 @@ export default {
       searchText: '',
       suggestions: [], // 搜索建议列表
       searchTimer: null, // 搜索防抖定时器
-      hotSearchTags: ['火锅食材', '调味品', '饮料', '零食', '水果', '蔬菜', '肉类', '乳制品'],
-      specialProducts: [
-        { id: 1, name: '精选澳洲牛肉卷', price: '98.99', images: ['/static/test/product1.jpg'] },
-        { id: 2, name: '有机蔬菜礼盒', price: '128.00', images: ['/static/test/product2.jpg'] },
-        { id: 3, name: '进口水果拼盘', price: '168.00', images: ['/static/test/product3.jpg'] },
-        { id: 4, name: '优质大米5kg', price: '88.00', images: ['/static/test/product4.jpg'] }
-      ],
-      processingProducts: [
-        { id: 5, name: '临期面包组合', price: '38.00', images: ['/static/test/product5.jpg'] },
-        { id: 6, name: '促销酸奶12盒', price: '59.90', images: ['/static/test/product6.jpg'] },
-        { id: 7, name: '打折巧克力礼盒', price: '79.00', images: ['/static/test/product7.jpg'] },
-        { id: 8, name: '特价坚果礼盒', price: '99.00', images: ['/static/test/product8.jpg'] }
-      ],
+      hotSearchTags: [],
+      specialProducts: [],
+      featuredProducts: [],
       // 弹窗相关状态
       showProductModal: false,
       selectedProduct: null,
@@ -212,15 +203,63 @@ export default {
     // 获取胶囊按钮信息，计算搜索框可用宽度
     this.getMenuButtonInfo();
     
-    // 计算价格范围
-    this.specialProducts.forEach(product => {
-      this.calculateProductPriceRange(product);
-    });
-    this.processingProducts.forEach(product => {
-      this.calculateProductPriceRange(product);
-    });
+    // 获取热门搜索关键词
+    this.loadHotSearchKeywords();
+    
+    // 获取热销产品作为超值推荐
+    this.loadHotProducts();
+    
+    // 获取精选商品作为特惠推荐
+    this.loadFeaturedProducts();
   },
   methods: {
+    // 加载热门搜索关键词
+    async loadHotSearchKeywords() {
+      try {
+        const res = await getHotSearchKeywords();
+        if (res && res.code === 200 && res.data) {
+          this.hotSearchTags = Array.isArray(res.data) ? res.data : [];
+        }
+      } catch (error) {
+        console.error('获取热门搜索关键词失败:', error);
+      }
+    },
+    
+    // 加载热销产品作为超值推荐
+    async loadHotProducts() {
+      try {
+        const res = await getHotProducts();
+        if (res && res.code === 200 && res.data) {
+          const products = Array.isArray(res.data) ? res.data : [];
+          // 计算价格范围
+          products.forEach(product => {
+            this.calculateProductPriceRange(product);
+          });
+          // 前5个作为超值推荐
+          this.specialProducts = products.slice(0, 5);
+        }
+      } catch (error) {
+        console.error('获取热销产品失败:', error);
+      }
+    },
+    
+    // 加载精选商品作为特惠推荐
+    async loadFeaturedProducts() {
+      try {
+        const res = await getSpecialProducts({ pageNum: 1, pageSize: 5 });
+        if (res && res.code === 200 && res.data) {
+          const products = Array.isArray(res.data) ? res.data : res.data.list || [];
+          // 计算价格范围
+          products.forEach(product => {
+            this.calculateProductPriceRange(product);
+          });
+          this.featuredProducts = products.slice(0, 5);
+        }
+      } catch (error) {
+        console.error('获取精选商品失败:', error);
+      }
+    },
+    
     // 输入框输入事件（获取搜索建议）- 添加防抖处理
     onSearchInput() {
       // 清除之前的定时器
@@ -307,28 +346,57 @@ export default {
       return mockResults;
     },
     
-    // 计算商品价格范围
+    // 计算商品价格范围（与首页一致）
     calculateProductPriceRange(product) {
-      if (product.specs && product.specs.length > 0) {
-        // 过滤出有价格的规格
-        const pricedSpecs = product.specs.filter(spec => spec.price !== undefined && spec.price !== null);
-        
-        if (pricedSpecs.length > 0) {
-          const minPrice = Math.min(...pricedSpecs.map(spec => spec.price));
-          const maxPrice = Math.max(...pricedSpecs.map(spec => spec.price));
-          
-          // 设置价格范围显示
-          if (minPrice === maxPrice) {
-            product.displayPrice = minPrice.toFixed(2);
-          } else {
-            product.displayPrice = minPrice.toFixed(2) + '~' + maxPrice.toFixed(2);
-          }
-        } else if (product.price) {
-          product.displayPrice = parseFloat(product.price).toFixed(2);
-        }
-      } else if (product.price) {
-        product.displayPrice = parseFloat(product.price).toFixed(2);
+      if (!product.specs || !Array.isArray(product.specs) || product.specs.length === 0) {
+        product.displayPrice = product.price || '0.00';
+        return;
       }
+
+      // 获取用户类型
+      const userInfo = uni.getStorageSync('miniUserInfo');
+      const isWholesaleUser = userInfo && userInfo.user_type === 'wholesale';
+      
+      // 收集价格
+      const prices = [];
+      product.specs.forEach(spec => {
+        if (isWholesaleUser) {
+          const wholesalePrice = spec.wholesale_price || spec.wholesalePrice;
+          if (wholesalePrice && wholesalePrice > 0) {
+            prices.push(parseFloat(wholesalePrice));
+          }
+        } else {
+          const retailPrice = spec.retail_price || spec.retailPrice;
+          if (retailPrice && retailPrice > 0) {
+            prices.push(parseFloat(retailPrice));
+          }
+        }
+      });
+
+      // 如果没有找到对应类型的价格，使用另一种价格作为后备
+      if (prices.length === 0) {
+        product.specs.forEach(spec => {
+          if (isWholesaleUser) {
+            const retailPrice = spec.retail_price || spec.retailPrice;
+            if (retailPrice && retailPrice > 0) {
+              prices.push(parseFloat(retailPrice));
+            }
+          } else {
+            const wholesalePrice = spec.wholesale_price || spec.wholesalePrice;
+            if (wholesalePrice && wholesalePrice > 0) {
+              prices.push(parseFloat(wholesalePrice));
+            }
+          }
+        });
+      }
+
+      if (prices.length === 0) {
+        product.displayPrice = product.price || '0.00';
+        return;
+      }
+
+      const minPrice = Math.min(...prices);
+      product.displayPrice = minPrice.toFixed(2);
     },
     
     // 跳转到商品详情
@@ -338,8 +406,13 @@ export default {
       });
     },
     
-    // 显示商品选择弹窗
-    async onAddBtnClick(product) {
+    // 显示商品选择弹窗（使用ProductSelector组件，与首页一致）
+    onAddBtnClick(product) {
+      this.$refs.productSelector?.open(product);
+    },
+    
+    // 原来的弹窗逻辑（保留但不再使用）
+    async onAddBtnClickOld(product) {
       try {
         // 显示加载状态
         this.loadingProduct = true;
@@ -681,8 +754,9 @@ page{
 }
 
 .title-text {
-  font-size: 30rpx;
+  font-size: 26rpx;
   font-weight: bold;
+  padding-left: 10rpx;
 }
 
 .special-title .title-text {
@@ -885,6 +959,7 @@ page{
   border-radius: 0;
   flex-shrink: 0;
   object-fit: cover;
+  border-radius: 16rpx;
 }
 
 /* 搜索结果中的商品信息样式 */
@@ -902,6 +977,8 @@ page{
   flex-direction: column;
   justify-content: space-between;
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .product-name {
@@ -913,6 +990,19 @@ page{
   color: #333;
   line-height: 1.4;
   margin-bottom: 10rpx;
+  word-break: break-all;
+}
+
+/* 超值推荐和特惠推荐中的商品名称固定宽度并允许换行 */
+.special-product-list .product-name,
+.processing-product-list .product-name {
+  white-space: normal;
+  word-wrap: break-word;
+  word-break: break-all;
+  display: block;
+  -webkit-line-clamp: unset;
+  -webkit-box-orient: unset;
+  overflow: visible;
 }
 
 .product-name-row {

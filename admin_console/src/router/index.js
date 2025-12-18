@@ -72,6 +72,14 @@ const routes = [
         }
       },
       {
+        path: 'hot-search-keywords',
+        name: 'HotSearchKeywords',
+        component: () => import('../views/HotSearchKeywords.vue'),
+        meta: {
+          title: '热门搜索关键词'
+        }
+      },
+      {
         path: 'mini-users',
         name: 'MiniUsers',
         component: () => import('../views/MiniUsers.vue'),

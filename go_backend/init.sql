@@ -113,6 +113,16 @@ CREATE TABLE IF NOT EXISTS carousels (
     updated_at DATETIME NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='轮播图表';
 
+-- 创建热门搜索关键词表
+CREATE TABLE IF NOT EXISTS hot_search_keywords (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    keyword VARCHAR(100) NOT NULL COMMENT '关键词',
+    sort INT DEFAULT 0 COMMENT '排序（越小越靠前）',
+    status TINYINT DEFAULT 1 COMMENT '状态：1启用，0禁用',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='热门搜索关键词';
+
 -- 插入管理员测试数据
 INSERT INTO admins (username, password, created_at, updated_at)
 VALUES ('admin', 'admin123', NOW(), NOW());
@@ -143,6 +153,17 @@ VALUES
     ('/static/banner1.jpg', '新品特惠', '/pages/product/list', 1, 1, NOW(), NOW()),
     ('/static/banner2.jpg', '限时折扣', '/pages/product/special', 2, 1, NOW(), NOW()),
     ('/static/banner3.jpg', '热门推荐', '/pages/product/hot', 3, 1, NOW(), NOW());
+
+-- 插入热门搜索关键词默认数据
+INSERT INTO hot_search_keywords (keyword, sort, status) VALUES
+    ('火锅食材', 1, 1),
+    ('调味品', 2, 1),
+    ('饮料', 3, 1),
+    ('零食', 4, 1),
+    ('水果', 5, 1),
+    ('蔬菜', 6, 1),
+    ('肉类', 7, 1),
+    ('乳制品', 8, 1);
 
 -- 插入商品测试数据
 INSERT INTO products (name, description, price, category_id, is_special, images, specs, status, created_at, updated_at)

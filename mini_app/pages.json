@@ -99,8 +99,8 @@
 			"path": "pages/order/confirm",
 			"style": {
 				"navigationBarTitleText": "提交订单",
-				"navigationBarBackgroundColor": "#FFFFFF",
-				"navigationBarTextStyle": "black"
+				"navigationBarBackgroundColor": "#20CB6B",
+				"navigationBarTextStyle": "white"
 			}
 		},
 		{
@@ -111,6 +111,12 @@
 		},
 		{
 			"path": "pages/order/detail",
+			"style": {
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/frequent/frequent",
 			"style": {
 				"navigationStyle": "custom"
 			}

@@ -54,7 +54,7 @@
         <view class="urgent-left">
           <view class="urgent-header">
             <text class="urgent-title">加急订单</text>
-            <text class="urgent-tag">将优先为您配送</text>
+            <text class="urgent-tag">平台将为您加急配送</text>
           </view>
         </view>
         <view class="urgent-right">

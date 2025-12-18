@@ -482,6 +482,54 @@ func InitDB() error {
 			return
 		}
 
+		// 创建热门搜索关键词表
+		createHotSearchKeywordsTableSQL := `
+		CREATE TABLE IF NOT EXISTS hot_search_keywords (
+		    id INT AUTO_INCREMENT PRIMARY KEY,
+		    keyword VARCHAR(100) NOT NULL COMMENT '关键词',
+		    sort INT DEFAULT 0 COMMENT '排序（越小越靠前）',
+		    status TINYINT DEFAULT 1 COMMENT '状态：1启用，0禁用',
+		    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='热门搜索关键词';
+		`
+
+		_, err = DB.Exec(createHotSearchKeywordsTableSQL)
+		if err != nil {
+			log.Printf("创建hot_search_keywords表失败: %v", err)
+			return
+		}
+
+		// 检查热门搜索关键词表是否有数据，如果没有则插入默认数据
+		var hotKeywordCount int
+		err = DB.QueryRow("SELECT COUNT(*) FROM hot_search_keywords").Scan(&hotKeywordCount)
+		if err != nil {
+			log.Printf("查询热门搜索关键词数量失败: %v", err)
+			return
+		}
+
+		if hotKeywordCount == 0 {
+			insertHotKeywordsSQL := `
+			INSERT INTO hot_search_keywords (keyword, sort, status) VALUES
+			    ('抽纸', 1, 1),
+			    ('下拉抽纸', 2, 1),
+			    ('纸碗', 3, 1),
+			    ('筷子', 4, 1),
+			    ('勺子', 5, 1),
+			    ('打包袋', 6, 1),
+			    ('定制打包袋', 7, 1),
+			    ('保鲜膜', 8, 1);
+			`
+			_, err = DB.Exec(insertHotKeywordsSQL)
+			if err != nil {
+				log.Printf("插入热门搜索关键词失败: %v", err)
+				return
+			}
+			log.Println("热门搜索关键词表初始化成功")
+		} else {
+			log.Println("热门搜索关键词表已有数据，跳过初始化")
+		}
+
 		// 创建mini_app_addresses表（用户地址表）
 		createMiniAppAddressesTableSQL := `
 		CREATE TABLE IF NOT EXISTS mini_app_addresses (
