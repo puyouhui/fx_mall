@@ -48,6 +48,11 @@ type SalesCommission struct {
 	TotalCommission      float64     `json:"total_commission"`     // 总分成
 	TierLevel            int         `json:"tier_level"`            // 达到的阶梯等级
 	CalculationMonth     string      `json:"calculation_month"`     // 计算月份（YYYY-MM）
+	IsAccounted          bool        `json:"is_accounted"`          // 是否已计入（平台承认了销售员这个分润收入）
+	AccountedAt          *time.Time  `json:"accounted_at,omitempty"` // 计入时间
+	IsSettled            bool        `json:"is_settled"`            // 是否已结算（平台已经将该费用结算给销售员）
+	SettledAt            *time.Time  `json:"settled_at,omitempty"`   // 结算时间
+	IsAccountedCancelled bool        `json:"is_accounted_cancelled"` // 计入是否已取消
 	CreatedAt            time.Time   `json:"created_at"`
 	UpdatedAt            time.Time   `json:"updated_at"`
 }
@@ -279,8 +284,9 @@ func SaveSalesCommission(commission *SalesCommission) error {
 			settlement_date, is_valid_order, is_new_customer_order,
 			order_amount, goods_cost, delivery_cost, order_profit,
 			base_commission, new_customer_bonus, tier_commission,
-			total_commission, tier_level, calculation_month
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			total_commission, tier_level, calculation_month,
+			is_accounted, accounted_at, is_settled, settled_at, is_accounted_cancelled
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON DUPLICATE KEY UPDATE
 			settlement_date = VALUES(settlement_date),
 			is_valid_order = VALUES(is_valid_order),
@@ -295,6 +301,9 @@ func SaveSalesCommission(commission *SalesCommission) error {
 			total_commission = VALUES(total_commission),
 			tier_level = VALUES(tier_level),
 			calculation_month = VALUES(calculation_month),
+			-- 如果已取消计入，不更新计入相关字段
+			is_accounted = IF(is_accounted_cancelled = 1, is_accounted, VALUES(is_accounted)),
+			accounted_at = IF(is_accounted_cancelled = 1, accounted_at, VALUES(accounted_at)),
 			updated_at = NOW()
 	`
 	var settlementDate interface{}
@@ -313,18 +322,47 @@ func SaveSalesCommission(commission *SalesCommission) error {
 		isNewCustomerOrder = 1
 	}
 
+	isAccounted := 0
+	if commission.IsAccounted {
+		isAccounted = 1
+	}
+	var accountedAt interface{}
+	if commission.AccountedAt != nil {
+		accountedAt = commission.AccountedAt
+	} else {
+		accountedAt = nil
+	}
+
+	isSettled := 0
+	if commission.IsSettled {
+		isSettled = 1
+	}
+	var settledAt interface{}
+	if commission.SettledAt != nil {
+		settledAt = commission.SettledAt
+	} else {
+		settledAt = nil
+	}
+
+	isAccountedCancelled := 0
+	if commission.IsAccountedCancelled {
+		isAccountedCancelled = 1
+	}
+
 	_, err := database.DB.Exec(query,
 		commission.OrderID, commission.EmployeeCode, commission.UserID, commission.OrderNumber,
 		commission.OrderDate, settlementDate, isValidOrder, isNewCustomerOrder,
 		commission.OrderAmount, commission.GoodsCost, commission.DeliveryCost, commission.OrderProfit,
 		commission.BaseCommission, commission.NewCustomerBonus, commission.TierCommission,
 		commission.TotalCommission, commission.TierLevel, commission.CalculationMonth,
+		isAccounted, accountedAt, isSettled, settledAt, isAccountedCancelled,
 	)
 	return err
 }
 
 // GetSalesCommissionsByEmployee 获取销售员的分成记录列表
-func GetSalesCommissionsByEmployee(employeeCode string, month string, pageNum, pageSize int) ([]SalesCommission, int, error) {
+// status: "all" - 全部, "accounted" - 已计入, "settled" - 已结算, "unaccounted" - 未计入, "unsettled" - 未结算
+func GetSalesCommissionsByEmployee(employeeCode string, month string, status string, startDate, endDate *time.Time, pageNum, pageSize int) ([]SalesCommission, int, error) {
 	offset := (pageNum - 1) * pageSize
 
 	// 构建查询条件
@@ -336,6 +374,34 @@ func GetSalesCommissionsByEmployee(employeeCode string, month string, pageNum, p
 		args = append(args, month)
 	}
 
+	// 状态筛选（已取消计入的记录需要特殊处理）
+	if status == "accounted" {
+		// 已计入：排除已取消的记录
+		where += " AND is_accounted = 1 AND is_accounted_cancelled = 0"
+	} else if status == "settled" {
+		// 已结算：排除已取消的记录
+		where += " AND is_settled = 1 AND is_accounted_cancelled = 0"
+	} else if status == "unaccounted" {
+		// 未计入：包括已取消的记录（因为取消后 is_accounted = 0）
+		where += " AND is_accounted = 0"
+	} else if status == "unsettled" {
+		// 未结算：排除已取消的记录（因为已取消的记录不能结算）
+		where += " AND is_settled = 0 AND is_accounted_cancelled = 0"
+	} else if status == "invalid" {
+		// 无效订单
+		where += " AND is_valid_order = 0"
+	}
+
+	// 日期范围筛选
+	if startDate != nil {
+		where += " AND order_date >= ?"
+		args = append(args, startDate.Format("2006-01-02"))
+	}
+	if endDate != nil {
+		where += " AND order_date <= ?"
+		args = append(args, endDate.Format("2006-01-02"))
+	}
+
 	// 查询总数
 	var total int
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM sales_commissions WHERE %s", where)
@@ -344,17 +410,21 @@ func GetSalesCommissionsByEmployee(employeeCode string, month string, pageNum, p
 		return nil, 0, err
 	}
 
-	// 查询列表
+	// 查询列表（关联查询地址名称）
 	query := fmt.Sprintf(`
-		SELECT id, order_id, employee_code, user_id, order_number, order_date,
-		       settlement_date, is_valid_order, is_new_customer_order,
-		       order_amount, goods_cost, delivery_cost, order_profit,
-		       base_commission, new_customer_bonus, tier_commission,
-		       total_commission, tier_level, calculation_month,
-		       created_at, updated_at
-		FROM sales_commissions
+		SELECT sc.id, sc.order_id, sc.employee_code, sc.user_id, sc.order_number, sc.order_date,
+		       sc.settlement_date, sc.is_valid_order, sc.is_new_customer_order,
+		       sc.order_amount, sc.goods_cost, sc.delivery_cost, sc.order_profit,
+		       sc.base_commission, sc.new_customer_bonus, sc.tier_commission,
+		       sc.total_commission, sc.tier_level, sc.calculation_month,
+		       sc.is_accounted, sc.accounted_at, sc.is_settled, sc.settled_at, sc.is_accounted_cancelled,
+		       sc.created_at, sc.updated_at,
+		       a.name AS address_name
+		FROM sales_commissions sc
+		LEFT JOIN orders o ON sc.order_id = o.id
+		LEFT JOIN mini_app_addresses a ON o.address_id = a.id
 		WHERE %s
-		ORDER BY order_date DESC, id DESC
+		ORDER BY sc.order_date DESC, sc.id DESC
 		LIMIT ? OFFSET ?
 	`, where)
 	args = append(args, pageSize, offset)
@@ -368,8 +438,9 @@ func GetSalesCommissionsByEmployee(employeeCode string, month string, pageNum, p
 	commissions := make([]SalesCommission, 0)
 	for rows.Next() {
 		var commission SalesCommission
-		var settlementDate sql.NullTime
-		var isValidOrder, isNewCustomerOrder int
+		var settlementDate, accountedAt, settledAt sql.NullTime
+		var isValidOrder, isNewCustomerOrder, isAccounted, isSettled, isAccountedCancelled int
+		var addressName sql.NullString
 
 		err := rows.Scan(
 			&commission.ID, &commission.OrderID, &commission.EmployeeCode, &commission.UserID,
@@ -378,7 +449,10 @@ func GetSalesCommissionsByEmployee(employeeCode string, month string, pageNum, p
 			&commission.OrderAmount, &commission.GoodsCost, &commission.DeliveryCost,
 			&commission.OrderProfit, &commission.BaseCommission, &commission.NewCustomerBonus,
 			&commission.TierCommission, &commission.TotalCommission, &commission.TierLevel,
-			&commission.CalculationMonth, &commission.CreatedAt, &commission.UpdatedAt,
+			&commission.CalculationMonth,
+			&isAccounted, &accountedAt, &isSettled, &settledAt, &isAccountedCancelled,
+			&commission.CreatedAt, &commission.UpdatedAt,
+			&addressName, // 读取地址名称，但不在结构体中存储，在API层处理
 		)
 		if err != nil {
 			return nil, 0, err
@@ -386,11 +460,24 @@ func GetSalesCommissionsByEmployee(employeeCode string, month string, pageNum, p
 
 		commission.IsValidOrder = isValidOrder == 1
 		commission.IsNewCustomerOrder = isNewCustomerOrder == 1
+		commission.IsAccounted = isAccounted == 1
+		commission.IsSettled = isSettled == 1
+		commission.IsAccountedCancelled = isAccountedCancelled == 1
 		if settlementDate.Valid {
 			t := settlementDate.Time
 			commission.SettlementDate = &t
 		}
+		if accountedAt.Valid {
+			t := accountedAt.Time
+			commission.AccountedAt = &t
+		}
+		if settledAt.Valid {
+			t := settledAt.Time
+			commission.SettledAt = &t
+		}
 
+		// 将地址名称添加到结构体的JSON标签中（通过反射或手动构建）
+		// 由于结构体没有AddressName字段，我们需要在API层处理
 		commissions = append(commissions, commission)
 	}
 
@@ -419,6 +506,7 @@ func GetSalesCommissionsByOrderIDs(orderIDs []int) ([]*SalesCommission, error) {
 		       order_amount, goods_cost, delivery_cost, order_profit,
 		       base_commission, new_customer_bonus, tier_commission,
 		       total_commission, tier_level, calculation_month,
+		       is_accounted, accounted_at, is_settled, settled_at, is_accounted_cancelled,
 		       created_at, updated_at
 		FROM sales_commissions
 		WHERE order_id IN (%s)
@@ -433,8 +521,8 @@ func GetSalesCommissionsByOrderIDs(orderIDs []int) ([]*SalesCommission, error) {
 	commissions := make([]*SalesCommission, 0)
 	for rows.Next() {
 		var commission SalesCommission
-		var settlementDate sql.NullTime
-		var isValidOrder, isNewCustomerOrder int
+		var settlementDate, accountedAt, settledAt sql.NullTime
+		var isValidOrder, isNewCustomerOrder, isAccounted, isSettled, isAccountedCancelled int
 
 		err := rows.Scan(
 			&commission.ID, &commission.OrderID, &commission.EmployeeCode, &commission.UserID,
@@ -443,7 +531,9 @@ func GetSalesCommissionsByOrderIDs(orderIDs []int) ([]*SalesCommission, error) {
 			&commission.OrderAmount, &commission.GoodsCost, &commission.DeliveryCost,
 			&commission.OrderProfit, &commission.BaseCommission, &commission.NewCustomerBonus,
 			&commission.TierCommission, &commission.TotalCommission, &commission.TierLevel,
-			&commission.CalculationMonth, &commission.CreatedAt, &commission.UpdatedAt,
+			&commission.CalculationMonth,
+			&isAccounted, &accountedAt, &isSettled, &settledAt, &isAccountedCancelled,
+			&commission.CreatedAt, &commission.UpdatedAt,
 		)
 		if err != nil {
 			continue
@@ -451,9 +541,20 @@ func GetSalesCommissionsByOrderIDs(orderIDs []int) ([]*SalesCommission, error) {
 
 		commission.IsValidOrder = isValidOrder == 1
 		commission.IsNewCustomerOrder = isNewCustomerOrder == 1
+		commission.IsAccounted = isAccounted == 1
+		commission.IsSettled = isSettled == 1
+		commission.IsAccountedCancelled = isAccountedCancelled == 1
 		if settlementDate.Valid {
 			t := settlementDate.Time
 			commission.SettlementDate = &t
+		}
+		if accountedAt.Valid {
+			t := accountedAt.Time
+			commission.AccountedAt = &t
+		}
+		if settledAt.Valid {
+			t := settledAt.Time
+			commission.SettledAt = &t
 		}
 
 		commissions = append(commissions, &commission)
@@ -462,7 +563,7 @@ func GetSalesCommissionsByOrderIDs(orderIDs []int) ([]*SalesCommission, error) {
 	return commissions, nil
 }
 
-// GetMonthlyTotalSales 获取销售员指定月份的有效订单总金额
+// GetMonthlyTotalSales 获取销售员指定月份的有效订单总金额（排除已取消计入的记录）
 func GetMonthlyTotalSales(employeeCode string, month string) (float64, error) {
 	query := `
 		SELECT COALESCE(SUM(order_amount), 0)
@@ -470,6 +571,7 @@ func GetMonthlyTotalSales(employeeCode string, month string) (float64, error) {
 		WHERE employee_code = ?
 		  AND calculation_month = ?
 		  AND is_valid_order = 1
+		  AND is_accounted_cancelled = 0
 	`
 	var totalSales float64
 	err := database.DB.QueryRow(query, employeeCode, month).Scan(&totalSales)
@@ -507,9 +609,9 @@ func GetSalesCommissionMonthlyStats(employeeCode string, month string) (*SalesCo
 	return &stats, nil
 }
 
-// CalculateAndSaveMonthlyStats 计算并保存月统计
+// CalculateAndSaveMonthlyStats 计算并保存月统计（排除已取消计入的记录）
 func CalculateAndSaveMonthlyStats(employeeCode string, month string) error {
-	// 查询该月的所有有效订单分成记录
+	// 查询该月的所有有效订单分成记录（排除已取消计入的记录）
 	query := `
 		SELECT 
 			COALESCE(SUM(order_amount), 0) as total_sales_amount,
@@ -522,7 +624,10 @@ func CalculateAndSaveMonthlyStats(employeeCode string, month string) error {
 			COALESCE(SUM(total_commission), 0) as total_commission,
 			MAX(tier_level) as tier_level
 		FROM sales_commissions
-		WHERE employee_code = ? AND calculation_month = ? AND is_valid_order = 1
+		WHERE employee_code = ? 
+		  AND calculation_month = ? 
+		  AND is_valid_order = 1
+		  AND is_accounted_cancelled = 0
 	`
 
 	var stats SalesCommissionMonthlyStats
@@ -642,7 +747,28 @@ func ProcessOrderSettlement(orderID int) error {
 		return fmt.Errorf("计算分成失败: %v", err)
 	}
 
+	// 检查是否已存在记录且已取消计入
+	var existingCommission *SalesCommission
+	existingCommissions, err := GetSalesCommissionsByOrderIDs([]int{orderID})
+	if err == nil && len(existingCommissions) > 0 {
+		for _, c := range existingCommissions {
+			if c.EmployeeCode == user.SalesCode {
+				existingCommission = c
+				break
+			}
+		}
+	}
+
+	// 如果已取消计入，不再自动计入
+	if existingCommission != nil && existingCommission.IsAccountedCancelled {
+		log.Printf("订单 %d 的销售分成已取消计入，不再自动计入", orderID)
+		return nil
+	}
+
 	// 保存分成记录
+	// 订单标记为已收款后自动计入
+	now := time.Now()
+	accountedAt := &now
 	commission := &SalesCommission{
 		OrderID:            orderID,
 		EmployeeCode:       user.SalesCode,
@@ -662,6 +788,10 @@ func ProcessOrderSettlement(orderID int) error {
 		TotalCommission:   calcResult.TotalCommission,
 		TierLevel:          calcResult.TierLevel,
 		CalculationMonth:   settlementMonth,
+		IsAccounted:        true,  // 自动计入
+		AccountedAt:        accountedAt,
+		IsSettled:          false,
+		IsAccountedCancelled: false,
 	}
 
 	err = SaveSalesCommission(commission)
@@ -714,7 +844,7 @@ func RecalculateTierCommissionsForMonth(employeeCode string, month string, month
 		tierRate = config.Tier1Rate
 	}
 
-	// 更新该月所有有效订单的阶梯提成
+	// 更新该月所有有效订单的阶梯提成（排除已取消计入的记录）
 	updateQuery := `
 		UPDATE sales_commissions
 		SET tier_commission = order_profit * ?,
@@ -724,6 +854,7 @@ func RecalculateTierCommissionsForMonth(employeeCode string, month string, month
 		WHERE employee_code = ?
 		  AND calculation_month = ?
 		  AND is_valid_order = 1
+		  AND is_accounted_cancelled = 0
 	`
 	_, err = database.DB.Exec(updateQuery, tierRate, tierLevel, tierRate, employeeCode, month)
 	if err != nil {
@@ -784,5 +915,504 @@ func GetAllSalesCommissionMonthlyStats(month string) ([]SalesCommissionMonthlySt
 	}
 
 	return statsList, nil
+}
+
+// AccountSalesCommissions 批量计入销售分成（标记为已计入）
+// commissionIDs: 分成记录ID列表，如果为空则根据其他条件批量计入
+// employeeCode: 销售员员工码（可选）
+// startDate, endDate: 日期范围（可选）
+func AccountSalesCommissions(commissionIDs []int, employeeCode string, startDate, endDate *time.Time) (int64, error) {
+	now := time.Now()
+	
+	if len(commissionIDs) > 0 {
+		// 按ID批量计入
+		placeholders := ""
+		args := make([]interface{}, len(commissionIDs))
+		for i, id := range commissionIDs {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += "?"
+			args[i] = id
+		}
+		
+		query := fmt.Sprintf(`
+			UPDATE sales_commissions
+			SET is_accounted = 1, accounted_at = ?, is_accounted_cancelled = 0, updated_at = NOW()
+			WHERE id IN (%s) AND is_accounted = 0 AND is_accounted_cancelled = 0
+		`, placeholders)
+		args = append([]interface{}{now}, args...)
+		
+		result, err := database.DB.Exec(query, args...)
+		if err != nil {
+			return 0, err
+		}
+		return result.RowsAffected()
+	}
+	
+	// 按条件批量计入
+	where := "is_accounted = 0 AND is_accounted_cancelled = 0"
+	args := []interface{}{now}
+	
+	if employeeCode != "" {
+		where += " AND employee_code = ?"
+		args = append(args, employeeCode)
+	}
+	if startDate != nil {
+		where += " AND order_date >= ?"
+		args = append(args, startDate.Format("2006-01-02"))
+	}
+	if endDate != nil {
+		where += " AND order_date <= ?"
+		args = append(args, endDate.Format("2006-01-02"))
+	}
+	
+		query := fmt.Sprintf(`
+			UPDATE sales_commissions
+			SET is_accounted = 1, accounted_at = ?, is_accounted_cancelled = 0, updated_at = NOW()
+			WHERE %s
+		`, where)
+	
+	result, err := database.DB.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// SettleSalesCommissions 批量结算销售分成（标记为已结算）
+// commissionIDs: 分成记录ID列表，如果为空则根据其他条件批量结算
+// employeeCode: 销售员员工码（可选）
+// startDate, endDate: 日期范围（可选）
+// 注意：只有已计入的记录才能被结算
+func SettleSalesCommissions(commissionIDs []int, employeeCode string, startDate, endDate *time.Time) (int64, error) {
+	now := time.Now()
+	
+	if len(commissionIDs) > 0 {
+		// 按ID批量结算
+		placeholders := ""
+		args := make([]interface{}, len(commissionIDs))
+		for i, id := range commissionIDs {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += "?"
+			args[i] = id
+		}
+		
+		query := fmt.Sprintf(`
+			UPDATE sales_commissions
+			SET is_settled = 1, settled_at = ?, updated_at = NOW()
+			WHERE id IN (%s) AND is_accounted = 1 AND is_settled = 0 AND is_accounted_cancelled = 0
+		`, placeholders)
+		args = append([]interface{}{now}, args...)
+		
+		result, err := database.DB.Exec(query, args...)
+		if err != nil {
+			return 0, err
+		}
+		return result.RowsAffected()
+	}
+	
+	// 按条件批量结算
+	where := "is_accounted = 1 AND is_settled = 0 AND is_accounted_cancelled = 0"
+	args := []interface{}{now}
+	
+	if employeeCode != "" {
+		where += " AND employee_code = ?"
+		args = append(args, employeeCode)
+	}
+	if startDate != nil {
+		where += " AND order_date >= ?"
+		args = append(args, startDate.Format("2006-01-02"))
+	}
+	if endDate != nil {
+		where += " AND order_date <= ?"
+		args = append(args, endDate.Format("2006-01-02"))
+	}
+	
+	query := fmt.Sprintf(`
+		UPDATE sales_commissions
+		SET is_settled = 1, settled_at = ?, updated_at = NOW()
+		WHERE %s
+	`, where)
+	
+	result, err := database.DB.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// GetSalesCommissionByID 根据ID获取销售分成记录
+func GetSalesCommissionByID(id int) (*SalesCommission, error) {
+	var commission SalesCommission
+	var settlementDate, accountedAt, settledAt sql.NullTime
+	var isValidOrder, isNewCustomerOrder, isAccounted, isSettled, isAccountedCancelled int
+	
+	query := `
+		SELECT id, order_id, employee_code, user_id, order_number, order_date,
+		       settlement_date, is_valid_order, is_new_customer_order,
+		       order_amount, goods_cost, delivery_cost, order_profit,
+		       base_commission, new_customer_bonus, tier_commission,
+		       total_commission, tier_level, calculation_month,
+		       is_accounted, accounted_at, is_settled, settled_at, is_accounted_cancelled,
+		       created_at, updated_at
+		FROM sales_commissions
+		WHERE id = ?
+	`
+	
+	err := database.DB.QueryRow(query, id).Scan(
+		&commission.ID, &commission.OrderID, &commission.EmployeeCode, &commission.UserID,
+		&commission.OrderNumber, &commission.OrderDate, &settlementDate,
+		&isValidOrder, &isNewCustomerOrder,
+		&commission.OrderAmount, &commission.GoodsCost, &commission.DeliveryCost,
+		&commission.OrderProfit, &commission.BaseCommission, &commission.NewCustomerBonus,
+		&commission.TierCommission, &commission.TotalCommission, &commission.TierLevel,
+		&commission.CalculationMonth,
+		&isAccounted, &accountedAt, &isSettled, &settledAt, &isAccountedCancelled,
+		&commission.CreatedAt, &commission.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	
+	commission.IsValidOrder = isValidOrder == 1
+	commission.IsNewCustomerOrder = isNewCustomerOrder == 1
+	commission.IsAccounted = isAccounted == 1
+	commission.IsSettled = isSettled == 1
+	commission.IsAccountedCancelled = isAccountedCancelled == 1
+	if settlementDate.Valid {
+		t := settlementDate.Time
+		commission.SettlementDate = &t
+	}
+	if accountedAt.Valid {
+		t := accountedAt.Time
+		commission.AccountedAt = &t
+	}
+	if settledAt.Valid {
+		t := settledAt.Time
+		commission.SettledAt = &t
+	}
+	
+	return &commission, nil
+}
+
+// CancelAccountSalesCommissions 取消计入销售分成（仅支持已计入未结算的记录）
+// commissionIDs: 分成记录ID列表
+func CancelAccountSalesCommissions(commissionIDs []int) (int64, error) {
+	if len(commissionIDs) == 0 {
+		return 0, fmt.Errorf("请提供要取消计入的记录ID")
+	}
+
+	placeholders := ""
+	args := make([]interface{}, len(commissionIDs))
+	for i, id := range commissionIDs {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args[i] = id
+	}
+
+	// 先查询要取消的记录，获取月份信息，以便后续重新计算统计
+	queryRecords := fmt.Sprintf(`
+		SELECT DISTINCT employee_code, calculation_month
+		FROM sales_commissions
+		WHERE id IN (%s)
+		  AND is_accounted = 1
+		  AND is_settled = 0
+	`, placeholders)
+
+	rows, err := database.DB.Query(queryRecords, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	// 收集需要重新计算统计的月份
+	monthsToRecalc := make(map[string]string) // key: employeeCode, value: month
+	for rows.Next() {
+		var employeeCode, month string
+		if err := rows.Scan(&employeeCode, &month); err == nil {
+			monthsToRecalc[employeeCode] = month
+		}
+	}
+
+	// 只允许取消已计入但未结算的记录
+	query := fmt.Sprintf(`
+		UPDATE sales_commissions
+		SET is_accounted = 0,
+		    accounted_at = NULL,
+		    is_accounted_cancelled = 1,
+		    updated_at = NOW()
+		WHERE id IN (%s)
+		  AND is_accounted = 1
+		  AND is_settled = 0
+	`, placeholders)
+
+	result, err := database.DB.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	// 重新计算受影响月份的统计（因为取消计入会影响总分成）
+	for employeeCode, month := range monthsToRecalc {
+		// 重新计算月销售额（用于阶梯提成）
+		monthTotalSales, err := GetMonthlyTotalSales(employeeCode, month)
+		if err == nil {
+			// 重新计算阶梯提成
+			_ = RecalculateTierCommissionsForMonth(employeeCode, month, monthTotalSales)
+		}
+		// 重新计算月统计
+		_ = CalculateAndSaveMonthlyStats(employeeCode, month)
+	}
+
+	return rowsAffected, nil
+}
+
+// ResetAccountSalesCommissions 重新计入销售分成（重置分成，仅支持已取消计入的记录）
+// commissionIDs: 分成记录ID列表
+func ResetAccountSalesCommissions(commissionIDs []int) (int64, error) {
+	if len(commissionIDs) == 0 {
+		return 0, fmt.Errorf("请提供要重新计入的记录ID")
+	}
+
+	placeholders := ""
+	args := make([]interface{}, len(commissionIDs))
+	for i, id := range commissionIDs {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args[i] = id
+	}
+
+	// 先查询要重新计入的记录，获取月份信息，以便后续重新计算统计
+	queryRecords := fmt.Sprintf(`
+		SELECT DISTINCT employee_code, calculation_month
+		FROM sales_commissions
+		WHERE id IN (%s)
+		  AND is_accounted_cancelled = 1
+	`, placeholders)
+
+	rows, err := database.DB.Query(queryRecords, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	// 收集需要重新计算统计的月份
+	monthsToRecalc := make(map[string]string) // key: employeeCode, value: month
+	for rows.Next() {
+		var employeeCode, month string
+		if err := rows.Scan(&employeeCode, &month); err == nil {
+			monthsToRecalc[employeeCode] = month
+		}
+	}
+
+	// 只允许重新计入已取消的记录
+	now := time.Now()
+	query := fmt.Sprintf(`
+		UPDATE sales_commissions
+		SET is_accounted = 1,
+		    accounted_at = ?,
+		    is_accounted_cancelled = 0,
+		    updated_at = NOW()
+		WHERE id IN (%s)
+		  AND is_accounted_cancelled = 1
+	`, placeholders)
+
+	args = append([]interface{}{now}, args...)
+	result, err := database.DB.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	// 重新计算受影响月份的统计（因为重新计入会影响总分成）
+	for employeeCode, month := range monthsToRecalc {
+		// 重新计算月销售额（用于阶梯提成）
+		monthTotalSales, err := GetMonthlyTotalSales(employeeCode, month)
+		if err == nil {
+			// 重新计算阶梯提成
+			_ = RecalculateTierCommissionsForMonth(employeeCode, month, monthTotalSales)
+		}
+		// 重新计算月统计
+		_ = CalculateAndSaveMonthlyStats(employeeCode, month)
+	}
+
+	return rowsAffected, nil
+}
+
+// SalesCommissionOverview 销售分成总览统计
+type SalesCommissionOverview struct {
+	TotalAmount        float64 `json:"total_amount"`         // 总金额（所有有效订单的总分成）
+	UnaccountedAmount  float64 `json:"unaccounted_amount"`   // 未计入金额
+	AccountedAmount    float64 `json:"accounted_amount"`     // 已计入金额
+	SettledAmount      float64 `json:"settled_amount"`        // 已结算金额
+	CancelledAmount    float64 `json:"cancelled_amount"`     // 取消计入金额
+	UnaccountedCount   int     `json:"unaccounted_count"`    // 未计入数量
+	AccountedCount     int     `json:"accounted_count"`       // 已计入数量
+	SettledCount       int     `json:"settled_count"`        // 已结算数量
+	CancelledCount     int     `json:"cancelled_count"`       // 取消计入数量
+	InvalidOrderCount  int     `json:"invalid_order_count"`  // 无效订单数量
+}
+
+// GetSalesCommissionOverview 获取销售员的分成总览统计
+func GetSalesCommissionOverview(employeeCode string) (*SalesCommissionOverview, error) {
+	// 1. 从sales_commissions表获取已收款订单的统计
+	query := `
+		SELECT 
+			COALESCE(SUM(CASE WHEN is_valid_order = 1 AND is_accounted_cancelled = 0 THEN total_commission ELSE 0 END), 0) as total_amount,
+			COALESCE(SUM(CASE WHEN is_valid_order = 1 AND is_accounted = 1 AND is_settled = 0 AND is_accounted_cancelled = 0 THEN total_commission ELSE 0 END), 0) as accounted_amount,
+			COALESCE(SUM(CASE WHEN is_valid_order = 1 AND is_settled = 1 AND is_accounted_cancelled = 0 THEN total_commission ELSE 0 END), 0) as settled_amount,
+			COALESCE(SUM(CASE WHEN is_valid_order = 1 AND is_accounted_cancelled = 1 THEN total_commission ELSE 0 END), 0) as cancelled_amount,
+			COUNT(CASE WHEN is_valid_order = 1 AND is_accounted = 1 AND is_settled = 0 AND is_accounted_cancelled = 0 THEN 1 END) as accounted_count,
+			COUNT(CASE WHEN is_valid_order = 1 AND is_settled = 1 AND is_accounted_cancelled = 0 THEN 1 END) as settled_count,
+			COUNT(CASE WHEN is_valid_order = 1 AND is_accounted_cancelled = 1 THEN 1 END) as cancelled_count,
+			COUNT(CASE WHEN is_valid_order = 0 THEN 1 END) as invalid_order_count
+		FROM sales_commissions
+		WHERE employee_code = ?
+	`
+
+	var overview SalesCommissionOverview
+	err := database.DB.QueryRow(query, employeeCode).Scan(
+		&overview.TotalAmount,
+		&overview.AccountedAmount,
+		&overview.SettledAmount,
+		&overview.CancelledAmount,
+		&overview.AccountedCount,
+		&overview.SettledCount,
+		&overview.CancelledCount,
+		&overview.InvalidOrderCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. 查询所有未收款且未取消的订单，计算分润预览总和作为未计入金额
+	unpaidOrdersQuery := `
+		SELECT
+			o.id,
+			o.order_number,
+			o.status,
+			o.total_amount,
+			o.goods_amount,
+			o.delivery_fee,
+			o.order_profit,
+			o.delivery_fee_calculation,
+			o.created_at,
+			o.user_id
+		FROM orders o
+		JOIN mini_app_users u ON o.user_id = u.id
+		WHERE u.sales_code = ? AND o.status != 'paid' AND o.status != 'cancelled'
+		ORDER BY o.created_at DESC
+	`
+
+	rows, err := database.DB.Query(unpaidOrdersQuery, employeeCode)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var unaccountedAmount float64
+	unaccountedCount := 0
+
+	for rows.Next() {
+		var id, userID int
+		var orderNumber, status string
+		var totalAmount, goodsAmount, deliveryFee float64
+		var orderProfit sql.NullFloat64
+		var deliveryFeeCalculation sql.NullString
+		var createdAt time.Time
+
+		err := rows.Scan(
+			&id, &orderNumber, &status, &totalAmount, &goodsAmount,
+			&deliveryFee, &orderProfit, &deliveryFeeCalculation, &createdAt, &userID,
+		)
+		if err != nil {
+			continue
+		}
+
+		// 获取订单对象
+		order, err := GetOrderByID(id)
+		if err != nil || order == nil {
+			continue
+		}
+
+		// 计算订单利润
+		var profit float64
+		if orderProfit.Valid {
+			profit = orderProfit.Float64
+		} else if order.OrderProfit != nil {
+			profit = *order.OrderProfit
+		}
+
+		// 获取配送费计算结果
+		var deliveryFeeResult *DeliveryFeeCalculationResult
+		if deliveryFeeCalculation.Valid && deliveryFeeCalculation.String != "" {
+			var calcResult DeliveryFeeCalculationResult
+			if err := json.Unmarshal([]byte(deliveryFeeCalculation.String), &calcResult); err == nil {
+				deliveryFeeResult = &calcResult
+			}
+		}
+
+		// 计算分润预览（需要调用API层的函数，但这里在model层，所以直接计算）
+		// 获取用户信息
+		user, err := GetMiniAppUserByID(userID)
+		if err != nil || user == nil || user.SalesCode != employeeCode {
+			continue
+		}
+
+		// 计算订单金额、商品成本、配送成本
+		orderAmount := totalAmount
+		goodsCost := goodsAmount - profit
+		deliveryCost := 0.0
+		if deliveryFeeResult != nil {
+			deliveryCost = deliveryFeeResult.TotalPlatformCost
+		}
+
+		// 判断是否新客户
+		isNewCustomer, _ := IsNewCustomerOrder(userID, id)
+
+		// 获取当月有效订单总金额（用于计算阶梯提成）
+		currentMonth := time.Now().Format("2006-01")
+		monthTotalSales, _ := GetMonthlyTotalSales(employeeCode, currentMonth)
+
+		// 计算分成
+		calcResult, err := CalculateSalesCommission(
+			employeeCode,
+			orderAmount,
+			goodsCost,
+			deliveryCost,
+			isNewCustomer,
+			monthTotalSales,
+		)
+		if err == nil && calcResult != nil {
+			unaccountedAmount += calcResult.TotalCommission
+			unaccountedCount++
+		}
+	}
+
+	overview.UnaccountedAmount = unaccountedAmount
+	overview.UnaccountedCount = unaccountedCount
+
+	// 总金额 = 已收款订单的总分成 + 未收款订单的分润预览总和
+	overview.TotalAmount += unaccountedAmount
+
+	return &overview, nil
 }
 

@@ -227,6 +227,10 @@ func main() {
 				protectedGroup.GET("/sales-commission/stats", api.AdminGetSalesCommissionStats)        // 获取销售员的分成统计（可查看所有销售员）
 				protectedGroup.GET("/sales-commission/list", api.AdminGetSalesCommissions)            // 获取销售员的分成记录列表
 				protectedGroup.GET("/sales-commission/config", api.AdminGetSalesCommissionConfig)     // 获取销售员的分成配置
+				protectedGroup.POST("/sales-commission/account", api.AdminAccountSalesCommissions)    // 批量计入销售分成
+				protectedGroup.POST("/sales-commission/settle", api.AdminSettleSalesCommissions)     // 批量结算销售分成
+				protectedGroup.POST("/sales-commission/cancel-account", api.AdminCancelAccountSalesCommissions) // 取消计入销售分成
+				protectedGroup.POST("/sales-commission/reset-account", api.AdminResetAccountSalesCommissions) // 重新计入销售分成（重置分成）
 				protectedGroup.PUT("/sales-commission/config", api.AdminUpdateSalesCommissionConfig)  // 更新销售员的分成配置
 
 				// 仪表盘统计
@@ -290,6 +294,7 @@ func main() {
 				employeeProtectedGroup.GET("/sales/customer-by-code", api.GetSalesCustomerByCode)                                // 通过编号查客户
 				employeeProtectedGroup.GET("/sales/customers/:id", api.GetSalesCustomerDetail)                                   // 获取客户详情
 				employeeProtectedGroup.GET("/sales/customers/:id/orders", api.GetSalesCustomerOrders)                            // 获取客户的订单列表
+				employeeProtectedGroup.GET("/sales/customers/:id/frequent-products", api.GetSalesCustomerFrequentProducts)      // 获取客户的常购商品列表
 				employeeProtectedGroup.GET("/sales/customers/:id/coupons", api.GetAdminUserCoupons)                              // 获取客户的优惠券列表（销售员查看）
 				employeeProtectedGroup.GET("/sales/customers/:id/purchase-list", api.GetSalesCustomerPurchaseList)               // 获取客户的采购单
 				employeeProtectedGroup.POST("/sales/customers/:id/purchase-list", api.AddSalesCustomerPurchaseItem)              // 新增客户采购单条目
@@ -319,6 +324,8 @@ func main() {
 				employeeProtectedGroup.POST("/sales/commission/preview", api.PreviewSalesCommission)                              // 预览销售分成（开单时）
 				employeeProtectedGroup.GET("/sales/commission/list", api.GetSalesCommissions)                                     // 获取销售员的分成记录列表
 				employeeProtectedGroup.GET("/sales/commission/stats", api.GetSalesCommissionMonthlyStats)                         // 获取销售员的分成月统计
+				employeeProtectedGroup.GET("/sales/commission/overview", api.GetSalesCommissionOverview)                         // 获取销售员的分成总览统计
+				employeeProtectedGroup.GET("/sales/commission/unpaid-orders", api.GetUnpaidOrdersWithCommissionPreview)          // 获取未收款订单及其分润预览
 				employeeProtectedGroup.GET("/sales/commission/config", api.GetSalesCommissionConfig)                               // 获取销售员的分成配置
 			}
 		}

@@ -723,6 +723,103 @@ func GetOrdersBySalesCode(employeeCode string, pageNum, pageSize int, status, ke
 	return orders, total, nil
 }
 
+// GetUnpaidOrdersBySalesCode 获取销售员名下客户的未收款订单列表（分页，status != 'paid' AND status != 'cancelled'）
+func GetUnpaidOrdersBySalesCode(employeeCode string, pageNum, pageSize int) ([]map[string]interface{}, int, error) {
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+
+	offset := (pageNum - 1) * pageSize
+
+	// 统计总数（排除已收款和已取消的订单）
+	var total int
+	countQuery := `
+		SELECT COUNT(*)
+		FROM orders o
+		JOIN mini_app_users u ON o.user_id = u.id
+		WHERE u.sales_code = ? AND o.status != 'paid' AND o.status != 'cancelled'
+	`
+	if err := database.DB.QueryRow(countQuery, employeeCode).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	// 查询分页数据（关联查询地址名称）
+	query := `
+		SELECT
+			o.id,
+			o.order_number,
+			o.status,
+			o.total_amount,
+			o.goods_amount,
+			o.delivery_fee,
+			o.order_profit,
+			o.delivery_fee_calculation,
+			o.created_at,
+			o.user_id,
+			a.name AS address_name
+		FROM orders o
+		JOIN mini_app_users u ON o.user_id = u.id
+		LEFT JOIN mini_app_addresses a ON o.address_id = a.id
+		WHERE u.sales_code = ? AND o.status != 'paid' AND o.status != 'cancelled'
+		ORDER BY o.created_at DESC
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := database.DB.Query(query, employeeCode, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	orders := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var id, userID int
+		var orderNumber, status string
+		var totalAmount, goodsAmount, deliveryFee float64
+		var orderProfit sql.NullFloat64
+		var deliveryFeeCalculation sql.NullString
+		var createdAt time.Time
+		var addressName sql.NullString
+
+		err := rows.Scan(
+			&id, &orderNumber, &status, &totalAmount, &goodsAmount,
+			&deliveryFee, &orderProfit, &deliveryFeeCalculation, &createdAt, &userID,
+			&addressName,
+		)
+		if err != nil {
+			continue
+		}
+
+		orderData := map[string]interface{}{
+			"id":                      int64(id),
+			"order_number":            orderNumber,
+			"status":                  status,
+			"total_amount":            totalAmount,
+			"goods_amount":            goodsAmount,
+			"delivery_fee":            deliveryFee,
+			"created_at":             createdAt,
+			"user_id":                userID,
+		}
+
+		if orderProfit.Valid {
+			orderData["order_profit"] = orderProfit.Float64
+		}
+		if deliveryFeeCalculation.Valid {
+			orderData["delivery_fee_calculation"] = deliveryFeeCalculation.String
+		}
+		if addressName.Valid {
+			orderData["address_name"] = addressName.String
+		}
+
+		orders = append(orders, orderData)
+	}
+
+	return orders, total, nil
+}
+
 // GetPendingOrdersBySalesCode 获取销售员名下客户的待配送订单列表（分页）
 func GetPendingOrdersBySalesCode(employeeCode string, pageNum, pageSize int) ([]map[string]interface{}, int, error) {
 	if pageNum < 1 {

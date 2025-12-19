@@ -1339,6 +1339,67 @@ func InitDB() error {
 			log.Println("销售分成记录表初始化成功")
 		}
 
+		// 添加计入和结算相关字段（如果不存在）
+		// 检查 is_accounted 字段
+		var isAccountedExists int
+		checkIsAccountedQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sales_commissions' AND COLUMN_NAME = 'is_accounted'`
+		if err := DB.QueryRow(checkIsAccountedQuery).Scan(&isAccountedExists); err == nil && isAccountedExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE sales_commissions ADD COLUMN is_accounted TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已计入（平台承认了销售员这个分润收入）' AFTER calculation_month, ADD KEY idx_is_accounted (is_accounted)`); err != nil {
+				log.Printf("添加is_accounted字段失败: %v", err)
+			} else {
+				log.Println("已添加is_accounted字段到sales_commissions表")
+			}
+		}
+
+		// 检查 accounted_at 字段
+		var accountedAtExists int
+		checkAccountedAtQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sales_commissions' AND COLUMN_NAME = 'accounted_at'`
+		if err := DB.QueryRow(checkAccountedAtQuery).Scan(&accountedAtExists); err == nil && accountedAtExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE sales_commissions ADD COLUMN accounted_at DATETIME DEFAULT NULL COMMENT '计入时间' AFTER is_accounted, ADD KEY idx_accounted_at (accounted_at)`); err != nil {
+				log.Printf("添加accounted_at字段失败: %v", err)
+			} else {
+				log.Println("已添加accounted_at字段到sales_commissions表")
+			}
+		}
+
+		// 检查 is_settled 字段
+		var isSettledExists int
+		checkIsSettledQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sales_commissions' AND COLUMN_NAME = 'is_settled'`
+		if err := DB.QueryRow(checkIsSettledQuery).Scan(&isSettledExists); err == nil && isSettledExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE sales_commissions ADD COLUMN is_settled TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已结算（平台已经将该费用结算给销售员）' AFTER accounted_at, ADD KEY idx_is_settled (is_settled)`); err != nil {
+				log.Printf("添加is_settled字段失败: %v", err)
+			} else {
+				log.Println("已添加is_settled字段到sales_commissions表")
+			}
+		}
+
+		// 检查 settled_at 字段
+		var settledAtExists int
+		checkSettledAtQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sales_commissions' AND COLUMN_NAME = 'settled_at'`
+		if err := DB.QueryRow(checkSettledAtQuery).Scan(&settledAtExists); err == nil && settledAtExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE sales_commissions ADD COLUMN settled_at DATETIME DEFAULT NULL COMMENT '结算时间' AFTER is_settled, ADD KEY idx_settled_at (settled_at)`); err != nil {
+				log.Printf("添加settled_at字段失败: %v", err)
+			} else {
+				log.Println("已添加settled_at字段到sales_commissions表")
+			}
+		}
+
+		// 检查 is_accounted_cancelled 字段
+		var isAccountedCancelledExists int
+		checkIsAccountedCancelledQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sales_commissions' AND COLUMN_NAME = 'is_accounted_cancelled'`
+		if err := DB.QueryRow(checkIsAccountedCancelledQuery).Scan(&isAccountedCancelledExists); err == nil && isAccountedCancelledExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE sales_commissions ADD COLUMN is_accounted_cancelled TINYINT(1) NOT NULL DEFAULT 0 COMMENT '计入是否已取消' AFTER settled_at, ADD KEY idx_is_accounted_cancelled (is_accounted_cancelled)`); err != nil {
+				log.Printf("添加is_accounted_cancelled字段失败: %v", err)
+			} else {
+				log.Println("已添加is_accounted_cancelled字段到sales_commissions表")
+			}
+		}
+
 		// 创建销售分成月统计表
 		createSalesCommissionMonthlyStatsTableSQL := `
 		CREATE TABLE IF NOT EXISTS sales_commission_monthly_stats (

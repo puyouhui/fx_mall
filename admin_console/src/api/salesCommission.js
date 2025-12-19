@@ -17,7 +17,7 @@ export function getSalesCommissionStats(employeeCode, month) {
 }
 
 // 获取销售员的分成记录列表（管理员）
-export function getSalesCommissions(employeeCode, month, pageNum, pageSize) {
+export function getSalesCommissions(employeeCode, month, status, startDate, endDate, pageNum, pageSize) {
   const params = {
     employee_code: employeeCode,
     pageNum: pageNum || 1,
@@ -25,6 +25,15 @@ export function getSalesCommissions(employeeCode, month, pageNum, pageSize) {
   }
   if (month) {
     params.month = month
+  }
+  if (status) {
+    params.status = status
+  }
+  if (startDate) {
+    params.start_date = startDate
+  }
+  if (endDate) {
+    params.end_date = endDate
   }
   return request({
     url: '/admin/sales-commission/list',
@@ -58,6 +67,42 @@ export function getSalesEmployees() {
   return request({
     url: '/admin/employees/sales',
     method: 'get'
+  })
+}
+
+// 批量计入销售分成（管理员）
+export function accountSalesCommissions(data) {
+  return request({
+    url: '/admin/sales-commission/account',
+    method: 'post',
+    data
+  })
+}
+
+// 批量结算销售分成（管理员）
+export function settleSalesCommissions(data) {
+  return request({
+    url: '/admin/sales-commission/settle',
+    method: 'post',
+    data
+  })
+}
+
+// 取消计入销售分成（管理员）
+export function cancelAccountSalesCommissions(data) {
+  return request({
+    url: '/admin/sales-commission/cancel-account',
+    method: 'post',
+    data
+  })
+}
+
+// 重新计入销售分成（重置分成，管理员）
+export function resetAccountSalesCommissions(data) {
+  return request({
+    url: '/admin/sales-commission/reset-account',
+    method: 'post',
+    data
   })
 }
 

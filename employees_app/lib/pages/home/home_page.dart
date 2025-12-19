@@ -10,6 +10,7 @@ import 'package:employees_app/pages/product/product_search_page.dart';
 import 'package:employees_app/pages/order/order_list_page.dart';
 import 'package:employees_app/pages/order/order_detail_page.dart';
 import 'package:employees_app/pages/order/edit_order_list_page.dart';
+import 'package:employees_app/pages/commission/my_commission_page.dart';
 
 /// 员工端首页（总览 + 配送）
 class HomePage extends StatefulWidget {
@@ -525,11 +526,17 @@ class _OverviewTabState extends State<OverviewTab> {
                               },
                             ),
                             const SizedBox(width: 8),
-                            const QuickActionItem(
+                            QuickActionItem(
                               icon: Icons.trending_up,
-                              iconColor: Color(0xFFFFA940),
+                              iconColor: const Color(0xFFFFA940),
                               label: '分成查询',
-                              // TODO: 接收益查询页面
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const MyCommissionPage(),
+                                  ),
+                                );
+                              },
                             ),
                           ],
                         ),

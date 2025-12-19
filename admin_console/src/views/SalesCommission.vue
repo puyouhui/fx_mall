@@ -31,6 +31,30 @@
             style="width: 150px; margin-right: 10px;"
             @change="handleSearch"
           />
+          <el-select
+            v-model="selectedStatus"
+            placeholder="状态筛选"
+            clearable
+            style="width: 150px; margin-right: 10px;"
+            @change="handleSearch"
+          >
+            <el-option label="全部" value="all" />
+            <el-option label="已计入" value="accounted" />
+            <el-option label="已结算" value="settled" />
+            <el-option label="未计入" value="unaccounted" />
+            <el-option label="未结算" value="unsettled" />
+          </el-select>
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            style="width: 240px; margin-right: 10px;"
+            @change="handleSearch"
+          />
           <el-button type="primary" @click="handleSearch">搜索</el-button>
         </div>
       </div>
@@ -84,6 +108,52 @@
       <!-- 详情表格 -->
       <el-tabs v-model="activeTab" class="detail-tabs" v-if="selectedEmployeeCode">
         <el-tab-pane label="分成记录" name="records">
+          <div class="table-toolbar">
+            <div class="toolbar-left">
+              <el-button
+                type="primary"
+                :disabled="selectedRecords.length === 0"
+                @click="handleBatchAccount"
+              >
+                批量计入 ({{ selectedRecords.length }})
+              </el-button>
+              <el-button
+                type="success"
+                :disabled="selectedRecords.length === 0"
+                @click="handleBatchSettle"
+              >
+                批量结算 ({{ selectedRecords.length }})
+              </el-button>
+              <el-button
+                type="warning"
+                :disabled="!selectedEmployeeCode"
+                @click="handleBatchAccountByDate"
+              >
+                按日期批量计入
+              </el-button>
+              <el-button
+                type="info"
+                :disabled="!selectedEmployeeCode"
+                @click="handleBatchSettleByDate"
+              >
+                按日期批量结算
+              </el-button>
+              <el-button
+                type="danger"
+                :disabled="selectedRecords.length === 0"
+                @click="handleBatchCancelAccount"
+              >
+                取消计入 ({{ selectedRecords.length }})
+              </el-button>
+              <el-button
+                type="warning"
+                :disabled="selectedRecords.length === 0"
+                @click="handleBatchResetAccount"
+              >
+                重新计入 ({{ selectedRecords.length }})
+              </el-button>
+            </div>
+          </div>
           <el-table
             v-loading="recordsLoading"
             :data="commissionRecords"
@@ -92,7 +162,9 @@
             class="records-table"
             empty-text="暂无数据"
             style="width: 100%"
+            @selection-change="handleSelectionChange"
           >
+            <el-table-column type="selection" width="55" align="center" />
             <el-table-column prop="order_number" label="订单编号" align="center" min-width="180" />
             <el-table-column prop="order_date" label="订单日期" align="center" min-width="120">
               <template #default="scope">
@@ -152,6 +224,69 @@
                 </el-tag>
               </template>
             </el-table-column>
+            <el-table-column label="计入状态" align="center" min-width="120">
+              <template #default="scope">
+                <el-tag v-if="scope.row.is_accounted_cancelled" type="danger">
+                  计入已取消
+                </el-tag>
+                <el-tag v-else-if="scope.row.is_accounted" type="success">
+                  已计入
+                </el-tag>
+                <el-tag v-else type="info">
+                  未计入
+                </el-tag>
+                <div v-if="scope.row.accounted_at && !scope.row.is_accounted_cancelled" style="margin-top: 4px; font-size: 12px; color: #909399;">
+                  {{ formatDate(scope.row.accounted_at) }}
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="结算状态" align="center" min-width="120">
+              <template #default="scope">
+                <el-tag :type="scope.row.is_settled ? 'success' : 'warning'">
+                  {{ scope.row.is_settled ? '已结算' : '未结算' }}
+                </el-tag>
+                <div v-if="scope.row.settled_at" style="margin-top: 4px; font-size: 12px; color: #909399;">
+                  {{ formatDate(scope.row.settled_at) }}
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" align="center" min-width="220" fixed="right">
+              <template #default="scope">
+                <el-button
+                  v-if="!scope.row.is_accounted && !scope.row.is_accounted_cancelled"
+                  type="primary"
+                  size="small"
+                  @click="handleAccount(scope.row)"
+                >
+                  计入
+                </el-button>
+                <el-button
+                  v-if="scope.row.is_accounted && !scope.row.is_settled && !scope.row.is_accounted_cancelled"
+                  type="success"
+                  size="small"
+                  @click="handleSettle(scope.row)"
+                >
+                  结算
+                </el-button>
+                <el-button
+                  v-if="scope.row.is_accounted && !scope.row.is_settled && !scope.row.is_accounted_cancelled"
+                  type="danger"
+                  size="small"
+                  @click="handleCancelAccount(scope.row)"
+                >
+                  取消计入
+                </el-button>
+                <el-button
+                  v-if="scope.row.is_accounted_cancelled"
+                  type="warning"
+                  size="small"
+                  @click="handleResetAccount(scope.row)"
+                >
+                  重新计入
+                </el-button>
+                <span v-if="scope.row.is_settled" style="color: #909399;">已结算</span>
+              </template>
+            </el-table-column>
           </el-table>
 
           <div class="pagination">
@@ -167,6 +302,84 @@
         </el-tab-pane>
       </el-tabs>
     </el-card>
+
+    <!-- 按日期批量计入对话框 -->
+    <el-dialog
+      v-model="accountByDateDialogVisible"
+      title="按日期批量计入"
+      width="500px"
+    >
+      <el-form :model="accountByDateForm" label-width="120px">
+        <el-form-item label="销售员">
+          <el-input :value="getEmployeeName(selectedEmployeeCode)" disabled />
+        </el-form-item>
+        <el-form-item label="开始日期" required>
+          <el-date-picker
+            v-model="accountByDateForm.startDate"
+            type="date"
+            placeholder="选择开始日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="结束日期" required>
+          <el-date-picker
+            v-model="accountByDateForm.endDate"
+            type="date"
+            placeholder="选择结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="accountByDateDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleConfirmAccountByDate" :loading="accounting">
+          确认计入
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 按日期批量结算对话框 -->
+    <el-dialog
+      v-model="settleByDateDialogVisible"
+      title="按日期批量结算"
+      width="500px"
+    >
+      <el-form :model="settleByDateForm" label-width="120px">
+        <el-form-item label="销售员">
+          <el-input :value="getEmployeeName(selectedEmployeeCode)" disabled />
+        </el-form-item>
+        <el-form-item label="开始日期" required>
+          <el-date-picker
+            v-model="settleByDateForm.startDate"
+            type="date"
+            placeholder="选择开始日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="结束日期" required>
+          <el-date-picker
+            v-model="settleByDateForm.endDate"
+            type="date"
+            placeholder="选择结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="settleByDateDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleConfirmSettleByDate" :loading="settling">
+          确认结算
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- 配置对话框 -->
     <el-dialog
@@ -298,13 +511,17 @@
 
 <script>
 import { reactive, ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getSalesCommissionStats,
   getSalesCommissions,
   getSalesCommissionConfig,
   updateSalesCommissionConfig,
-  getSalesEmployees
+  getSalesEmployees,
+  accountSalesCommissions,
+  settleSalesCommissions,
+  cancelAccountSalesCommissions,
+  resetAccountSalesCommissions
 } from '../api/salesCommission'
 
 export default {
@@ -313,13 +530,22 @@ export default {
     const loading = ref(false)
     const recordsLoading = ref(false)
     const configSaving = ref(false)
+    const accounting = ref(false)
+    const settling = ref(false)
+    const cancelingAccount = ref(false)
+    const resettingAccount = ref(false)
     const statsList = ref([])
     const commissionRecords = ref([])
     const salesEmployees = ref([])
     const selectedEmployeeCode = ref('')
     const selectedMonth = ref('')
+    const selectedStatus = ref('')
+    const dateRange = ref(null)
+    const selectedRecords = ref([])
     const activeTab = ref('records')
     const configDialogVisible = ref(false)
+    const accountByDateDialogVisible = ref(false)
+    const settleByDateDialogVisible = ref(false)
     const configFormRef = ref(null)
 
     const recordsPagination = reactive({
@@ -339,6 +565,16 @@ export default {
       tier3_threshold: 200000,
       tier3_rate: 0.20,
       min_profit_threshold: 5.00
+    })
+
+    const accountByDateForm = reactive({
+      startDate: '',
+      endDate: ''
+    })
+
+    const settleByDateForm = reactive({
+      startDate: '',
+      endDate: ''
     })
 
     const configRules = {
@@ -427,9 +663,14 @@ export default {
 
       recordsLoading.value = true
       try {
+        const startDate = dateRange.value && dateRange.value[0] ? dateRange.value[0] : null
+        const endDate = dateRange.value && dateRange.value[1] ? dateRange.value[1] : null
         const res = await getSalesCommissions(
           selectedEmployeeCode.value,
           selectedMonth.value || null,
+          selectedStatus.value || null,
+          startDate,
+          endDate,
           recordsPagination.pageNum,
           recordsPagination.pageSize
         )
@@ -568,6 +809,428 @@ export default {
       return '未达标'
     }
 
+    // 表格选择变化
+    const handleSelectionChange = (selection) => {
+      selectedRecords.value = selection
+    }
+
+    // 单笔计入
+    const handleAccount = async (row) => {
+      try {
+        await ElMessageBox.confirm(
+          `确认计入订单 ${row.order_number} 的分成？`,
+          '确认计入',
+          {
+            confirmButtonText: '确认',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        accounting.value = true
+        const res = await accountSalesCommissions({
+          commission_ids: [row.id]
+        })
+        if (res.code === 200) {
+          ElMessage.success(`计入成功，共计入 ${res.affected || 1} 条记录`)
+          loadRecords()
+        } else {
+          ElMessage.error(res.message || '计入失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('计入失败:', error)
+          ElMessage.error('计入失败: ' + (error.message || '未知错误'))
+        }
+      } finally {
+        accounting.value = false
+      }
+    }
+
+    // 单笔结算
+    const handleSettle = async (row) => {
+      try {
+        await ElMessageBox.confirm(
+          `确认结算订单 ${row.order_number} 的分成？`,
+          '确认结算',
+          {
+            confirmButtonText: '确认',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        settling.value = true
+        const res = await settleSalesCommissions({
+          commission_ids: [row.id]
+        })
+        if (res.code === 200) {
+          ElMessage.success(`结算成功，共结算 ${res.affected || 1} 条记录`)
+          loadRecords()
+        } else {
+          ElMessage.error(res.message || '结算失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('结算失败:', error)
+          ElMessage.error('结算失败: ' + (error.message || '未知错误'))
+        }
+      } finally {
+        settling.value = false
+      }
+    }
+
+    // 批量计入
+    const handleBatchAccount = async () => {
+      if (selectedRecords.value.length === 0) {
+        ElMessage.warning('请先选择要计入的记录')
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确认计入选中的 ${selectedRecords.value.length} 条记录？`,
+          '批量计入',
+          {
+            confirmButtonText: '确认',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        accounting.value = true
+        const commissionIds = selectedRecords.value.map(r => r.id)
+        const res = await accountSalesCommissions({
+          commission_ids: commissionIds
+        })
+        if (res.code === 200) {
+          ElMessage.success(`计入成功，共计入 ${res.affected || 0} 条记录`)
+          selectedRecords.value = []
+          loadRecords()
+        } else {
+          ElMessage.error(res.message || '计入失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('批量计入失败:', error)
+          ElMessage.error('批量计入失败: ' + (error.message || '未知错误'))
+        }
+      } finally {
+        accounting.value = false
+      }
+    }
+
+    // 批量结算
+    const handleBatchSettle = async () => {
+      if (selectedRecords.value.length === 0) {
+        ElMessage.warning('请先选择要结算的记录')
+        return
+      }
+
+      // 检查是否都已计入
+      const notAccounted = selectedRecords.value.filter(r => !r.is_accounted)
+      if (notAccounted.length > 0) {
+        ElMessage.warning(`有 ${notAccounted.length} 条记录未计入，无法结算`)
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确认结算选中的 ${selectedRecords.value.length} 条记录？`,
+          '批量结算',
+          {
+            confirmButtonText: '确认',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        settling.value = true
+        const commissionIds = selectedRecords.value.map(r => r.id)
+        const res = await settleSalesCommissions({
+          commission_ids: commissionIds
+        })
+        if (res.code === 200) {
+          ElMessage.success(`结算成功，共结算 ${res.affected || 0} 条记录`)
+          selectedRecords.value = []
+          loadRecords()
+        } else {
+          ElMessage.error(res.message || '结算失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('批量结算失败:', error)
+          ElMessage.error('批量结算失败: ' + (error.message || '未知错误'))
+        }
+      } finally {
+        settling.value = false
+      }
+    }
+
+    // 按日期批量计入
+    const handleBatchAccountByDate = () => {
+      if (!selectedEmployeeCode.value) {
+        ElMessage.warning('请先选择销售员')
+        return
+      }
+      accountByDateForm.startDate = ''
+      accountByDateForm.endDate = ''
+      accountByDateDialogVisible.value = true
+    }
+
+    // 确认按日期批量计入
+    const handleConfirmAccountByDate = async () => {
+      if (!accountByDateForm.startDate || !accountByDateForm.endDate) {
+        ElMessage.warning('请选择开始日期和结束日期')
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确认计入 ${accountByDateForm.startDate} 至 ${accountByDateForm.endDate} 期间的所有未计入记录？`,
+          '按日期批量计入',
+          {
+            confirmButtonText: '确认',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        accounting.value = true
+        const res = await accountSalesCommissions({
+          employee_code: selectedEmployeeCode.value,
+          start_date: accountByDateForm.startDate,
+          end_date: accountByDateForm.endDate
+        })
+        if (res.code === 200) {
+          ElMessage.success(`计入成功，共计入 ${res.affected || 0} 条记录`)
+          accountByDateDialogVisible.value = false
+          loadRecords()
+        } else {
+          ElMessage.error(res.message || '计入失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('按日期批量计入失败:', error)
+          ElMessage.error('按日期批量计入失败: ' + (error.message || '未知错误'))
+        }
+      } finally {
+        accounting.value = false
+      }
+    }
+
+    // 按日期批量结算
+    const handleBatchSettleByDate = () => {
+      if (!selectedEmployeeCode.value) {
+        ElMessage.warning('请先选择销售员')
+        return
+      }
+      settleByDateForm.startDate = ''
+      settleByDateForm.endDate = ''
+      settleByDateDialogVisible.value = true
+    }
+
+    // 确认按日期批量结算
+    const handleConfirmSettleByDate = async () => {
+      if (!settleByDateForm.startDate || !settleByDateForm.endDate) {
+        ElMessage.warning('请选择开始日期和结束日期')
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确认结算 ${settleByDateForm.startDate} 至 ${settleByDateForm.endDate} 期间的所有已计入但未结算记录？`,
+          '按日期批量结算',
+          {
+            confirmButtonText: '确认',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        settling.value = true
+        const res = await settleSalesCommissions({
+          employee_code: selectedEmployeeCode.value,
+          start_date: settleByDateForm.startDate,
+          end_date: settleByDateForm.endDate
+        })
+        if (res.code === 200) {
+          ElMessage.success(`结算成功，共结算 ${res.affected || 0} 条记录`)
+          settleByDateDialogVisible.value = false
+          loadRecords()
+        } else {
+          ElMessage.error(res.message || '结算失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('按日期批量结算失败:', error)
+          ElMessage.error('按日期批量结算失败: ' + (error.message || '未知错误'))
+        }
+      } finally {
+        settling.value = false
+      }
+    }
+
+    // 单笔取消计入
+    const handleCancelAccount = async (row) => {
+      try {
+        await ElMessageBox.confirm(
+          `确认取消计入订单 ${row.order_number} 的分成？取消后该订单将标记为"计入已取消"。`,
+          '确认取消计入',
+          {
+            confirmButtonText: '确认',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        cancelingAccount.value = true
+        const res = await cancelAccountSalesCommissions({
+          commission_ids: [row.id]
+        })
+        if (res.code === 200) {
+          ElMessage.success(`取消计入成功，共取消 ${res.affected || 1} 条记录`)
+          loadRecords()
+        } else {
+          ElMessage.error(res.message || '取消计入失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('取消计入失败:', error)
+          ElMessage.error('取消计入失败: ' + (error.message || '未知错误'))
+        }
+      } finally {
+        cancelingAccount.value = false
+      }
+    }
+
+    // 批量取消计入
+    const handleBatchCancelAccount = async () => {
+      if (selectedRecords.value.length === 0) {
+        ElMessage.warning('请先选择要取消计入的记录')
+        return
+      }
+
+      // 检查是否都已计入且未结算
+      const invalidRecords = selectedRecords.value.filter(r => !r.is_accounted || r.is_settled || r.is_accounted_cancelled)
+      if (invalidRecords.length > 0) {
+        ElMessage.warning(`有 ${invalidRecords.length} 条记录不符合条件（只能取消已计入未结算的记录）`)
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确认取消计入选中的 ${selectedRecords.value.length} 条记录？取消后这些订单将标记为"计入已取消"。`,
+          '批量取消计入',
+          {
+            confirmButtonText: '确认',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        cancelingAccount.value = true
+        const commissionIds = selectedRecords.value.map(r => r.id)
+        const res = await cancelAccountSalesCommissions({
+          commission_ids: commissionIds
+        })
+        if (res.code === 200) {
+          ElMessage.success(`取消计入成功，共取消 ${res.affected || 0} 条记录`)
+          selectedRecords.value = []
+          loadRecords()
+        } else {
+          ElMessage.error(res.message || '取消计入失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('批量取消计入失败:', error)
+          ElMessage.error('批量取消计入失败: ' + (error.message || '未知错误'))
+        }
+      } finally {
+        cancelingAccount.value = false
+      }
+    }
+
+    // 单笔重新计入
+    const handleResetAccount = async (row) => {
+      try {
+        await ElMessageBox.confirm(
+          `确认重新计入订单 ${row.order_number} 的分成？这将把该订单从"计入已取消"状态恢复为"已计入"状态。`,
+          '确认重新计入',
+          {
+            confirmButtonText: '确认',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        resettingAccount.value = true
+        const res = await resetAccountSalesCommissions({
+          commission_ids: [row.id]
+        })
+        if (res.code === 200) {
+          ElMessage.success(`重新计入成功，共重新计入 ${res.affected || 1} 条记录`)
+          loadRecords()
+        } else {
+          ElMessage.error(res.message || '重新计入失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('重新计入失败:', error)
+          ElMessage.error('重新计入失败: ' + (error.message || '未知错误'))
+        }
+      } finally {
+        resettingAccount.value = false
+      }
+    }
+
+    // 批量重新计入
+    const handleBatchResetAccount = async () => {
+      if (selectedRecords.value.length === 0) {
+        ElMessage.warning('请先选择要重新计入的记录')
+        return
+      }
+
+      // 检查是否都是已取消的记录
+      const invalidRecords = selectedRecords.value.filter(r => !r.is_accounted_cancelled)
+      if (invalidRecords.length > 0) {
+        ElMessage.warning(`有 ${invalidRecords.length} 条记录不符合条件（只能重新计入已取消的记录）`)
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确认重新计入选中的 ${selectedRecords.value.length} 条记录？这将把这些订单从"计入已取消"状态恢复为"已计入"状态。`,
+          '批量重新计入',
+          {
+            confirmButtonText: '确认',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        resettingAccount.value = true
+        const commissionIds = selectedRecords.value.map(r => r.id)
+        const res = await resetAccountSalesCommissions({
+          commission_ids: commissionIds
+        })
+        if (res.code === 200) {
+          ElMessage.success(`重新计入成功，共重新计入 ${res.affected || 0} 条记录`)
+          selectedRecords.value = []
+          loadRecords()
+        } else {
+          ElMessage.error(res.message || '重新计入失败')
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('批量重新计入失败:', error)
+          ElMessage.error('批量重新计入失败: ' + (error.message || '未知错误'))
+        }
+      } finally {
+        resettingAccount.value = false
+      }
+    }
+
     onMounted(() => {
       initMonth()
       loadSalesEmployees()
@@ -578,22 +1241,46 @@ export default {
       loading,
       recordsLoading,
       configSaving,
+      accounting,
+      settling,
+      cancelingAccount,
+      resettingAccount,
       statsList,
       commissionRecords,
       salesEmployees,
       selectedEmployeeCode,
       selectedMonth,
+      selectedStatus,
+      dateRange,
+      selectedRecords,
       activeTab,
       configDialogVisible,
+      accountByDateDialogVisible,
+      settleByDateDialogVisible,
       configFormRef,
       recordsPagination,
       configForm,
+      accountByDateForm,
+      settleByDateForm,
       configRules,
       handleSearch,
       handleViewDetails,
       handleConfig,
       handleConfirmConfig,
       handleRecordsPageChange,
+      handleSelectionChange,
+      handleAccount,
+      handleSettle,
+      handleBatchAccount,
+      handleBatchSettle,
+      handleBatchAccountByDate,
+      handleConfirmAccountByDate,
+      handleBatchSettleByDate,
+      handleConfirmSettleByDate,
+      handleCancelAccount,
+      handleBatchCancelAccount,
+      handleResetAccount,
+      handleBatchResetAccount,
       formatDate,
       formatMoney,
       getEmployeeName,
@@ -710,6 +1397,21 @@ export default {
 
 .detail-tabs {
   margin-top: 30px;
+}
+
+.table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding: 15px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+}
+
+.toolbar-left {
+  display: flex;
+  gap: 10px;
 }
 
 .records-table {
