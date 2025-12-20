@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:employees_app/utils/request.dart';
 import 'package:employees_app/pages/commission/commission_order_list_page.dart';
+import 'package:employees_app/pages/order/order_detail_page.dart';
 
 class MyCommissionPage extends StatefulWidget {
   const MyCommissionPage({super.key});
@@ -14,11 +15,48 @@ class _MyCommissionPageState extends State<MyCommissionPage> {
   String? _errorMessage;
   Map<String, dynamic>? _overview;
   List<Map<String, dynamic>> _recentOrders = [];
+  String _selectedPeriod = 'all'; // all, today, week, month, year
 
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  // 获取时间范围
+  Map<String, String?> _getDateRange() {
+    final now = DateTime.now();
+    String? startDate;
+    String? endDate;
+
+    switch (_selectedPeriod) {
+      case 'today':
+        startDate = _formatDateForApi(now);
+        endDate = _formatDateForApi(now);
+        break;
+      case 'week':
+        final weekStart = now.subtract(Duration(days: now.weekday - 1));
+        startDate = _formatDateForApi(weekStart);
+        endDate = _formatDateForApi(now);
+        break;
+      case 'month':
+        startDate = _formatDateForApi(DateTime(now.year, now.month, 1));
+        endDate = _formatDateForApi(now);
+        break;
+      case 'year':
+        startDate = _formatDateForApi(DateTime(now.year, 1, 1));
+        endDate = _formatDateForApi(now);
+        break;
+      default:
+        startDate = null;
+        endDate = null;
+    }
+
+    return {'start_date': startDate, 'end_date': endDate};
+  }
+
+  String _formatDateForApi(DateTime date) {
+    return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
   Future<void> _loadData() async {
@@ -28,9 +66,20 @@ class _MyCommissionPageState extends State<MyCommissionPage> {
     });
 
     try {
+      // 获取时间范围
+      final dateRange = _getDateRange();
+      final queryParams = <String, String>{};
+      if (dateRange['start_date'] != null) {
+        queryParams['start_date'] = dateRange['start_date']!;
+      }
+      if (dateRange['end_date'] != null) {
+        queryParams['end_date'] = dateRange['end_date']!;
+      }
+
       // 获取总览统计
       final overviewResponse = await Request.get<Map<String, dynamic>>(
         '/employee/sales/commission/overview',
+        queryParams: queryParams,
         parser: (data) => data as Map<String, dynamic>,
       );
 
@@ -83,6 +132,21 @@ class _MyCommissionPageState extends State<MyCommissionPage> {
       return dateStr;
     } catch (_) {
       return dateStr;
+    }
+  }
+
+  String _getPeriodLabel(String period) {
+    switch (period) {
+      case 'today':
+        return '今天';
+      case 'week':
+        return '7日';
+      case 'month':
+        return '月';
+      case 'year':
+        return '年';
+      default:
+        return '全部';
     }
   }
 
@@ -191,9 +255,73 @@ class _MyCommissionPageState extends State<MyCommissionPage> {
                                   ),
                                 ),
                               ),
+                              // 时间筛选选择器
+                              PopupMenuButton<String>(
+                                initialValue: _selectedPeriod,
+                                onSelected: (value) {
+                                  setState(() {
+                                    _selectedPeriod = value;
+                                  });
+                                  _loadData();
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.3),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        _getPeriodLabel(_selectedPeriod),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(
+                                        Icons.arrow_drop_down,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem<String>(
+                                    value: 'all',
+                                    child: Text('全部'),
+                                  ),
+                                  const PopupMenuItem<String>(
+                                    value: 'today',
+                                    child: Text('今天'),
+                                  ),
+                                  const PopupMenuItem<String>(
+                                    value: 'week',
+                                    child: Text('7日'),
+                                  ),
+                                  const PopupMenuItem<String>(
+                                    value: 'month',
+                                    child: Text('月'),
+                                  ),
+                                  const PopupMenuItem<String>(
+                                    value: 'year',
+                                    child: Text('年'),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
-                          const SizedBox(height: 16),
                         ],
                       ),
                     ),
@@ -435,102 +563,150 @@ class _MyCommissionPageState extends State<MyCommissionPage> {
     final addressName = order['address_name'] as String? ?? '-';
     final orderDate = _formatDate(order['order_date']?.toString());
     final totalCommission = _formatMoney(order['total_commission'] ?? 0);
+    final orderAmount = _formatMoney(order['order_amount'] ?? 0);
+    
+    // 获取订单ID（可能是 order_id 或 id）
+    final orderId = order['order_id'] as int? ?? 
+                    order['id'] as int? ?? 
+                    (order['order_id'] is num ? (order['order_id'] as num).toInt() : null) ??
+                    (order['id'] is num ? (order['id'] as num).toInt() : null);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
+    return InkWell(
+      onTap: orderId != null
+          ? () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => OrderDetailPage(orderId: orderId),
+                ),
+              );
+            }
+          : null,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          addressName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF20253A),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          orderNumber,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF8C92A4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      status,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: statusColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        addressName,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF20253A),
-                        ),
+                      Row(
+                        children: [
+                          const Text(
+                            '订单金额',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF8C92A4),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '¥$orderAmount',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF20253A),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        orderNumber,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF8C92A4),
-                        ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Text(
+                            '分润金额',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF8C92A4),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '+¥$totalCommission',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF20CB6B),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
+                  Text(
+                    orderDate,
+                    style: const TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: statusColor,
+                      color: Color(0xFF8C92A4),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Text(
-                      '分润金额',
-                      style: TextStyle(fontSize: 14, color: Color(0xFF8C92A4)),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '+¥$totalCommission',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF20253A),
-                      ),
-                    ),
-                  ],
-                ),
-                Text(
-                  orderDate,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF8C92A4),
-                  ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

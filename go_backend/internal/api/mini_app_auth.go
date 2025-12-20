@@ -523,11 +523,12 @@ type updateMiniAppUserByAdminRequest struct {
 	Name             string  `json:"name"`
 	Phone            string  `json:"phone"`
 	StoreType        string  `json:"storeType"`
-	SalesCode        *string `json:"salesCode"`       // 销售员代码（员工码），使用指针以区分是否传递
+	SalesCode        *string `json:"salesCode"`        // 销售员代码（员工码），使用指针以区分是否传递
 	SalesEmployeeID  *int    `json:"salesEmployeeId"` // 销售员ID（优先使用）
 	Avatar           string  `json:"avatar"`
 	UserType         string  `json:"userType"`
 	ProfileCompleted *bool   `json:"profileCompleted,omitempty"`
+	IsSalesEmployee  *bool   `json:"isSalesEmployee,omitempty"`  // 是否是销售员
 }
 
 // UpdateMiniAppUserByAdmin 管理员更新小程序用户信息（可修改所有字段包括用户类型）

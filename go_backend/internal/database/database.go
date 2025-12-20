@@ -606,6 +606,8 @@ func InitDB() error {
 		ensureColumn("profile_completed", "profile_completed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '资料是否完善：0-未完善，1-已完善'")
 		ensureColumn("user_code", "user_code VARCHAR(10) DEFAULT NULL COMMENT '用户编号（4-5位数）'")
 		ensureColumn("name", "name VARCHAR(50) DEFAULT NULL COMMENT '用户姓名' AFTER user_code")
+		ensureColumn("is_sales_employee", "is_sales_employee TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否是销售员：0-否，1-是'")
+		ensureColumn("sales_employee_id", "sales_employee_id INT DEFAULT NULL COMMENT '绑定的销售员ID（员工表ID）'")
 
 		// 删除不需要的字段（如果存在）
 		dropColumn := func(columnName string) {
@@ -1427,6 +1429,65 @@ func InitDB() error {
 			log.Printf("创建sales_commission_monthly_stats表失败: %v", err)
 		} else {
 			log.Println("销售分成月统计表初始化成功")
+		}
+
+		// 创建收款审核申请表
+		createPaymentVerificationRequestsTableSQL := `
+		CREATE TABLE IF NOT EXISTS payment_verification_requests (
+		    id INT AUTO_INCREMENT PRIMARY KEY,
+		    order_id INT NOT NULL COMMENT '订单ID',
+		    order_number VARCHAR(50) NOT NULL COMMENT '订单号',
+		    sales_employee_code VARCHAR(50) NOT NULL COMMENT '销售员代码',
+		    sales_employee_name VARCHAR(100) COMMENT '销售员姓名',
+		    customer_id INT NOT NULL COMMENT '客户ID',
+		    customer_name VARCHAR(100) COMMENT '客户姓名',
+		    order_amount DECIMAL(10, 2) NOT NULL COMMENT '订单金额',
+		    request_reason TEXT COMMENT '申请原因/备注',
+		    status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending' COMMENT '审核状态：pending-待审核，approved-已通过，rejected-已拒绝',
+		    admin_id INT COMMENT '审核管理员ID',
+		    admin_name VARCHAR(100) COMMENT '审核管理员姓名',
+		    reviewed_at DATETIME COMMENT '审核时间',
+		    review_remark TEXT COMMENT '审核备注',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+		    INDEX idx_order_id (order_id),
+		    INDEX idx_sales_employee_code (sales_employee_code),
+		    INDEX idx_status (status),
+		    INDEX idx_created_at (created_at),
+		    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='收款审核申请表';
+		`
+
+		if _, err = DB.Exec(createPaymentVerificationRequestsTableSQL); err != nil {
+			log.Printf("创建payment_verification_requests表失败: %v", err)
+		} else {
+			log.Println("收款审核申请表初始化成功")
+		}
+
+		// 创建富文本内容表
+		createRichContentsTableSQL := `
+		CREATE TABLE IF NOT EXISTS rich_contents (
+		    id INT AUTO_INCREMENT PRIMARY KEY,
+		    title VARCHAR(200) NOT NULL COMMENT '富文本标题',
+		    content LONGTEXT NOT NULL COMMENT '富文本HTML内容',
+		    content_type VARCHAR(50) NOT NULL DEFAULT 'notice' COMMENT '内容类型：notice(通知), activity(活动), other(其他)',
+		    status VARCHAR(20) NOT NULL DEFAULT 'draft' COMMENT '状态：draft(草稿), published(已发布), archived(已归档)',
+		    published_at DATETIME NULL COMMENT '发布时间',
+		    view_count INT DEFAULT 0 COMMENT '浏览次数',
+		    created_by VARCHAR(100) COMMENT '创建人',
+		    updated_by VARCHAR(100) COMMENT '更新人',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    INDEX idx_content_type (content_type),
+		    INDEX idx_status (status),
+		    INDEX idx_published_at (published_at)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='富文本内容表';
+		`
+
+		if _, err = DB.Exec(createRichContentsTableSQL); err != nil {
+			log.Printf("创建rich_contents表失败: %v", err)
+		} else {
+			log.Println("富文本内容表初始化成功")
 		}
 
 		log.Println("所有表创建成功")

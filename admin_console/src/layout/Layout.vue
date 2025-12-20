@@ -92,6 +92,12 @@
             </el-icon>
             <span>销售分成管理</span>
           </el-menu-item>
+          <el-menu-item index="/payment-verification">
+            <el-icon>
+              <Money />
+            </el-icon>
+            <span>收款审核</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <!-- 用户管理 -->
@@ -135,6 +141,12 @@
               <Ticket />
             </el-icon>
             <span>优惠券管理</span>
+          </el-menu-item>
+          <el-menu-item index="/rich-content">
+            <el-icon>
+              <Document />
+            </el-icon>
+            <span>富文本内容</span>
           </el-menu-item>
         </el-sub-menu>
 

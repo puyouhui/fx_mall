@@ -22,6 +22,8 @@ type MiniAppUser struct {
 	StoreType        string    `json:"store_type,omitempty"`
 	UserType         string    `json:"user_type"`
 	ProfileCompleted bool      `json:"profile_completed"`
+	IsSalesEmployee  bool      `json:"is_sales_employee"`  // 是否是销售员
+	SalesEmployeeID  *int      `json:"sales_employee_id,omitempty"` // 绑定的销售员ID（员工表ID）
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
@@ -29,7 +31,7 @@ type MiniAppUser struct {
 // GetMiniAppUserByUniqueID 根据唯一ID获取用户
 func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 	query := `
-		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, created_at, updated_at
 		FROM mini_app_users
 		WHERE unique_id = ?
 		LIMIT 1`
@@ -39,6 +41,8 @@ func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 		userCode, name, avatar, phone sql.NullString
 		salesCode, storeType          sql.NullString
 		profileCompleted              sql.NullInt64
+		isSalesEmployee               sql.NullInt64
+		salesEmployeeID               sql.NullInt64
 	)
 
 	err := database.DB.QueryRow(query, uniqueID).Scan(
@@ -52,6 +56,8 @@ func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 		&storeType,
 		&user.UserType,
 		&profileCompleted,
+		&isSalesEmployee,
+		&salesEmployeeID,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -70,6 +76,11 @@ func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 	user.SalesCode = nullString(salesCode)
 	user.StoreType = nullString(storeType)
 	user.ProfileCompleted = profileCompleted.Valid && profileCompleted.Int64 == 1
+	user.IsSalesEmployee = isSalesEmployee.Valid && isSalesEmployee.Int64 == 1
+	if salesEmployeeID.Valid {
+		id := int(salesEmployeeID.Int64)
+		user.SalesEmployeeID = &id
+	}
 
 	return &user, nil
 }
@@ -79,7 +90,7 @@ func GetMiniAppUserByUserCode(userCode string) (*MiniAppUser, error) {
 	var user MiniAppUser
 
 	query := `
-		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, created_at, updated_at
 		FROM mini_app_users
 		WHERE user_code = ?
 		LIMIT 1
@@ -89,6 +100,8 @@ func GetMiniAppUserByUserCode(userCode string) (*MiniAppUser, error) {
 		code, name, avatar, phone sql.NullString
 		salesCode, storeType      sql.NullString
 		profileCompleted          sql.NullInt64
+		isSalesEmployee           sql.NullInt64
+		salesEmployeeID           sql.NullInt64
 	)
 
 	err := database.DB.QueryRow(query, userCode).Scan(
@@ -102,6 +115,8 @@ func GetMiniAppUserByUserCode(userCode string) (*MiniAppUser, error) {
 		&storeType,
 		&user.UserType,
 		&profileCompleted,
+		&isSalesEmployee,
+		&salesEmployeeID,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -119,6 +134,11 @@ func GetMiniAppUserByUserCode(userCode string) (*MiniAppUser, error) {
 	user.SalesCode = nullString(salesCode)
 	user.StoreType = nullString(storeType)
 	user.ProfileCompleted = profileCompleted.Valid && profileCompleted.Int64 == 1
+	user.IsSalesEmployee = isSalesEmployee.Valid && isSalesEmployee.Int64 == 1
+	if salesEmployeeID.Valid {
+		id := int(salesEmployeeID.Int64)
+		user.SalesEmployeeID = &id
+	}
 
 	return &user, nil
 }
@@ -126,7 +146,7 @@ func GetMiniAppUserByUserCode(userCode string) (*MiniAppUser, error) {
 // GetMiniAppUserByID 根据ID获取用户详情（后台管理使用）
 func GetMiniAppUserByID(id int) (*MiniAppUser, error) {
 	query := `
-		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, created_at, updated_at
 		FROM mini_app_users
 		WHERE id = ?
 		LIMIT 1`
@@ -136,6 +156,8 @@ func GetMiniAppUserByID(id int) (*MiniAppUser, error) {
 		userCode, name, avatar, phone sql.NullString
 		salesCode, storeType          sql.NullString
 		profileCompleted              sql.NullInt64
+		isSalesEmployee               sql.NullInt64
+		salesEmployeeID               sql.NullInt64
 	)
 
 	err := database.DB.QueryRow(query, id).Scan(
@@ -149,6 +171,8 @@ func GetMiniAppUserByID(id int) (*MiniAppUser, error) {
 		&storeType,
 		&user.UserType,
 		&profileCompleted,
+		&isSalesEmployee,
+		&salesEmployeeID,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -167,6 +191,11 @@ func GetMiniAppUserByID(id int) (*MiniAppUser, error) {
 	user.SalesCode = nullString(salesCode)
 	user.StoreType = nullString(storeType)
 	user.ProfileCompleted = profileCompleted.Valid && profileCompleted.Int64 == 1
+	user.IsSalesEmployee = isSalesEmployee.Valid && isSalesEmployee.Int64 == 1
+	if salesEmployeeID.Valid {
+		id := int(salesEmployeeID.Int64)
+		user.SalesEmployeeID = &id
+	}
 
 	return &user, nil
 }
@@ -297,7 +326,7 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 	}
 
 	query := `
-		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, created_at, updated_at
 		FROM mini_app_users
 	`
 	if where != "" {
@@ -319,6 +348,8 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 			userCode, name, avatar, phone sql.NullString
 			salesCode, storeType          sql.NullString
 			profileCompleted              sql.NullInt64
+			isSalesEmployee               sql.NullInt64
+			salesEmployeeID               sql.NullInt64
 		)
 
 		if err := rows.Scan(
@@ -332,6 +363,8 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 			&storeType,
 			&user.UserType,
 			&profileCompleted,
+			&isSalesEmployee,
+			&salesEmployeeID,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		); err != nil {
@@ -345,6 +378,11 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 		user.SalesCode = nullString(salesCode)
 		user.StoreType = nullString(storeType)
 		user.ProfileCompleted = profileCompleted.Valid && profileCompleted.Int64 == 1
+		user.IsSalesEmployee = isSalesEmployee.Valid && isSalesEmployee.Int64 == 1
+		if salesEmployeeID.Valid {
+			id := int(salesEmployeeID.Int64)
+			user.SalesEmployeeID = &id
+		}
 
 		users = append(users, user)
 	}
@@ -442,6 +480,33 @@ func UpdateMiniAppUserByAdmin(id int, updateData map[string]interface{}) error {
 		updates = append(updates, "profile_completed = ?")
 		args = append(args, completedValue)
 	}
+	// 管理员可以设置是否为销售员
+	if isSalesEmployee, ok := updateData["isSalesEmployee"].(bool); ok {
+		var salesEmployeeValue int
+		if isSalesEmployee {
+			salesEmployeeValue = 1
+		} else {
+			salesEmployeeValue = 0
+		}
+		updates = append(updates, "is_sales_employee = ?")
+		args = append(args, salesEmployeeValue)
+	}
+	// 管理员可以设置绑定的销售员ID
+	if salesEmployeeID, ok := updateData["salesEmployeeId"].(int); ok {
+		if salesEmployeeID > 0 {
+			updates = append(updates, "sales_employee_id = ?")
+			args = append(args, salesEmployeeID)
+		} else {
+			updates = append(updates, "sales_employee_id = NULL")
+		}
+	} else if salesEmployeeIDPtr, ok := updateData["salesEmployeeId"].(*int); ok {
+		if salesEmployeeIDPtr != nil && *salesEmployeeIDPtr > 0 {
+			updates = append(updates, "sales_employee_id = ?")
+			args = append(args, *salesEmployeeIDPtr)
+		} else {
+			updates = append(updates, "sales_employee_id = NULL")
+		}
+	}
 
 	// 更新更新时间
 	updates = append(updates, "updated_at = NOW()")
@@ -478,7 +543,7 @@ func GetMiniAppUsersByIDs(ids []int) (map[int]*MiniAppUser, error) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, created_at, updated_at
 		FROM mini_app_users
 		WHERE id IN (%s)`, strings.Join(placeholders, ","))
 
@@ -495,6 +560,8 @@ func GetMiniAppUsersByIDs(ids []int) (map[int]*MiniAppUser, error) {
 			userCode, name, avatar, phone sql.NullString
 			salesCode, storeType          sql.NullString
 			profileCompleted              sql.NullInt64
+			isSalesEmployee               sql.NullInt64
+			salesEmployeeID               sql.NullInt64
 		)
 
 		err := rows.Scan(
@@ -508,6 +575,8 @@ func GetMiniAppUsersByIDs(ids []int) (map[int]*MiniAppUser, error) {
 			&storeType,
 			&user.UserType,
 			&profileCompleted,
+			&isSalesEmployee,
+			&salesEmployeeID,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		)
@@ -522,6 +591,11 @@ func GetMiniAppUsersByIDs(ids []int) (map[int]*MiniAppUser, error) {
 		user.SalesCode = nullString(salesCode)
 		user.StoreType = nullString(storeType)
 		user.ProfileCompleted = profileCompleted.Valid && profileCompleted.Int64 == 1
+		user.IsSalesEmployee = isSalesEmployee.Valid && isSalesEmployee.Int64 == 1
+		if salesEmployeeID.Valid {
+			id := int(salesEmployeeID.Int64)
+			user.SalesEmployeeID = &id
+		}
 
 		users[user.ID] = &user
 	}

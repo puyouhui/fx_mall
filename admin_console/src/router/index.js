@@ -136,11 +136,27 @@ const routes = [
         }
       },
       {
+        path: 'payment-verification',
+        name: 'PaymentVerification',
+        component: () => import('../views/PaymentVerification.vue'),
+        meta: {
+          title: '收款审核管理'
+        }
+      },
+      {
         path: 'employee-locations',
         name: 'EmployeeLocations',
         component: () => import('../views/EmployeeLocations.vue'),
         meta: {
           title: '员工位置'
+        }
+      },
+      {
+        path: 'rich-content',
+        name: 'RichContent',
+        component: () => import('../views/RichContent.vue'),
+        meta: {
+          title: '富文本内容管理'
         }
       }
     ]

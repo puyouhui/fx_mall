@@ -427,8 +427,25 @@ func GetUserOrderDetail(c *gin.Context) {
 		return
 	}
 
-	// 验证订单归属
-	if order.UserID != user.ID {
+	// 验证订单归属：允许订单创建者或销售员查看
+	isOrderOwner := order.UserID == user.ID
+	isSalesEmployee := user.IsSalesEmployee && user.SalesEmployeeID != nil
+	
+	// 如果是销售员，需要验证该订单是否属于该销售员负责的客户
+	if !isOrderOwner && isSalesEmployee {
+		// 获取订单创建者信息
+		orderUser, err := model.GetMiniAppUserByID(order.UserID)
+		if err != nil || orderUser == nil {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权访问此订单"})
+			return
+		}
+		// 检查订单创建者是否绑定了该销售员
+		if orderUser.SalesEmployeeID == nil || *orderUser.SalesEmployeeID != *user.SalesEmployeeID {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权访问此订单"})
+			return
+		}
+	} else if !isOrderOwner && !isSalesEmployee {
+		// 既不是订单创建者，也不是销售员
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权访问此订单"})
 		return
 	}

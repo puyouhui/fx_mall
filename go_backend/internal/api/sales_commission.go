@@ -322,8 +322,26 @@ func GetSalesCommissionOverview(c *gin.Context) {
 		return
 	}
 
+	// 获取时间筛选参数
+	startDateStr := c.Query("start_date") // YYYY-MM-DD格式
+	endDateStr := c.Query("end_date")       // YYYY-MM-DD格式
+
+	var startDate, endDate *time.Time
+	if startDateStr != "" {
+		if t, err := time.Parse("2006-01-02", startDateStr); err == nil {
+			startDate = &t
+		}
+	}
+	if endDateStr != "" {
+		if t, err := time.Parse("2006-01-02", endDateStr); err == nil {
+			// 设置为当天的23:59:59
+			t = time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 0, t.Location())
+			endDate = &t
+		}
+	}
+
 	// 获取总览统计
-	overview, err := model.GetSalesCommissionOverview(employee.EmployeeCode)
+	overview, err := model.GetSalesCommissionOverview(employee.EmployeeCode, startDate, endDate)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取总览统计失败: " + err.Error()})
 		return

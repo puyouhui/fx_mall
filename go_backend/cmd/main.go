@@ -149,10 +149,10 @@ func main() {
 				protectedGroup.PUT("/hot-products/sort", api.UpdateHotProductSort) // 批量更新热销产品排序
 
 				// 热门搜索关键词管理接口
-				protectedGroup.GET("/hot-search-keywords", api.GetAllHotSearchKeywordsForAdmin)     // 获取所有热门搜索关键词
-				protectedGroup.POST("/hot-search-keywords", api.CreateHotSearchKeyword)             // 创建热门搜索关键词
-				protectedGroup.PUT("/hot-search-keywords/:id", api.UpdateHotSearchKeyword)          // 更新热门搜索关键词
-				protectedGroup.DELETE("/hot-search-keywords/:id", api.DeleteHotSearchKeyword)       // 删除热门搜索关键词
+				protectedGroup.GET("/hot-search-keywords", api.GetAllHotSearchKeywordsForAdmin) // 获取所有热门搜索关键词
+				protectedGroup.POST("/hot-search-keywords", api.CreateHotSearchKeyword)         // 创建热门搜索关键词
+				protectedGroup.PUT("/hot-search-keywords/:id", api.UpdateHotSearchKeyword)      // 更新热门搜索关键词
+				protectedGroup.DELETE("/hot-search-keywords/:id", api.DeleteHotSearchKeyword)   // 删除热门搜索关键词
 
 				// 配送费设置
 				protectedGroup.GET("/delivery-fee/settings", api.GetDeliveryFeeSettings)           // 获取配送费基础设置
@@ -224,14 +224,14 @@ func main() {
 				protectedGroup.POST("/delivery-income/settle", api.BatchSettleDeliveryFees)      // 批量结算配送费
 
 				// 销售分成管理（管理员）
-				protectedGroup.GET("/sales-commission/stats", api.AdminGetSalesCommissionStats)        // 获取销售员的分成统计（可查看所有销售员）
-				protectedGroup.GET("/sales-commission/list", api.AdminGetSalesCommissions)            // 获取销售员的分成记录列表
-				protectedGroup.GET("/sales-commission/config", api.AdminGetSalesCommissionConfig)     // 获取销售员的分成配置
-				protectedGroup.POST("/sales-commission/account", api.AdminAccountSalesCommissions)    // 批量计入销售分成
-				protectedGroup.POST("/sales-commission/settle", api.AdminSettleSalesCommissions)     // 批量结算销售分成
+				protectedGroup.GET("/sales-commission/stats", api.AdminGetSalesCommissionStats)                 // 获取销售员的分成统计（可查看所有销售员）
+				protectedGroup.GET("/sales-commission/list", api.AdminGetSalesCommissions)                      // 获取销售员的分成记录列表
+				protectedGroup.GET("/sales-commission/config", api.AdminGetSalesCommissionConfig)               // 获取销售员的分成配置
+				protectedGroup.POST("/sales-commission/account", api.AdminAccountSalesCommissions)              // 批量计入销售分成
+				protectedGroup.POST("/sales-commission/settle", api.AdminSettleSalesCommissions)                // 批量结算销售分成
 				protectedGroup.POST("/sales-commission/cancel-account", api.AdminCancelAccountSalesCommissions) // 取消计入销售分成
-				protectedGroup.POST("/sales-commission/reset-account", api.AdminResetAccountSalesCommissions) // 重新计入销售分成（重置分成）
-				protectedGroup.PUT("/sales-commission/config", api.AdminUpdateSalesCommissionConfig)  // 更新销售员的分成配置
+				protectedGroup.POST("/sales-commission/reset-account", api.AdminResetAccountSalesCommissions)   // 重新计入销售分成（重置分成）
+				protectedGroup.PUT("/sales-commission/config", api.AdminUpdateSalesCommissionConfig)            // 更新销售员的分成配置
 
 				// 仪表盘统计
 				protectedGroup.GET("/dashboard/stats", api.GetDashboardStats) // 获取仪表盘统计数据
@@ -239,8 +239,25 @@ func main() {
 				// 员工位置管理
 				protectedGroup.GET("/employee-locations", api.GetEmployeeLocations)    // 获取所有员工位置
 				protectedGroup.GET("/employee-locations/:id", api.GetEmployeeLocation) // 获取指定员工位置
+
+				// 收款审核管理
+				protectedGroup.GET("/payment-verification", api.GetPaymentVerificationRequests)           // 获取收款审核列表
+				protectedGroup.POST("/payment-verification/review", api.ReviewPaymentVerificationRequest) // 审核收款申请
+
+				// 富文本内容管理
+				protectedGroup.GET("/rich-contents", api.GetRichContentList)             // 获取富文本内容列表
+				protectedGroup.GET("/rich-contents/:id", api.GetRichContent)             // 获取富文本内容详情
+				protectedGroup.POST("/rich-contents", api.CreateRichContent)             // 创建富文本内容
+				protectedGroup.PUT("/rich-contents/:id", api.UpdateRichContent)          // 更新富文本内容
+				protectedGroup.PUT("/rich-contents/:id/publish", api.PublishRichContent) // 发布富文本内容
+				protectedGroup.PUT("/rich-contents/:id/archive", api.ArchiveRichContent) // 归档富文本内容
+				protectedGroup.DELETE("/rich-contents/:id", api.DeleteRichContent)       // 删除富文本内容
 			}
 		}
+
+		// 富文本内容相关接口（小程序端）
+		apiGroup.GET("/rich-contents", api.GetPublishedRichContentList)       // 获取已发布的富文本内容列表
+		apiGroup.GET("/rich-contents/:id", api.GetPublishedRichContentDetail) // 获取已发布的富文本内容详情
 
 		// 供应商相关接口
 		supplierGroup := apiGroup.Group("/supplier")
@@ -252,7 +269,11 @@ func main() {
 			supplierProtectedGroup := supplierGroup.Group("")
 			supplierProtectedGroup.Use(api.SupplierAuthMiddleware())
 			{
-				supplierProtectedGroup.GET("/products", api.GetSupplierProducts) // 供应商查看自己的商品
+				supplierProtectedGroup.GET("/dashboard", api.GetSupplierDashboard)        // 供应商数据总览
+				supplierProtectedGroup.GET("/products", api.GetSupplierProducts)          // 供应商查看自己的商品列表
+				supplierProtectedGroup.GET("/products/:id", api.GetSupplierProductDetail) // 供应商查看自己的商品详情
+				supplierProtectedGroup.GET("/orders", api.GetSupplierOrders)              // 供应商查看包含自己商品的订单列表
+				supplierProtectedGroup.GET("/orders/:id", api.GetSupplierOrderDetail)     // 供应商查看订单详情
 			}
 		}
 
@@ -294,7 +315,7 @@ func main() {
 				employeeProtectedGroup.GET("/sales/customer-by-code", api.GetSalesCustomerByCode)                                // 通过编号查客户
 				employeeProtectedGroup.GET("/sales/customers/:id", api.GetSalesCustomerDetail)                                   // 获取客户详情
 				employeeProtectedGroup.GET("/sales/customers/:id/orders", api.GetSalesCustomerOrders)                            // 获取客户的订单列表
-				employeeProtectedGroup.GET("/sales/customers/:id/frequent-products", api.GetSalesCustomerFrequentProducts)      // 获取客户的常购商品列表
+				employeeProtectedGroup.GET("/sales/customers/:id/frequent-products", api.GetSalesCustomerFrequentProducts)       // 获取客户的常购商品列表
 				employeeProtectedGroup.GET("/sales/customers/:id/coupons", api.GetAdminUserCoupons)                              // 获取客户的优惠券列表（销售员查看）
 				employeeProtectedGroup.GET("/sales/customers/:id/purchase-list", api.GetSalesCustomerPurchaseList)               // 获取客户的采购单
 				employeeProtectedGroup.POST("/sales/customers/:id/purchase-list", api.AddSalesCustomerPurchaseItem)              // 新增客户采购单条目
@@ -321,12 +342,14 @@ func main() {
 				employeeProtectedGroup.GET("/delivery-employee-location/:code", api.GetEmployeeLocationByCode)                   // 获取配送员位置（员工端）
 
 				// 销售分成相关接口
-				employeeProtectedGroup.POST("/sales/commission/preview", api.PreviewSalesCommission)                              // 预览销售分成（开单时）
-				employeeProtectedGroup.GET("/sales/commission/list", api.GetSalesCommissions)                                     // 获取销售员的分成记录列表
-				employeeProtectedGroup.GET("/sales/commission/stats", api.GetSalesCommissionMonthlyStats)                         // 获取销售员的分成月统计
-				employeeProtectedGroup.GET("/sales/commission/overview", api.GetSalesCommissionOverview)                         // 获取销售员的分成总览统计
-				employeeProtectedGroup.GET("/sales/commission/unpaid-orders", api.GetUnpaidOrdersWithCommissionPreview)          // 获取未收款订单及其分润预览
-				employeeProtectedGroup.GET("/sales/commission/config", api.GetSalesCommissionConfig)                               // 获取销售员的分成配置
+				employeeProtectedGroup.POST("/sales/commission/preview", api.PreviewSalesCommission)                                 // 预览销售分成（开单时）
+				employeeProtectedGroup.GET("/sales/commission/list", api.GetSalesCommissions)                                        // 获取销售员的分成记录列表
+				employeeProtectedGroup.GET("/sales/commission/stats", api.GetSalesCommissionMonthlyStats)                            // 获取销售员的分成月统计
+				employeeProtectedGroup.GET("/sales/commission/overview", api.GetSalesCommissionOverview)                             // 获取销售员的分成总览统计
+				employeeProtectedGroup.GET("/sales/commission/unpaid-orders", api.GetUnpaidOrdersWithCommissionPreview)              // 获取未收款订单及其分润预览
+				employeeProtectedGroup.POST("/sales/payment-verification", api.SubmitPaymentVerificationRequest)                     // 提交收款申请
+				employeeProtectedGroup.GET("/sales/payment-verification/order/:orderId", api.GetPaymentVerificationRequestByOrderID) // 获取订单的收款申请状态
+				employeeProtectedGroup.GET("/sales/commission/config", api.GetSalesCommissionConfig)                                 // 获取销售员的分成配置
 			}
 		}
 	}

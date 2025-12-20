@@ -359,6 +359,17 @@
               inactive-text="未完善"
             />
           </el-form-item>
+          <el-form-item label="设置为销售员" prop="isSalesEmployee">
+            <el-switch
+              v-model="editForm.isSalesEmployee"
+              active-text="是"
+              inactive-text="否"
+              @change="handleSalesEmployeeSwitchChange"
+            />
+            <div style="font-size: 12px; color: #909399; margin-top: 5px;">
+              设置为销售员后，该用户可以通过小程序查看其负责客户的订单详情
+            </div>
+          </el-form-item>
         </el-form>
         <template #footer>
           <span class="dialog-footer">
@@ -726,7 +737,8 @@ const editForm = reactive({
   salesEmployeeId: null,
   avatar: '',
   userType: 'unknown',
-  profileCompleted: false
+  profileCompleted: false,
+  isSalesEmployee: false
 })
 
 // 上传头像相关
@@ -940,6 +952,7 @@ const handleEdit = async () => {
   editForm.avatar = userDetail.value.avatar || ''
   editForm.userType = userDetail.value.user_type || 'unknown'
   editForm.profileCompleted = userDetail.value.profile_completed || false
+  editForm.isSalesEmployee = userDetail.value.is_sales_employee || false
   
   editDialogVisible.value = true
 }
@@ -981,6 +994,24 @@ const handleSalesEmployeeChange = (employeeId) => {
   }
 }
 
+// 处理销售员开关变化
+const handleSalesEmployeeSwitchChange = (value) => {
+  if (value) {
+    // 如果设置为销售员，但没有选择销售员ID，提示用户
+    if (!editForm.salesEmployeeId) {
+      ElMessage.warning('请先选择绑定的销售员')
+      // 延迟重置，让用户看到提示
+      setTimeout(() => {
+        editForm.isSalesEmployee = false
+      }, 100)
+    }
+  } else {
+    // 取消销售员身份时，清空销售员ID
+    editForm.salesEmployeeId = null
+    editForm.salesCode = ''
+  }
+}
+
 const handleSaveEdit = async () => {
   if (!editFormRef.value) return
   
@@ -997,7 +1028,8 @@ const handleSaveEdit = async () => {
         storeType: editForm.storeType,
         avatar: editForm.avatar,
         userType: editForm.userType,
-        profileCompleted: editForm.profileCompleted
+        profileCompleted: editForm.profileCompleted,
+        isSalesEmployee: editForm.isSalesEmployee
       }
       
       // 处理销售员绑定
@@ -1006,6 +1038,12 @@ const handleSaveEdit = async () => {
       } else {
         // 如果清空了选择，清除绑定
         updateData.salesCode = ''
+      }
+      
+      // 如果设置为销售员，必须要有销售员ID
+      if (editForm.isSalesEmployee && !editForm.salesEmployeeId) {
+        ElMessage.warning('设置为销售员时，必须选择绑定的销售员')
+        return
       }
       
       const res = await updateMiniUser(userDetail.value.id, updateData)

@@ -28,6 +28,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   Map<String, dynamic>? _salesCommissionPreview;
   Map<String, dynamic>? _salesCommission;
   Map<String, dynamic>? _deliveryFeeCalculation;
+  Map<String, dynamic>? _paymentVerificationRequest; // 收款申请信息
 
   // 地图相关
   final MapController _mapController = MapController();
@@ -85,6 +86,11 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           _deliveryEmployee!['employee_code'] != null) {
         _loadDeliveryEmployeeLocation();
       }
+
+      // 如果订单状态是已送达，检查是否有收款申请
+      if (status == 'delivered' || status == 'shipped') {
+        _loadPaymentVerificationRequest();
+      }
     } else {
       setState(() {
         _loading = false;
@@ -123,6 +129,13 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           fontSize: 18,
           fontWeight: FontWeight.w600,
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share, color: Colors.white),
+            onPressed: _shareToMiniApp,
+            tooltip: '分享到小程序',
+          ),
+        ],
       ),
       body: Container(
         decoration: const BoxDecoration(
@@ -193,6 +206,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
                     ),
                     // 底部操作按钮
                     _buildActionButtons(),
+                    // 收款按钮（已送达订单）
+                    _buildPaymentButton(),
                   ],
                 ),
         ),
@@ -570,6 +585,59 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         ],
       ),
     );
+  }
+
+  /// 分享订单到小程序
+  Future<void> _shareToMiniApp() async {
+    if (_order == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('订单信息加载中，请稍后再试'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final orderId = widget.orderId;
+
+    // 小程序路径：订单详情页面
+    // 格式：weixin://dl/business/?appid=小程序appid&path=页面路径
+    const String miniAppId = 'wxa2535727aedb00cc'; // 小程序appid
+    final String miniAppPath = '/pages/order/detail?id=$orderId';
+
+    // 构建微信小程序scheme URL
+    // 使用微信小程序的scheme协议跳转
+    final String schemeUrl =
+        'weixin://dl/business/?appid=$miniAppId&path=${Uri.encodeComponent(miniAppPath)}';
+
+    try {
+      final uri = Uri.parse(schemeUrl);
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!launched) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('无法打开微信小程序，请确保已安装微信'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('跳转失败: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   /// 拨打电话
@@ -1095,6 +1163,170 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     return status == 'pending_delivery' || status == 'pending';
   }
 
+  bool _shouldShowPaymentButton() {
+    final order = _order;
+    if (order == null) return false;
+
+    final status = order['status']?.toString() ?? '';
+    // 已送达状态的订单显示收款按钮
+    return (status == 'delivered' || status == 'shipped') && status != 'paid';
+  }
+
+  /// 加载收款申请信息
+  Future<void> _loadPaymentVerificationRequest() async {
+    try {
+      final resp = await Request.get<Map<String, dynamic>>(
+        '/employee/sales/payment-verification/order/${widget.orderId}',
+        parser: (data) => data as Map<String, dynamic>,
+      );
+
+      if (resp.isSuccess && resp.data != null) {
+        setState(() {
+          _paymentVerificationRequest = resp.data;
+        });
+      }
+    } catch (e) {
+      // 忽略错误，可能是没有申请
+    }
+  }
+
+  /// 提交收款申请
+  Future<void> _submitPaymentVerification() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF20CB6B).withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.payment,
+                  color: Color(0xFF20CB6B),
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                '确认提交收款申请',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF20253A),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '提交后需要管理员审核，审核通过后订单将标记为已收款。',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF8C92A4),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: Color(0xFFE5E7EB)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        '取消',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8C92A4),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF20CB6B),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        '确认提交',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final resp = await Request.post<Map<String, dynamic>>(
+        '/employee/sales/payment-verification',
+        body: {'order_id': widget.orderId, 'request_reason': ''},
+        parser: (data) => data as Map<String, dynamic>,
+      );
+
+      if (!mounted) return;
+
+      if (resp.isSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('提交成功，等待管理员审核'),
+            backgroundColor: Color(0xFF20CB6B),
+          ),
+        );
+        // 重新加载订单详情和收款申请信息
+        await _loadDetail();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(resp.message.isNotEmpty ? resp.message : '提交失败'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('提交失败: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   /// 处理取消修改（解锁订单）
   Future<void> _handleCancelEdit() async {
     final order = _order;
@@ -1375,6 +1607,98 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 构建收款按钮（已送达订单）
+  Widget _buildPaymentButton() {
+    if (!_shouldShowPaymentButton()) {
+      return const SizedBox.shrink();
+    }
+
+    final status = _paymentVerificationRequest?['status'] as String?;
+    final isPending = status == 'pending';
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        12,
+        16,
+        0 + MediaQuery.of(context).padding.bottom,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: isPending
+            ? Container(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 14,
+                  horizontal: 16,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFA940).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFFFFA940).withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.access_time,
+                      color: Color(0xFFFFA940),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '收款申请已提交，等待审核',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFFFA940),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : ElevatedButton(
+                onPressed: _submitPaymentVerification,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF20CB6B),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.payment, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      '我已收款',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
       ),
     );
   }

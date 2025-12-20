@@ -517,15 +517,114 @@ export default {
 
 		// 导航到指定链接
 		navigateTo(link) {
+			console.log('navigateTo', link);
+			
+			if (!link || link.trim() === '') {
+				return;
+			}
+			
+			// 处理外部链接（http:// 或 https://）
+			if (link.startsWith('http://') || link.startsWith('https://')) {
+				// #ifdef H5
+				window.open(link, '_blank');
+				// #endif
+				// #ifndef H5
+				uni.showToast({
+					title: '外部链接暂不支持',
+					icon: 'none'
+				});
+				// #endif
+				return;
+			}
+			
+			// 处理完整的小程序路径（以 /pages/ 开头）
+			if (link.startsWith('/pages/')) {
+				// 判断是否是 tabBar 页面
+				const tabBarPages = ['/pages/index/index', '/pages/category/category', '/pages/cart/cart', '/pages/my/my'];
+				if (tabBarPages.includes(link.split('?')[0])) {
+					uni.switchTab({
+						url: link.split('?')[0]
+					});
+				} else {
+					uni.navigateTo({
+						url: link
+					});
+				}
+				return;
+			}
+			
+			// 处理商品详情页：product/xxx 或 product?id=xxx
 			if (link.startsWith('product/')) {
 				const productId = link.split('/')[1];
 				uni.navigateTo({
 					url: '/pages/product/detail?id=' + productId
 				});
-			} else if (link.startsWith('category/')) {
+				return;
+			}
+			
+			// 处理分类页面：category/xxx 或 category?id=xxx
+			if (link.startsWith('category/')) {
 				const categoryId = link.split('/')[1];
+				// 使用globalData传递分类ID
+				getApp().globalData.targetCategoryId = categoryId;
+				uni.switchTab({
+					url: '/pages/category/category'
+				});
+				return;
+			}
+			
+			// 处理富文本页面：rich-content/xxx 或 rich-content?id=xxx
+			if (link.startsWith('rich-content/')) {
+				const contentId = link.split('/')[1];
 				uni.navigateTo({
-					url: '/pages/category/category?id=' + categoryId
+					url: '/pages/rich-content/rich-content?id=' + contentId
+				});
+				return;
+			}
+			
+			// 处理带查询参数的格式：page?key=value
+			if (link.includes('?')) {
+				const [page, params] = link.split('?');
+				// 尝试匹配已知的页面路径
+				if (page === 'product' || page === 'product/detail') {
+					const idMatch = params.match(/id=(\d+)/);
+					if (idMatch) {
+						uni.navigateTo({
+							url: '/pages/product/detail?id=' + idMatch[1]
+						});
+						return;
+					}
+				} else if (page === 'category') {
+					const idMatch = params.match(/id=(\d+)/);
+					if (idMatch) {
+						getApp().globalData.targetCategoryId = idMatch[1];
+						uni.switchTab({
+							url: '/pages/category/category'
+						});
+						return;
+					}
+				} else if (page === 'rich-content') {
+					const idMatch = params.match(/id=(\d+)/);
+					if (idMatch) {
+						uni.navigateTo({
+							url: '/pages/rich-content/rich-content?id=' + idMatch[1]
+						});
+						return;
+					}
+				}
+			}
+			
+			// 如果都不匹配，尝试作为完整路径处理
+			if (link.startsWith('/')) {
+				uni.navigateTo({
+					url: link
+				});
+			} else {
+				// 未知格式，提示用户
+				console.warn('未知的跳转链接格式:', link);
+				uni.showToast({
+					title: '链接格式不正确',
+					icon: 'none'
 				});
 			}
 		},

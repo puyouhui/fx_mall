@@ -1272,9 +1272,23 @@ type SalesCommissionOverview struct {
 }
 
 // GetSalesCommissionOverview 获取销售员的分成总览统计
-func GetSalesCommissionOverview(employeeCode string) (*SalesCommissionOverview, error) {
+func GetSalesCommissionOverview(employeeCode string, startDate, endDate *time.Time) (*SalesCommissionOverview, error) {
+	// 构建查询条件
+	where := "employee_code = ?"
+	args := []interface{}{employeeCode}
+
+	// 日期范围筛选
+	if startDate != nil {
+		where += " AND order_date >= ?"
+		args = append(args, startDate.Format("2006-01-02"))
+	}
+	if endDate != nil {
+		where += " AND order_date <= ?"
+		args = append(args, endDate.Format("2006-01-02"))
+	}
+
 	// 1. 从sales_commissions表获取已收款订单的统计
-	query := `
+	query := fmt.Sprintf(`
 		SELECT 
 			COALESCE(SUM(CASE WHEN is_valid_order = 1 AND is_accounted_cancelled = 0 THEN total_commission ELSE 0 END), 0) as total_amount,
 			COALESCE(SUM(CASE WHEN is_valid_order = 1 AND is_accounted = 1 AND is_settled = 0 AND is_accounted_cancelled = 0 THEN total_commission ELSE 0 END), 0) as accounted_amount,
@@ -1285,11 +1299,11 @@ func GetSalesCommissionOverview(employeeCode string) (*SalesCommissionOverview, 
 			COUNT(CASE WHEN is_valid_order = 1 AND is_accounted_cancelled = 1 THEN 1 END) as cancelled_count,
 			COUNT(CASE WHEN is_valid_order = 0 THEN 1 END) as invalid_order_count
 		FROM sales_commissions
-		WHERE employee_code = ?
-	`
+		WHERE %s
+	`, where)
 
 	var overview SalesCommissionOverview
-	err := database.DB.QueryRow(query, employeeCode).Scan(
+	err := database.DB.QueryRow(query, args...).Scan(
 		&overview.TotalAmount,
 		&overview.AccountedAmount,
 		&overview.SettledAmount,
@@ -1304,7 +1318,20 @@ func GetSalesCommissionOverview(employeeCode string) (*SalesCommissionOverview, 
 	}
 
 	// 2. 查询所有未收款且未取消的订单，计算分润预览总和作为未计入金额
-	unpaidOrdersQuery := `
+	unpaidWhere := "u.sales_code = ? AND o.status != 'paid' AND o.status != 'cancelled'"
+	unpaidArgs := []interface{}{employeeCode}
+
+	// 日期范围筛选（对于未收款订单，使用created_at）
+	if startDate != nil {
+		unpaidWhere += " AND DATE(o.created_at) >= ?"
+		unpaidArgs = append(unpaidArgs, startDate.Format("2006-01-02"))
+	}
+	if endDate != nil {
+		unpaidWhere += " AND DATE(o.created_at) <= ?"
+		unpaidArgs = append(unpaidArgs, endDate.Format("2006-01-02"))
+	}
+
+	unpaidOrdersQuery := fmt.Sprintf(`
 		SELECT
 			o.id,
 			o.order_number,
@@ -1318,11 +1345,11 @@ func GetSalesCommissionOverview(employeeCode string) (*SalesCommissionOverview, 
 			o.user_id
 		FROM orders o
 		JOIN mini_app_users u ON o.user_id = u.id
-		WHERE u.sales_code = ? AND o.status != 'paid' AND o.status != 'cancelled'
+		WHERE %s
 		ORDER BY o.created_at DESC
-	`
+	`, unpaidWhere)
 
-	rows, err := database.DB.Query(unpaidOrdersQuery, employeeCode)
+	rows, err := database.DB.Query(unpaidOrdersQuery, unpaidArgs...)
 	if err != nil {
 		return nil, err
 	}

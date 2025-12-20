@@ -49,6 +49,16 @@ export function tableDateFormat(date) {
 }
 
 /**
+ * 格式化日期时间（formatDate的别名，用于兼容性）
+ * @param {string|Date} date - 日期字符串或Date对象
+ * @param {string} format - 格式化模板，默认为 'YYYY-MM-DD HH:mm:ss'
+ * @returns {string} 格式化后的时间字符串
+ */
+export function formatDateTime(date, format = 'YYYY-MM-DD HH:mm:ss') {
+  return formatDate(date, format);
+}
+
+/**
  * 递归遍历对象，自动格式化所有时间字段
  * @param {object} data - 要处理的数据对象
  * @param {array} timeFields - 时间字段列表
