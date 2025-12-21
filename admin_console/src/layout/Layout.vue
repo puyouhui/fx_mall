@@ -74,6 +74,12 @@
             </el-icon>
             <span>订单列表</span>
           </el-menu-item>
+          <el-menu-item index="/delivery-management">
+            <el-icon>
+              <Box />
+            </el-icon>
+            <span>配送管理</span>
+          </el-menu-item>
           <el-menu-item index="/delivery-records">
             <el-icon>
               <Box />

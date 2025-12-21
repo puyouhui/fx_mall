@@ -120,6 +120,14 @@ const routes = [
         }
       },
       {
+        path: 'delivery-management',
+        name: 'DeliveryManagement',
+        component: () => import('../views/DeliveryManagement.vue'),
+        meta: {
+          title: '配送管理'
+        }
+      },
+      {
         path: 'delivery-income',
         name: 'DeliveryIncome',
         component: () => import('../views/DeliveryIncome.vue'),

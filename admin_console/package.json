@@ -9,12 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tiptap/extension-underline": "^3.14.0",
-    "@tiptap/extension-link": "^3.14.0",
-    "@tiptap/extension-text-align": "^3.14.0",
     "@tiptap/extension-color": "^3.14.0",
     "@tiptap/extension-highlight": "^3.14.0",
     "@tiptap/extension-image": "^3.14.0",
+    "@tiptap/extension-link": "^3.14.0",
+    "@tiptap/extension-text-align": "^3.14.0",
+    "@tiptap/extension-underline": "^3.14.0",
     "@tiptap/pm": "^3.14.0",
     "@tiptap/starter-kit": "^3.14.0",
     "@tiptap/vue-3": "^3.14.0",
@@ -22,6 +22,7 @@
     "chart.js": "^4.5.0",
     "element-plus": "^2.11.2",
     "vue": "^3.5.21",
+    "vue-plugin-hiprint": "^0.0.60",
     "vue-router": "^4.5.1"
   },
   "devDependencies": {

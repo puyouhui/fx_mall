@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"go_backend/internal/database"
@@ -20,6 +21,9 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 	pageSize := parseQueryInt(c, "pageSize", 10)
 	keyword := c.Query("keyword")
 	status := c.Query("status")
+	deliveryEmployeeIDsStr := c.Query("delivery_employee_ids") // 配送员ID列表（逗号分隔）
+	startDate := c.Query("start_date")                           // 开始日期（YYYY-MM-DD）
+	endDate := c.Query("end_date")                              // 结束日期（YYYY-MM-DD）
 
 	if pageNum < 1 {
 		pageNum = 1
@@ -28,7 +32,34 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 		pageSize = 10
 	}
 
-	orders, total, err := model.GetOrdersWithPagination(pageNum, pageSize, keyword, status)
+	// 处理配送员ID筛选
+	var deliveryEmployeeCodes []string
+	if deliveryEmployeeIDsStr != "" {
+		// 解析配送员ID列表
+		idStrs := strings.Split(deliveryEmployeeIDsStr, ",")
+		employeeIDs := make([]int, 0, len(idStrs))
+		for _, idStr := range idStrs {
+			idStr = strings.TrimSpace(idStr)
+			if idStr != "" {
+				if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
+					employeeIDs = append(employeeIDs, id)
+				}
+			}
+		}
+
+		// 根据ID获取员工码
+		if len(employeeIDs) > 0 {
+			deliveryEmployeeCodes = make([]string, 0, len(employeeIDs))
+			for _, employeeID := range employeeIDs {
+				employee, err := model.GetEmployeeByID(employeeID)
+				if err == nil && employee != nil && employee.IsDelivery {
+					deliveryEmployeeCodes = append(deliveryEmployeeCodes, employee.EmployeeCode)
+				}
+			}
+		}
+	}
+
+	orders, total, err := model.GetOrdersWithPaginationAdvanced(pageNum, pageSize, keyword, status, deliveryEmployeeCodes, startDate, endDate)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单列表失败: " + err.Error()})
 		return

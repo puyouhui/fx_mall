@@ -765,6 +765,7 @@ func GetProductDetail(c *gin.Context) {
 		OriginalPrice  float64  `json:"original_price"`
 		CategoryID     int      `json:"category_id"`
 		CategoryName   string   `json:"category_name"` // 分类名称（默认值）
+		SupplierID     *int     `json:"supplier_id"`   // 供应商ID
 		IsSpecial      bool     `json:"is_special"`
 		Images         []string `json:"images"`
 		Specifications []struct {
@@ -786,6 +787,7 @@ func GetProductDetail(c *gin.Context) {
 	responseData.OriginalPrice = product.OriginalPrice
 	responseData.CategoryID = product.CategoryID
 	responseData.CategoryName = "商品分类" // 可以后续从数据库获取真实分类名称
+	responseData.SupplierID = product.SupplierID // 供应商ID
 	responseData.IsSpecial = product.IsSpecial
 	responseData.Images = product.Images
 	responseData.Specifications = specifications

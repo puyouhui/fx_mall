@@ -164,11 +164,12 @@ func main() {
 
 				// 商品管理接口
 				protectedGroup.GET("/products", api.GetAllProductsForAdmin)                 // 获取所有商品（管理后台）
+				protectedGroup.POST("/products/upload", api.UploadProductImage)             // 上传商品图片（必须在 /:id 之前）
+				protectedGroup.GET("/products/:id", api.GetProductDetail)                   // 获取商品详情（管理后台）
 				protectedGroup.POST("/products", api.CreateProduct)                         // 创建商品
 				protectedGroup.PUT("/products/:id", api.UpdateProduct)                      // 更新商品
 				protectedGroup.PUT("/products/:id/special", api.UpdateProductSpecialStatus) // 更新商品精选状态
 				protectedGroup.DELETE("/products/:id", api.DeleteProduct)                   // 删除商品
-				protectedGroup.POST("/products/upload", api.UploadProductImage)             // 上传商品图片
 
 				// 供应商管理接口
 				protectedGroup.GET("/suppliers", api.GetAllSuppliers)       // 获取所有供应商

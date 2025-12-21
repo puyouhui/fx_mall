@@ -337,6 +337,14 @@ func boolToTinyInt(v bool) int {
 
 // GetOrdersWithPagination 获取订单列表（支持分页和搜索）
 func GetOrdersWithPagination(pageNum, pageSize int, keyword string, status string) ([]Order, int, error) {
+	return GetOrdersWithPaginationAdvanced(pageNum, pageSize, keyword, status, nil, "", "")
+}
+
+// GetOrdersWithPaginationAdvanced 获取订单列表（支持分页、搜索、配送员筛选和日期筛选）
+// deliveryEmployeeCodes: 配送员员工码列表（nil表示不筛选）
+// startDate: 开始日期（格式：YYYY-MM-DD，空字符串表示不筛选）
+// endDate: 结束日期（格式：YYYY-MM-DD，空字符串表示不筛选）
+func GetOrdersWithPaginationAdvanced(pageNum, pageSize int, keyword string, status string, deliveryEmployeeCodes []string, startDate, endDate string) ([]Order, int, error) {
 	var orders []Order
 	var total int
 
@@ -367,10 +375,51 @@ func GetOrdersWithPagination(pageNum, pageSize int, keyword string, status strin
 		}
 	}
 
-	// 状态筛选
+	// 状态筛选（支持多个状态，用逗号分隔）
 	if status != "" {
-		where += " AND status = ?"
-		args = append(args, status)
+		statuses := strings.Split(status, ",")
+		if len(statuses) == 1 {
+			where += " AND status = ?"
+			args = append(args, strings.TrimSpace(statuses[0]))
+		} else {
+			// 多个状态使用 IN 查询
+			placeholders := make([]string, len(statuses))
+			for i, s := range statuses {
+				placeholders[i] = "?"
+				args = append(args, strings.TrimSpace(s))
+			}
+			where += " AND status IN (" + strings.Join(placeholders, ",") + ")"
+		}
+	}
+
+	// 配送员筛选
+	if deliveryEmployeeCodes != nil && len(deliveryEmployeeCodes) > 0 {
+		// 过滤空字符串
+		validCodes := make([]string, 0, len(deliveryEmployeeCodes))
+		for _, code := range deliveryEmployeeCodes {
+			trimmed := strings.TrimSpace(code)
+			if trimmed != "" {
+				validCodes = append(validCodes, trimmed)
+			}
+		}
+		if len(validCodes) > 0 {
+			placeholders := make([]string, len(validCodes))
+			for i, code := range validCodes {
+				placeholders[i] = "?"
+				args = append(args, code)
+			}
+			where += " AND delivery_employee_code IN (" + strings.Join(placeholders, ",") + ")"
+		}
+	}
+
+	// 日期筛选
+	if startDate != "" {
+		where += " AND DATE(created_at) >= ?"
+		args = append(args, startDate)
+	}
+	if endDate != "" {
+		where += " AND DATE(created_at) <= ?"
+		args = append(args, endDate)
 	}
 
 	// 获取总数量
