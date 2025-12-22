@@ -151,9 +151,20 @@
               <el-button type="primary" link @click="handleViewDetail(scope.row.id)">
                 详情
               </el-button>
-              <el-button type="success" link @click="handlePrintOrder(scope.row)">
-                打印
-              </el-button>
+              <el-dropdown @command="(cmd) => handlePrintCommand(cmd, scope.row)" trigger="click">
+                <el-button type="success" link>
+                  打印
+                  <el-icon style="margin-left: 4px;">
+                    <ArrowDown />
+                  </el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="ticket">打印小票</el-dropdown-item>
+                    <el-dropdown-item command="material">打印物料</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
               <el-dropdown v-if="canShowStatusActions(scope.row.status)"
                 @command="(cmd) => handleStatusChange(scope.row.id, scope.row.status, cmd)" trigger="click"
                 placement="bottom-end">
@@ -590,7 +601,20 @@
       </div>
       <template #footer>
         <el-button @click="detailDialogVisible = false">关闭</el-button>
-        <el-button type="primary" @click="handlePrintOrderFromDetail">打印订单</el-button>
+        <el-dropdown @command="(cmd) => handlePrintCommandFromDetail(cmd)" trigger="click">
+          <el-button type="primary">
+            打印
+            <el-icon style="margin-left: 4px;">
+              <ArrowDown />
+            </el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="ticket">打印小票</el-dropdown-item>
+              <el-dropdown-item command="material">打印物料</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </template>
     </el-dialog>
 
@@ -636,6 +660,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, QuestionFilled } from '@element-plus/icons-vue'
 import { getOrders, getOrderDetail, updateOrderStatus } from '../api/orders'
 import { hiprint } from 'vue-plugin-hiprint'
+import { getPrinterAddress } from '../utils/printer'
 
 const loading = ref(false)
 const orders = ref([])
@@ -875,6 +900,33 @@ const handleStatusChange = async (orderId, currentStatus, newStatus) => {
   }
 }
 
+// 处理打印命令（从列表）
+const handlePrintCommand = async (command, order) => {
+  if (command === 'ticket') {
+    // 打印小票
+    await handlePrintOrder(order)
+  } else if (command === 'material') {
+    // 打印物料
+    await handlePrintMaterial(order)
+  }
+}
+
+// 处理打印命令（从详情对话框）
+const handlePrintCommandFromDetail = async (command) => {
+  if (!orderDetail.value) {
+    ElMessage.warning('订单详情未加载')
+    return
+  }
+  
+  if (command === 'ticket') {
+    // 打印小票
+    printOrder(orderDetail.value)
+  } else if (command === 'material') {
+    // 打印物料
+    await handlePrintMaterial(orderDetail.value)
+  }
+}
+
 // 打印订单（从列表）
 const handlePrintOrder = async (order) => {
   try {
@@ -898,15 +950,6 @@ const handlePrintOrder = async (order) => {
   }
 }
 
-// 打印订单（从详情对话框）
-const handlePrintOrderFromDetail = () => {
-  if (!orderDetail.value) {
-    ElMessage.warning('订单详情未加载')
-    return
-  }
-  printOrder(orderDetail.value)
-}
-
 // 打印订单函数（80mm纸张）
 const printOrder = (orderData) => {
   // 检查 hiprint 是否初始化
@@ -921,8 +964,9 @@ const printOrder = (orderData) => {
     console.warn('打印机未连接，尝试重新连接...')
     try {
       // 重新初始化连接
+      const printerAddress = getPrinterAddress()
       hiprint.init({
-        host: "http://192.168.0.1:17521",
+        host: printerAddress,
         token: "vue-plugin-hiprint",
       })
 
@@ -933,7 +977,8 @@ const printOrder = (orderData) => {
       return
     } catch (error) {
       console.error('重新连接失败:', error)
-      ElMessage.error('打印机连接失败，请检查打印客户端是否运行（地址: http://192.168.0.1:17521）')
+      const printerAddress = getPrinterAddress()
+      ElMessage.error(`打印机连接失败，请检查打印客户端是否运行（地址: ${printerAddress}）`)
       return
     }
   }
@@ -952,10 +997,12 @@ const checkAndPrint = (orderData) => {
   })
 
   if (!isConnected) {
-    ElMessage.error('打印机未连接，请检查打印客户端是否运行（地址: http://192.168.0.1:17521）')
+    const printerAddress = getPrinterAddress()
+    ElMessage.error(`打印机未连接，请检查打印客户端是否运行（地址: ${printerAddress}）`)
     console.error('打印机未连接，详细信息:', {
       hiwebSocket: hiprint.hiwebSocket,
-      opened: hiprint.hiwebSocket?.opened
+      opened: hiprint.hiwebSocket?.opened,
+      printerAddress: printerAddress
     })
     return
   }
@@ -1025,10 +1072,23 @@ const executePrint = async (orderData) => {
     const totalAmount = order.total_amount || 0
     const status = order.status || orderData.status
     const hidePrice = order.hide_price || orderData.hide_price || false // 是否环保小票（隐藏价格）
+    const remark = order.remark || orderData.remark || '' // 订单备注
+    const trustReceipt = order.trust_receipt || orderData.trust_receipt || false // 信任签收
+    const requirePhoneContact = order.require_phone_contact || orderData.require_phone_contact || false // 要求电话联系
 
     // 格式化价格：如果是环保小票，返回**，否则返回格式化的金额
     const formatPrice = (amount) => {
       return hidePrice ? '**' : formatMoney(amount)
+    }
+
+    // 格式化电话号码：只显示后四位，其他用*代替
+    const formatPhone = (phone) => {
+      if (!phone) return '-'
+      const phoneStr = String(phone)
+      if (phoneStr.length <= 4) return phoneStr
+      const lastFour = phoneStr.slice(-4)
+      const stars = '*'.repeat(phoneStr.length - 4)
+      return stars + lastFour
     }
 
     // 订单标题：根据是否环保小票显示不同标题
@@ -1088,14 +1148,19 @@ const executePrint = async (orderData) => {
 
     // 用户信息
     if (user) {
+      // 判断用户名，如果没有用户名使用用户编号
+      const customerName = user.name 
+        ? user.name 
+        : (user.user_code ? `用户${user.user_code}` : (user.user_id ? `用户${user.user_id}` : '-'))
+      
       panel.addPrintText({
         options: {
           width: 300, // 尝试更大的值以占满 80mm 宽度
           top: currentTop,
           left: 0,
-          title: `客户：${user.name || '-'}`,
+          title: `客户：${customerName}`,
           textAlign: "left",
-          fontSize: 10
+          fontSize: 11
         },
       })
       currentTop += 15
@@ -1106,9 +1171,9 @@ const executePrint = async (orderData) => {
             width: 300, // 尝试更大的值以占满 80mm 宽度
             top: currentTop,
             left: 0,
-            title: `电话：${user.phone}`,
+            title: `电话：${formatPhone(user.phone)}`,
             textAlign: "left",
-            fontSize: 9
+            fontSize: 11
           },
         })
         currentTop += 15
@@ -1117,17 +1182,97 @@ const executePrint = async (orderData) => {
 
     // 收货地址
     if (address && address.address) {
+      const addressText = `地址：${address.address}`
+      // 估算文本行数：每行约20个字符（根据宽度230和字体大小9估算）
+      const estimatedLines = Math.ceil(addressText.length / 20)
+      const textHeight = Math.max(15, estimatedLines * 15) // 最小15px，每行15px
+      
       panel.addPrintText({
         options: {
           width: 230, // 尝试更大的值以占满 80mm 宽度
+          height: textHeight, // 设置高度以容纳多行文本
           top: currentTop,
           left: 0,
-          title: `地址：${address.address}`,
+          title: addressText,
           textAlign: "left",
+          fontSize: 9,
+          lineHeight: 15 // 设置行高，确保换行时有足够间距
+        },
+      })
+      currentTop += textHeight + 5 // 根据实际文本高度调整间距
+    }
+
+    // 信任签收和电话联系提示
+    // 只有当有信任签收或备注时，才显示分割线（如果只有电话联系，不显示分割线）
+    if (trustReceipt || (remark && remark.trim())) {
+      // 添加分割线，和客户信息分割开
+      currentTop += 5
+      panel.addPrintText({
+        options: {
+          width: 230,
+          top: currentTop,
+          left: 0,
+          title: "-------------------------------------------",
+          textAlign: "center",
           fontSize: 9
         },
       })
-      currentTop += 25 // 增加地址行的行高
+      currentTop += 15
+    }
+
+    if (trustReceipt || requirePhoneContact) {
+      if (trustReceipt) {
+        panel.addPrintText({
+          options: {
+            width: 230,
+            top: currentTop,
+            left: 0,
+            title: '注意：客户已开启信任签收',
+            textAlign: "left",
+            fontSize: 10,
+            fontWeight: "bold"
+          },
+        })
+        currentTop += 18
+      }
+      if (requirePhoneContact) {
+        panel.addPrintText({
+          options: {
+            width: 230,
+            top: currentTop,
+            left: 0,
+            title: '注意：配送前需电话联系',
+            textAlign: "left",
+            fontSize: 10,
+            fontWeight: "bold"
+          },
+        })
+        currentTop += 18
+      }
+    }
+
+    // 订单备注（如果有备注，字体要大一点，因为备注很重要）
+    if (remark && remark.trim()) {
+      currentTop += 5
+      const remarkText = `订单备注：${remark.trim()}`
+      // 估算文本行数：每行约18个字符（根据宽度230和字体大小12估算）
+      const estimatedLines = Math.ceil(remarkText.length / 18)
+      const textHeight = Math.max(20, estimatedLines * 20) // 最小20px，每行20px
+      
+      panel.addPrintText({
+        options: {
+          width: 230,
+          height: textHeight,
+          top: currentTop,
+          left: 0,
+          title: remarkText,
+          textAlign: "left",
+          fontSize: 12, // 字体大一点，因为备注很重要
+          fontWeight: "bold",
+          lineHeight: 20 // 设置行高
+        },
+      })
+      currentTop += textHeight + 5
     }
 
     // 分隔线
@@ -1153,28 +1298,35 @@ const executePrint = async (orderData) => {
         const subtotal = item.subtotal || (quantity * unitPrice)
 
         const productName = `${item.product_name || ''} ${item.spec_name || ''}`.trim()
+        const productNameText = productName + ' ' + ' X ' + quantity
+        // 估算文本行数：每行约18个字符（根据宽度230和字体大小11估算）
+        const estimatedLines = Math.ceil(productNameText.length / 18)
+        const textHeight = Math.max(18, estimatedLines * 18) // 最小18px，每行18px
+        
         panel.addPrintText({
           options: {
-            width: 300, // 尝试更大的值以占满 80mm 宽度
+            width: 230, // 尝试更大的值以占满 80mm 宽度
+            height: textHeight, // 设置高度以容纳多行文本
             top: currentTop,
             left: 0,
-            title: productName + ' ' + ' X ' + quantity,
+            title: productNameText,
             textAlign: "left",
-            fontSize: 10,
-            fontWeight: "bold"
+            fontSize: 11,
+            fontWeight: "bold",
+            lineHeight: 18 // 设置行高，确保换行时有足够间距
           },
         })
-        currentTop += 15
+        currentTop += textHeight + 3 // 根据实际文本高度调整间距
 
 
         panel.addPrintText({
           options: {
-            width: 300, // 尝试更大的值以占满 80mm 宽度
+            width: 230, // 尝试更大的值以占满 80mm 宽度
             top: currentTop,
             left: 0,
             title: `  ${quantity} × ¥${formatPrice(unitPrice)} = ¥${formatPrice(subtotal)}`,
             textAlign: "left",
-            fontSize: 9
+            fontSize: 10
           },
         })
         currentTop += 20
@@ -1313,6 +1465,255 @@ const executePrint = async (orderData) => {
   }
 }
 
+// 物料打印功能
+const handlePrintMaterial = async (orderData) => {
+  // 检查 hiprint 是否初始化
+  if (!hiprint) {
+    ElMessage.error('打印功能未初始化，请刷新页面重试')
+    return
+  }
+
+  try {
+    // 检查连接状态
+    if (!hiprint.hiwebSocket || !hiprint.hiwebSocket.opened) {
+      ElMessage.warning('打印机未连接，请检查打印客户端是否运行')
+      return
+    }
+
+    // 如果传入的是订单对象（从列表调用），可能需要先获取订单详情
+    let finalOrderData = orderData
+    if (orderData.id && (!orderData.order_items || orderData.order_items.length === 0)) {
+      // 从列表调用，需要先获取订单详情
+      const res = await getOrderDetail(orderData.id)
+      if (res && res.code === 200) {
+        finalOrderData = res.data
+      } else {
+        ElMessage.error('获取订单详情失败，无法打印物料标签')
+        return
+      }
+    }
+
+    // 获取订单信息
+    const order = finalOrderData.order || finalOrderData
+    const user = finalOrderData.user || finalOrderData
+    const orderItems = finalOrderData.order_items || []
+    const orderTime = order.created_at || finalOrderData.created_at
+    // 格式化日期，去掉年份
+    const formatDateWithoutYear = (value) => {
+      if (!value) return '-'
+      const date = new Date(value)
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      return `${month}-${day} ${hours}:${minutes}`
+    }
+    const timeStr = orderTime ? formatDateWithoutYear(orderTime) : '-'
+    
+    // 调试信息：打印数据结构
+    console.log('物料打印 - 订单数据:', {
+      orderData: finalOrderData,
+      order: order,
+      user: user,
+      orderItems: orderItems,
+      orderItemsLength: orderItems.length
+    })
+    
+    // 格式化客户名称（只显示后几位，其他用*代替）
+    const formatCustomerName = (name) => {
+      if (!name) return '***'
+      const nameStr = String(name)
+      if (nameStr.length <= 3) return nameStr
+      const lastThree = nameStr.slice(-3)
+      const stars = '*'.repeat(nameStr.length - 3)
+      return stars + lastThree
+    }
+    
+    // 计算总件数（所有商品的quantity之和）
+    const totalItems = orderItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
+    
+    console.log('物料打印 - 总件数:', totalItems, '商品列表:', orderItems)
+    
+    if (totalItems === 0) {
+      ElMessage.warning('订单没有商品，无法打印物料标签')
+      console.warn('订单没有商品，订单数据:', finalOrderData)
+      return
+    }
+
+    // 循环打印，每件商品打印一张标签
+    for (let currentItem = 1; currentItem <= totalItems; currentItem++) {
+      // 创建打印模板
+      const hiprintTemplate = new hiprint.PrintTemplate()
+
+      // 添加打印面板（60mm*40mm）
+      const panel = hiprintTemplate.addPrintPanel({
+        width: 60, // 60mm宽度
+        height: 40, // 40mm高度
+        paperFooter: 0,
+        paperHeader: 0,
+        paperNumberLeft: 0,
+        paperNumberRight: 0,
+        paperNumberFormat: ' ',
+      })
+
+      let currentTop = 5
+
+      // 标题：买一次性用品, 云鹿更方便!
+      panel.addPrintText({
+        options: {
+          width: 170,
+          height: 20,
+          top: currentTop,
+          left: 0,
+          title: '买一次性用品, 云鹿更方便!',
+          textAlign: 'center',
+          fontSize: 12,
+          fontWeight: 'bold'
+        }
+      })
+      currentTop += 20
+
+      // 客户信息
+      if (user) {
+        // 判断用户名，如果没有用户名使用用户编号
+        let customerName = user.name 
+          ? formatCustomerName(user.name)
+          : (user.user_code ? `用户${user.user_code}` : (user.user_id ? `用户${user.user_id}` : '***'))
+        
+        panel.addPrintText({
+          options: {
+            width: 120, // 左侧区域宽度
+            top: currentTop,
+            left: 5,
+            title: `客户: ${customerName}`,
+            textAlign: 'left',
+            fontSize: 9
+          }
+        })
+      }
+      currentTop += 15
+
+      // 日期
+      panel.addPrintText({
+        options: {
+          width: 120,
+          top: currentTop,
+          left: 5,
+          title: `日期: ${timeStr}`,
+          textAlign: 'left',
+          fontSize: 8
+        }
+      })
+      currentTop += 20
+
+      // 件数信息：当前序号/总数 和 共总数件 分开显示，但在同一行
+      const itemCountPart = `${currentItem}/${totalItems}` // 件数部分，如 1/20, 2/20, ..., 20/20
+      const totalCountPart = `共${totalItems}件` // 总数部分
+      
+      // 件数部分：1/20, 2/20, ...
+      panel.addPrintText({
+        options: {
+          width: 50,
+          top: currentTop,
+          left: 10,
+          title: itemCountPart,
+          textAlign: 'left',
+          fontSize: 12,
+          fontWeight: 'bold'
+        }
+      })
+      // 总数部分：共20件（在同一行，右侧位置）
+      panel.addPrintText({
+        options: {
+          width: 40,
+          top: currentTop,
+          left: 50, // 放在件数右侧
+          title: totalCountPart,
+          textAlign: 'left',
+          fontSize: 8,
+        }
+      })
+      currentTop += 20
+
+      // 推荐信息
+      panel.addPrintText({
+        options: {
+          width: 120,
+          top: currentTop,
+          left: 10,
+          title: '推荐小程序下单',
+          textAlign: 'left',
+          fontSize: 8
+        }
+      })
+      currentTop += 13
+
+      panel.addPrintText({
+        options: {
+          width: 120,
+          top: currentTop,
+          left: 10,
+          title: '享更多优惠~',
+          textAlign: 'left',
+          fontSize: 8
+        }
+      })
+
+      // 右侧二维码图片
+      // 注意：需要将图片转换为 base64 格式
+      // 这里使用一个占位符，实际使用时需要替换为真实的二维码图片 base64 或 URL
+      const qrCodeImageUrl = 'https://www.sscchh.com/minio/sch/product_1766382995.png' // TODO: 替换为实际的二维码图片 URL 或 base64
+      
+      if (qrCodeImageUrl) {
+        try {
+          // 如果是网络图片，需要转换为 base64
+          const imageBase64 = qrCodeImageUrl.startsWith('http') 
+            ? await convertImageToBase64(qrCodeImageUrl)
+            : qrCodeImageUrl
+          
+          panel.addPrintImage({
+            options: {
+              width: 80,
+              height: 80,
+              top: 27,
+              left: 83,
+              src: imageBase64
+            }
+          })
+        } catch (error) {
+          console.error('加载二维码图片失败:', error)
+        }
+      }
+
+      // 执行打印，指定打印机为 Deli DL-720C
+      // 使用 Promise 包装，确保每次打印任务按顺序执行
+      await new Promise((resolve, reject) => {
+        try {
+          hiprintTemplate.print2(panel, {
+            printer: 'Deli DL-720C'
+          })
+          // 等待更长时间确保打印任务已发送并开始处理
+          setTimeout(() => {
+            resolve()
+          }, 800)
+        } catch (error) {
+          reject(error)
+        }
+      })
+
+      // 每张标签之间增加延迟，确保打印机有足够时间处理每张标签
+      // 延迟时间根据打印机处理速度调整，这里设置为 1.5 秒
+      if (currentItem < totalItems) {
+        await new Promise(resolve => setTimeout(resolve, 1500))
+      }
+    }
+
+    ElMessage.success(`物料打印任务已发送，共打印 ${totalItems} 张标签`)
+  } catch (error) {
+    console.error('物料打印失败:', error)
+    ElMessage.error('物料打印失败：' + (error.message || '未知错误'))
+  }
+}
 
 onMounted(() => {
   loadOrders()

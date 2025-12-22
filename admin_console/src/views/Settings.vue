@@ -423,6 +423,59 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
+
+        <!-- 打印机配置 Tab -->
+        <el-tab-pane label="打印机配置" name="printer">
+          <el-form
+            ref="printerFormRef"
+            :model="printerForm"
+            label-width="150px"
+            class="printer-form"
+          >
+            <el-alert
+              title="打印机配置说明"
+              type="info"
+              :closable="false"
+              style="margin-bottom: 20px"
+            >
+              <template #default>
+                <div style="line-height: 1.8;">
+                  <p>• 配置打印客户端的连接地址，用于订单打印功能</p>
+                  <p>• 格式：http://IP地址:端口号，例如：http://198.18.0.1:17521</p>
+                  <p>• 请确保打印客户端正在运行，并且地址配置正确</p>
+                  <p>• 配置将保存到本地存储，刷新页面后自动生效</p>
+                </div>
+              </template>
+            </el-alert>
+
+            <el-form-item label="打印机地址">
+              <el-input
+                v-model="printerForm.address"
+                placeholder="请输入打印机地址，例如：http://198.18.0.1:17521"
+                style="width: 500px"
+                clearable
+              >
+                <template #prefix>
+                  <el-icon><Printer /></el-icon>
+                </template>
+              </el-input>
+              <div style="margin-top: 8px; color: #909399; font-size: 12px;">
+                打印客户端的WebSocket连接地址
+              </div>
+            </el-form-item>
+
+            <el-form-item>
+              <el-button
+                type="primary"
+                :loading="printerLoading"
+                @click="handleSavePrinterSettings"
+              >
+                保存配置
+              </el-button>
+              <el-button @click="handleResetPrinterForm">重置为默认</el-button>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
   </div>
@@ -431,19 +484,22 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Lock, Location } from '@element-plus/icons-vue'
+import { Lock, Location, Printer } from '@element-plus/icons-vue'
 import { changePassword } from '../api/auth'
 import { getMapSettings, updateMapSettings, getSystemSettings, updateSystemSettings } from '../api/settings'
+import { getPrinterAddress, setPrinterAddress, getDefaultPrinterAddress } from '../utils/printer'
 
 const activeTab = ref('password')
 const passwordFormRef = ref(null)
 const mapFormRef = ref(null)
 const orderFormRef = ref(null)
 const deliveryFeeFormRef = ref(null)
+const printerFormRef = ref(null)
 const passwordLoading = ref(false)
 const mapLoading = ref(false)
 const orderLoading = ref(false)
 const deliveryFeeLoading = ref(false)
+const printerLoading = ref(false)
 
 const passwordForm = reactive({
   old_password: '',
@@ -454,6 +510,10 @@ const passwordForm = reactive({
 const mapForm = reactive({
   amap_key: '',
   tencent_key: ''
+})
+
+const printerForm = reactive({
+  address: ''
 })
 
 const orderForm = reactive({
@@ -752,11 +812,50 @@ const handleResetDeliveryFeeForm = () => {
   loadDeliveryFeeSettings()
 }
 
-// 页面加载时获取地图设置、订单设置和配送费计算设置
+// 加载打印机设置
+const loadPrinterSettings = () => {
+  printerForm.address = getPrinterAddress()
+}
+
+// 保存打印机设置
+const handleSavePrinterSettings = () => {
+  try {
+    if (!printerForm.address || !printerForm.address.trim()) {
+      ElMessage.warning('请输入打印机地址')
+      return
+    }
+
+    // 简单的URL格式验证
+    const urlPattern = /^https?:\/\/.+/i
+    if (!urlPattern.test(printerForm.address.trim())) {
+      ElMessage.error('打印机地址格式不正确，请使用 http:// 或 https:// 开头')
+      return
+    }
+
+    printerLoading.value = true
+    setPrinterAddress(printerForm.address.trim())
+    ElMessage.success('打印机配置保存成功，将在下次连接时生效')
+  } catch (error) {
+    console.error('保存打印机设置失败:', error)
+    ElMessage.error('保存失败，请稍后再试')
+  } finally {
+    printerLoading.value = false
+  }
+}
+
+// 重置打印机表单
+const handleResetPrinterForm = () => {
+  printerForm.address = getDefaultPrinterAddress()
+  setPrinterAddress(printerForm.address)
+  ElMessage.success('已重置为默认地址')
+}
+
+// 页面加载时获取地图设置、订单设置、配送费计算设置和打印机设置
 onMounted(() => {
   loadMapSettings()
   loadOrderSettings()
   loadDeliveryFeeSettings()
+  loadPrinterSettings()
 })
 </script>
 
@@ -805,7 +904,8 @@ onMounted(() => {
 .password-form,
 .map-form,
 .order-form,
-.delivery-fee-form {
+.delivery-fee-form,
+.printer-form {
   padding: 20px 0;
 }
 
@@ -832,6 +932,10 @@ onMounted(() => {
 }
 
 .delivery-fee-form :deep(.el-form-item__label) {
+  font-weight: 500;
+}
+
+.printer-form :deep(.el-form-item__label) {
   font-weight: 500;
 }
 </style>

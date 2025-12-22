@@ -702,10 +702,23 @@ const printOrderTicket = async (orderData) => {
     const couponDiscount = order.coupon_discount || 0
     const totalAmount = order.total_amount || 0
     const hidePrice = order.hide_price || orderData.hide_price || false
+    const remark = order.remark || orderData.remark || '' // 订单备注
+    const trustReceipt = order.trust_receipt || orderData.trust_receipt || false // 信任签收
+    const requirePhoneContact = order.require_phone_contact || orderData.require_phone_contact || false // 要求电话联系
 
     // 格式化价格
     const formatPrice = (amount) => {
       return hidePrice ? '**' : formatMoney(amount)
+    }
+
+    // 格式化电话号码：只显示后四位，其他用*代替
+    const formatPhone = (phone) => {
+      if (!phone) return '-'
+      const phoneStr = String(phone)
+      if (phoneStr.length <= 4) return phoneStr
+      const lastFour = phoneStr.slice(-4)
+      const stars = '*'.repeat(phoneStr.length - 4)
+      return stars + lastFour
     }
 
     // 订单标题
@@ -765,14 +778,19 @@ const printOrderTicket = async (orderData) => {
 
     // 用户信息
     if (user) {
+      // 判断用户名，如果没有用户名使用用户编号
+      const customerName = user.name 
+        ? user.name 
+        : (user.user_code ? `用户${user.user_code}` : (user.user_id ? `用户${user.user_id}` : '-'))
+      
       panel.addPrintText({
         options: {
           width: 300,
           top: currentTop,
           left: 0,
-          title: `客户：${user.name || '-'}`,
+          title: `客户：${customerName}`,
           textAlign: "left",
-          fontSize: 10
+          fontSize: 11
         },
       })
       currentTop += 15
@@ -783,9 +801,9 @@ const printOrderTicket = async (orderData) => {
             width: 300,
             top: currentTop,
             left: 0,
-            title: `电话：${user.phone}`,
+            title: `电话：${formatPhone(user.phone)}`,
             textAlign: "left",
-            fontSize: 9
+            fontSize: 11
           },
         })
         currentTop += 15
@@ -794,17 +812,97 @@ const printOrderTicket = async (orderData) => {
 
     // 收货地址
     if (address && address.address) {
+      const addressText = `地址：${address.address}`
+      // 估算文本行数：每行约20个字符（根据宽度230和字体大小9估算）
+      const estimatedLines = Math.ceil(addressText.length / 20)
+      const textHeight = Math.max(15, estimatedLines * 15) // 最小15px，每行15px
+      
+      panel.addPrintText({
+        options: {
+          width: 230,
+          height: textHeight, // 设置高度以容纳多行文本
+          top: currentTop,
+          left: 0,
+          title: addressText,
+          textAlign: "left",
+          fontSize: 9,
+          lineHeight: 15 // 设置行高，确保换行时有足够间距
+        },
+      })
+      currentTop += textHeight + 5 // 根据实际文本高度调整间距
+    }
+
+    // 信任签收和电话联系提示
+    // 只有当有信任签收或备注时，才显示分割线（如果只有电话联系，不显示分割线）
+    if (trustReceipt || (remark && remark.trim())) {
+      // 添加分割线，和客户信息分割开
+      currentTop += 5
       panel.addPrintText({
         options: {
           width: 230,
           top: currentTop,
           left: 0,
-          title: `地址：${address.address}`,
-          textAlign: "left",
+          title: "-------------------------------------------",
+          textAlign: "center",
           fontSize: 9
         },
       })
-      currentTop += 25
+      currentTop += 15
+    }
+
+    if (trustReceipt || requirePhoneContact) {
+      if (trustReceipt) {
+        panel.addPrintText({
+          options: {
+            width: 230,
+            top: currentTop,
+            left: 0,
+            title: '注意：客户已开启信任签收',
+            textAlign: "left",
+            fontSize: 10,
+            fontWeight: "bold"
+          },
+        })
+        currentTop += 18
+      }
+      if (requirePhoneContact) {
+        panel.addPrintText({
+          options: {
+            width: 230,
+            top: currentTop,
+            left: 0,
+            title: '注意：配送前需电话联系',
+            textAlign: "left",
+            fontSize: 10,
+            fontWeight: "bold"
+          },
+        })
+        currentTop += 18
+      }
+    }
+
+    // 订单备注（如果有备注，字体要大一点，因为备注很重要）
+    if (remark && remark.trim()) {
+      currentTop += 5
+      const remarkText = `订单备注：${remark.trim()}`
+      // 估算文本行数：每行约18个字符（根据宽度230和字体大小12估算）
+      const estimatedLines = Math.ceil(remarkText.length / 18)
+      const textHeight = Math.max(20, estimatedLines * 20) // 最小20px，每行20px
+      
+      panel.addPrintText({
+        options: {
+          width: 230,
+          height: textHeight,
+          top: currentTop,
+          left: 0,
+          title: remarkText,
+          textAlign: "left",
+          fontSize: 12, // 字体大一点，因为备注很重要
+          fontWeight: "bold",
+          lineHeight: 20 // 设置行高
+        },
+      })
+      currentTop += textHeight + 5
     }
 
     // 分隔线
@@ -829,27 +927,34 @@ const printOrderTicket = async (orderData) => {
         const subtotal = item.subtotal || (quantity * unitPrice)
 
         const productName = `${item.product_name || ''} ${item.spec_name || ''}`.trim()
+        const productNameText = productName + ' ' + ' X ' + quantity
+        // 估算文本行数：每行约18个字符（根据宽度230和字体大小11估算）
+        const estimatedLines = Math.ceil(productNameText.length / 18)
+        const textHeight = Math.max(18, estimatedLines * 18) // 最小18px，每行18px
+        
         panel.addPrintText({
           options: {
-            width: 300,
+            width: 230,
+            height: textHeight, // 设置高度以容纳多行文本
             top: currentTop,
             left: 0,
-            title: productName + ' ' + ' X ' + quantity,
+            title: productNameText,
             textAlign: "left",
-            fontSize: 10,
-            fontWeight: "bold"
+            fontSize: 11,
+            fontWeight: "bold",
+            lineHeight: 18 // 设置行高，确保换行时有足够间距
           },
         })
-        currentTop += 15
+        currentTop += textHeight + 3 // 根据实际文本高度调整间距
 
         panel.addPrintText({
           options: {
-            width: 300,
+            width: 230,
             top: currentTop,
             left: 0,
             title: `  ${quantity} × ¥${formatPrice(unitPrice)} = ¥${formatPrice(subtotal)}`,
             textAlign: "left",
-            fontSize: 9
+            fontSize: 10
           },
         })
         currentTop += 20

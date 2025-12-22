@@ -1,18 +1,20 @@
 <script setup>
 import { onMounted } from 'vue'
 import { hiprint } from 'vue-plugin-hiprint'
+import { getPrinterAddress } from './utils/printer'
 
 // 检查连接状态
 const checkConnectionStatus = () => {
   try {
     if (hiprint && hiprint.hiwebSocket) {
       const isConnected = hiprint.hiwebSocket.opened || false
+      const printerAddress = getPrinterAddress()
       if (isConnected) {
         console.log('✅ 打印客户端已连接')
       } else {
         console.warn('⚠️ 打印客户端未连接，请检查:')
         console.warn('  1. 打印客户端是否正在运行')
-        console.warn('  2. 地址是否正确: http://198.18.0.1:17521')
+        console.warn(`  2. 地址是否正确: ${printerAddress}`)
         console.warn('  3. 防火墙是否阻止了连接')
       }
     } else {
@@ -26,12 +28,14 @@ const checkConnectionStatus = () => {
 // 初始化 hiprint 打印客户端
 onMounted(() => {
   try {
+    const printerAddress = getPrinterAddress()
     hiprint.init({
-      host: "http://198.18.0.1:17521", // 打印客户端的地址
+      host: printerAddress, // 从本地存储获取打印机地址
       token: "vue-plugin-hiprint", // 与打印客户端相同的 token
     })
     
     console.log('hiprint 初始化完成', hiprint)
+    console.log('打印机地址:', printerAddress)
     
     // 监听连接状态
     if (hiprint.hiwebSocket) {

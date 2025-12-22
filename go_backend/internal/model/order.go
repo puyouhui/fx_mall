@@ -379,7 +379,7 @@ func GetOrdersWithPaginationAdvanced(pageNum, pageSize int, keyword string, stat
 	if status != "" {
 		statuses := strings.Split(status, ",")
 		if len(statuses) == 1 {
-			where += " AND status = ?"
+		where += " AND status = ?"
 			args = append(args, strings.TrimSpace(statuses[0]))
 		} else {
 			// 多个状态使用 IN 查询
