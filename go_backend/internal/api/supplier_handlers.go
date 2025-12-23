@@ -1528,3 +1528,883 @@ func GetSupplierDashboard(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": dashboardData, "message": "获取成功"})
 }
+
+// ==================== 货物管理 API ====================
+
+// GetTodayGoodsStats 获取今日货物统计
+func GetTodayGoodsStats(c *gin.Context) {
+	// 从上下文中获取供应商ID
+	supplierIDInterface, exists := c.Get("supplierID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未登录"})
+		return
+	}
+
+	supplierID, ok := supplierIDInterface.(int)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "内部服务器错误"})
+		return
+	}
+
+	// 1. 我供应的商品数量（不受时间范围影响）
+	var totalProducts int
+	productCountQuery := "SELECT COUNT(*) FROM products WHERE supplier_id = ? AND status = 1"
+	if err := database.DB.QueryRow(productCountQuery, supplierID).Scan(&totalProducts); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取商品数量失败: " + err.Error()})
+		return
+	}
+
+	// 2. 待备货统计（状态为 pending_delivery 或 pending_pickup，不限制日期，因为所有待备货的都需要准备）
+	var pendingItemCount int
+	var pendingGoodsCount int
+	pendingItemCountQuery := `
+		SELECT 
+			COALESCE(SUM(oi.quantity), 0),
+			(SELECT COUNT(DISTINCT CONCAT(oi2.product_id, '-', oi2.spec_name))
+			 FROM orders o2
+			 INNER JOIN order_items oi2 ON o2.id = oi2.order_id
+			 INNER JOIN products p2 ON oi2.product_id = p2.id
+			 WHERE p2.supplier_id = ? 
+			 AND o2.status IN ('pending_delivery', 'pending_pickup'))
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ? 
+		AND o.status IN ('pending_delivery', 'pending_pickup')
+	`
+	if err := database.DB.QueryRow(pendingItemCountQuery, supplierID, supplierID).Scan(&pendingItemCount, &pendingGoodsCount); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取待备货统计失败: " + err.Error()})
+		return
+	}
+
+	// 计算待备货金额
+	pendingTotal := 0.0
+	pendingAmountQuery := `
+		SELECT oi.spec_name, oi.quantity, p.specs as product_specs
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ? 
+		AND o.status IN ('pending_delivery', 'pending_pickup')
+	`
+	pendingRows, err := database.DB.Query(pendingAmountQuery, supplierID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取待备货金额失败: " + err.Error()})
+		return
+	}
+	defer pendingRows.Close()
+	for pendingRows.Next() {
+		var specName string
+		var quantity int
+		var productSpecsJSON sql.NullString
+		if err := pendingRows.Scan(&specName, &quantity, &productSpecsJSON); err == nil {
+			pendingTotal += calculateOrderItemCost(specName, productSpecsJSON, quantity)
+		}
+	}
+
+	// 3. 今日已取货统计（状态为 delivering, delivered, paid）
+	var pickedItemCount int
+	var pickedGoodsCount int
+	pickedItemCountQuery := `
+		SELECT 
+			COALESCE(SUM(oi.quantity), 0),
+			(SELECT COUNT(DISTINCT CONCAT(oi2.product_id, '-', oi2.spec_name))
+			 FROM orders o2
+			 INNER JOIN order_items oi2 ON o2.id = oi2.order_id
+			 INNER JOIN products p2 ON oi2.product_id = p2.id
+			 WHERE p2.supplier_id = ? 
+			 AND o2.status IN ('delivering', 'delivered', 'paid')
+			 AND DATE(o2.created_at) = CURDATE())
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ? 
+		AND o.status IN ('delivering', 'delivered', 'paid')
+		AND DATE(o.created_at) = CURDATE()
+	`
+	if err := database.DB.QueryRow(pickedItemCountQuery, supplierID, supplierID).Scan(&pickedItemCount, &pickedGoodsCount); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取已取货统计失败: " + err.Error()})
+		return
+	}
+
+	// 计算已取货金额
+	pickedTotal := 0.0
+	pickedAmountQuery := `
+		SELECT oi.spec_name, oi.quantity, p.specs as product_specs
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ? 
+		AND o.status IN ('delivering', 'delivered', 'paid')
+		AND DATE(o.created_at) = CURDATE()
+	`
+	pickedRows, err := database.DB.Query(pickedAmountQuery, supplierID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取已取货金额失败: " + err.Error()})
+		return
+	}
+	defer pickedRows.Close()
+	for pickedRows.Next() {
+		var specName string
+		var quantity int
+		var productSpecsJSON sql.NullString
+		if err := pickedRows.Scan(&specName, &quantity, &productSpecsJSON); err == nil {
+			pickedTotal += calculateOrderItemCost(specName, productSpecsJSON, quantity)
+		}
+	}
+
+	// 4. 总统计
+	totalItemCount := pendingItemCount + pickedItemCount
+	totalGoodsCount := pendingGoodsCount + pickedGoodsCount
+	totalAmount := pendingTotal + pickedTotal
+
+	// 返回统计数据
+	statsData := map[string]interface{}{
+		"total": map[string]interface{}{
+			"total_products":    totalProducts,
+			"total_item_count":  totalItemCount,
+			"total_amount":      totalAmount,
+			"total_goods_count": totalGoodsCount,
+		},
+		"pending": map[string]interface{}{
+			"item_count":   pendingItemCount,
+			"goods_count":  pendingGoodsCount,
+			"total_amount": pendingTotal,
+		},
+		"picked": map[string]interface{}{
+			"item_count":   pickedItemCount,
+			"goods_count":  pickedGoodsCount,
+			"total_amount": pickedTotal,
+		},
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": statsData, "message": "获取成功"})
+}
+
+// GetTodayPendingGoods 获取今日待备货货物列表
+func GetTodayPendingGoods(c *gin.Context) {
+	// 从上下文中获取供应商ID
+	supplierIDInterface, exists := c.Get("supplierID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未登录"})
+		return
+	}
+
+	supplierID, ok := supplierIDInterface.(int)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "内部服务器错误"})
+		return
+	}
+
+	// 查询待备货货物（不限制日期，因为所有待备货的都需要准备），按商品和规格分组
+	query := `
+		SELECT 
+			p.id as product_id,
+			oi.product_name,
+			oi.spec_name,
+			oi.image,
+			SUM(oi.quantity) as total_quantity,
+			p.specs as product_specs
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ? 
+		AND o.status IN ('pending_delivery', 'pending_pickup')
+		GROUP BY p.id, oi.product_name, oi.spec_name, oi.image, p.specs
+		ORDER BY p.id, oi.spec_name
+	`
+
+	rows, err := database.DB.Query(query, supplierID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取待备货货物列表失败: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	goodsList := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var productID int
+		var productName, specName string
+		var image sql.NullString
+		var totalQuantity int
+		var productSpecsJSON sql.NullString
+
+		if err := rows.Scan(&productID, &productName, &specName, &image, &totalQuantity, &productSpecsJSON); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "扫描货物数据失败: " + err.Error()})
+			return
+		}
+
+		// 计算成本价
+		costPrice := 0.0
+		if productSpecsJSON.Valid {
+			var specs []model.Spec
+			if err := json.Unmarshal([]byte(productSpecsJSON.String), &specs); err == nil {
+				// 优先根据规格名称匹配
+				for _, spec := range specs {
+					if spec.Name == specName {
+						costPrice = spec.Cost
+						break
+					}
+				}
+				// 如果没找到匹配的规格，使用第一个规格的成本价
+				if costPrice == 0 && len(specs) > 0 {
+					costPrice = specs[0].Cost
+				}
+			}
+		}
+
+		totalCost := costPrice * float64(totalQuantity)
+
+		goodsData := map[string]interface{}{
+			"product_id":   productID,
+			"product_name": productName,
+			"spec_name":    specName,
+			"image":        image.String,
+			"quantity":     totalQuantity,
+			"cost_price":   costPrice,
+			"total_cost":   totalCost,
+		}
+
+		goodsList = append(goodsList, goodsData)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"data": gin.H{
+			"list": goodsList,
+		},
+		"message": "获取成功",
+	})
+}
+
+// GetTodayPickedGoods 获取今日已取货货物列表
+func GetTodayPickedGoods(c *gin.Context) {
+	// 从上下文中获取供应商ID
+	supplierIDInterface, exists := c.Get("supplierID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未登录"})
+		return
+	}
+
+	supplierID, ok := supplierIDInterface.(int)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "内部服务器错误"})
+		return
+	}
+
+	// 查询今日已取货货物，按商品和规格分组
+	query := `
+		SELECT 
+			p.id as product_id,
+			oi.product_name,
+			oi.spec_name,
+			oi.image,
+			SUM(oi.quantity) as total_quantity,
+			p.specs as product_specs
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ? 
+		AND o.status IN ('delivering', 'delivered', 'paid')
+		AND DATE(o.created_at) = CURDATE()
+		GROUP BY p.id, oi.product_name, oi.spec_name, oi.image, p.specs
+		ORDER BY p.id, oi.spec_name
+	`
+
+	rows, err := database.DB.Query(query, supplierID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取已取货货物列表失败: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	goodsList := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var productID int
+		var productName, specName string
+		var image sql.NullString
+		var totalQuantity int
+		var productSpecsJSON sql.NullString
+
+		if err := rows.Scan(&productID, &productName, &specName, &image, &totalQuantity, &productSpecsJSON); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "扫描货物数据失败: " + err.Error()})
+			return
+		}
+
+		// 计算成本价
+		costPrice := 0.0
+		if productSpecsJSON.Valid {
+			var specs []model.Spec
+			if err := json.Unmarshal([]byte(productSpecsJSON.String), &specs); err == nil {
+				// 优先根据规格名称匹配
+				for _, spec := range specs {
+					if spec.Name == specName {
+						costPrice = spec.Cost
+						break
+					}
+				}
+				// 如果没找到匹配的规格，使用第一个规格的成本价
+				if costPrice == 0 && len(specs) > 0 {
+					costPrice = specs[0].Cost
+				}
+			}
+		}
+
+		totalCost := costPrice * float64(totalQuantity)
+
+		goodsData := map[string]interface{}{
+			"product_id":   productID,
+			"product_name": productName,
+			"spec_name":    specName,
+			"image":        image.String,
+			"quantity":     totalQuantity,
+			"cost_price":   costPrice,
+			"total_cost":   totalCost,
+		}
+
+		goodsList = append(goodsList, goodsData)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"data": gin.H{
+			"list": goodsList,
+		},
+		"message": "获取成功",
+	})
+}
+
+// ==================== 历史记录 API ====================
+
+// GetHistoryByDate 获取历史记录列表（按天）
+func GetHistoryByDate(c *gin.Context) {
+	// 从上下文中获取供应商ID
+	supplierIDInterface, exists := c.Get("supplierID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未登录"})
+		return
+	}
+
+	supplierID, ok := supplierIDInterface.(int)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "内部服务器错误"})
+		return
+	}
+
+	// 获取分页参数
+	pageNum := 1
+	pageSize := 20
+	if pageStr := c.Query("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			pageNum = p
+		}
+	}
+	if pageSizeStr := c.Query("page_size"); pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
+			pageSize = ps
+		}
+	}
+
+	// 获取日期筛选参数
+	dateFilter := ""
+	if dateStr := c.Query("date"); dateStr != "" {
+		dateFilter = fmt.Sprintf("AND DATE(o.created_at) = '%s'", dateStr)
+	}
+
+	// 计算偏移量
+	offset := (pageNum - 1) * pageSize
+
+	// 获取总数量：查询有该供应商商品的订单日期数量
+	countQuery := fmt.Sprintf(`
+		SELECT COUNT(DISTINCT DATE(o.created_at))
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ?
+		%s
+	`, dateFilter)
+	var total int
+	if err := database.DB.QueryRow(countQuery, supplierID).Scan(&total); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取历史记录数量失败: " + err.Error()})
+		return
+	}
+
+	// 获取历史记录列表（按日期分组）
+	query := fmt.Sprintf(`
+		SELECT 
+			daily_stats.order_date,
+			daily_stats.pending_item_count,
+			daily_stats.picked_item_count,
+			daily_stats.total_item_count,
+			(SELECT COUNT(DISTINCT CONCAT(oi2.product_id, '-', oi2.spec_name))
+			 FROM orders o2
+			 INNER JOIN order_items oi2 ON o2.id = oi2.order_id
+			 INNER JOIN products p2 ON oi2.product_id = p2.id
+			 WHERE p2.supplier_id = ?
+			 AND DATE(o2.created_at) = daily_stats.order_date
+			 %s) as total_goods_count
+		FROM (
+			SELECT 
+				DATE(o.created_at) as order_date,
+				SUM(CASE WHEN o.status IN ('pending_delivery', 'pending_pickup') THEN oi.quantity ELSE 0 END) as pending_item_count,
+				SUM(CASE WHEN o.status IN ('delivering', 'delivered', 'paid') THEN oi.quantity ELSE 0 END) as picked_item_count,
+				SUM(oi.quantity) as total_item_count
+			FROM orders o
+			INNER JOIN order_items oi ON o.id = oi.order_id
+			INNER JOIN products p ON oi.product_id = p.id
+			WHERE p.supplier_id = ?
+			%s
+			GROUP BY DATE(o.created_at)
+		) as daily_stats
+		ORDER BY daily_stats.order_date DESC
+		LIMIT ? OFFSET ?
+	`, dateFilter, dateFilter)
+
+	rows, err := database.DB.Query(query, supplierID, supplierID, pageSize, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取历史记录列表失败: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	historyList := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var orderDate time.Time
+		var pendingItemCount, pickedItemCount, totalItemCount, totalGoodsCount int
+
+		if err := rows.Scan(&orderDate, &pendingItemCount, &pickedItemCount, &totalItemCount, &totalGoodsCount); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "扫描历史记录数据失败: " + err.Error()})
+			return
+		}
+
+		// 计算该日期的总金额和已取货金额
+		dateStr := orderDate.Format("2006-01-02")
+		totalAmount := 0.0
+		pickedAmount := 0.0
+
+		// 计算总金额
+		amountQuery := `
+			SELECT oi.spec_name, oi.quantity, p.specs as product_specs
+			FROM orders o
+			INNER JOIN order_items oi ON o.id = oi.order_id
+			INNER JOIN products p ON oi.product_id = p.id
+			WHERE p.supplier_id = ? 
+			AND DATE(o.created_at) = ?
+		`
+		amountRows, err := database.DB.Query(amountQuery, supplierID, dateStr)
+		if err == nil {
+			defer amountRows.Close()
+			for amountRows.Next() {
+				var specName string
+				var quantity int
+				var productSpecsJSON sql.NullString
+				if err := amountRows.Scan(&specName, &quantity, &productSpecsJSON); err == nil {
+					totalAmount += calculateOrderItemCost(specName, productSpecsJSON, quantity)
+				}
+			}
+		}
+
+		// 计算已取货金额（只计算状态为delivering, delivered, paid的订单）
+		pickedAmountQuery := `
+			SELECT oi.spec_name, oi.quantity, p.specs as product_specs
+			FROM orders o
+			INNER JOIN order_items oi ON o.id = oi.order_id
+			INNER JOIN products p ON oi.product_id = p.id
+			WHERE p.supplier_id = ? 
+			AND DATE(o.created_at) = ?
+			AND o.status IN ('delivering', 'delivered', 'paid')
+		`
+		pickedAmountRows, err := database.DB.Query(pickedAmountQuery, supplierID, dateStr)
+		if err == nil {
+			defer pickedAmountRows.Close()
+			for pickedAmountRows.Next() {
+				var specName string
+				var quantity int
+				var productSpecsJSON sql.NullString
+				if err := pickedAmountRows.Scan(&specName, &quantity, &productSpecsJSON); err == nil {
+					pickedAmount += calculateOrderItemCost(specName, productSpecsJSON, quantity)
+				}
+			}
+		}
+
+		historyData := map[string]interface{}{
+			"date":               dateStr,
+			"pending_item_count": pendingItemCount,
+			"picked_item_count":  pickedItemCount,
+			"total_item_count":   totalItemCount,
+			"total_goods_count":  totalGoodsCount,
+			"total_amount":       totalAmount,
+			"picked_amount":      pickedAmount,
+		}
+
+		historyList = append(historyList, historyData)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"data": gin.H{
+			"list":      historyList,
+			"total":     total,
+			"page":      pageNum,
+			"page_size": pageSize,
+		},
+		"message": "获取成功",
+	})
+}
+
+// GetHistoryDetail 获取某天的历史详情
+func GetHistoryDetail(c *gin.Context) {
+	// 从上下文中获取供应商ID
+	supplierIDInterface, exists := c.Get("supplierID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未登录"})
+		return
+	}
+
+	supplierID, ok := supplierIDInterface.(int)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "内部服务器错误"})
+		return
+	}
+
+	// 获取日期参数
+	dateStr := c.Param("date")
+	if dateStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "日期参数不能为空"})
+		return
+	}
+
+	// 验证日期格式
+	_, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "日期格式错误，应为 YYYY-MM-DD"})
+		return
+	}
+
+	// 获取该日期的统计信息
+	var pendingItemCount, pickedItemCount, totalItemCount, totalGoodsCount int
+	statsQuery := `
+		SELECT 
+			SUM(CASE WHEN o.status IN ('pending_delivery', 'pending_pickup') THEN oi.quantity ELSE 0 END) as pending_item_count,
+			SUM(CASE WHEN o.status IN ('delivering', 'delivered', 'paid') THEN oi.quantity ELSE 0 END) as picked_item_count,
+			SUM(oi.quantity) as total_item_count,
+			(SELECT COUNT(DISTINCT CONCAT(oi2.product_id, '-', oi2.spec_name))
+			 FROM orders o2
+			 INNER JOIN order_items oi2 ON o2.id = oi2.order_id
+			 INNER JOIN products p2 ON oi2.product_id = p2.id
+			 WHERE p2.supplier_id = ? 
+			 AND DATE(o2.created_at) = ?) as total_goods_count
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ? 
+		AND DATE(o.created_at) = ?
+	`
+	if err := database.DB.QueryRow(statsQuery, supplierID, dateStr, supplierID, dateStr).Scan(&pendingItemCount, &pickedItemCount, &totalItemCount, &totalGoodsCount); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "该日期无历史记录"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取历史统计失败: " + err.Error()})
+		return
+	}
+
+	// 计算总金额
+	totalAmount := 0.0
+	amountQuery := `
+		SELECT oi.spec_name, oi.quantity, p.specs as product_specs
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ? 
+		AND DATE(o.created_at) = ?
+	`
+	amountRows, err := database.DB.Query(amountQuery, supplierID, dateStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取历史金额失败: " + err.Error()})
+		return
+	}
+	defer amountRows.Close()
+	for amountRows.Next() {
+		var specName string
+		var quantity int
+		var productSpecsJSON sql.NullString
+		if err := amountRows.Scan(&specName, &quantity, &productSpecsJSON); err == nil {
+			totalAmount += calculateOrderItemCost(specName, productSpecsJSON, quantity)
+		}
+	}
+
+	// 获取待备货货物明细（只显示该日期创建的待备货订单，与统计信息保持一致）
+	pendingGoodsQuery := `
+		SELECT 
+			p.id as product_id,
+			oi.product_name,
+			oi.spec_name,
+			oi.image,
+			SUM(oi.quantity) as total_quantity,
+			p.specs as product_specs
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ? 
+		AND o.status IN ('pending_delivery', 'pending_pickup')
+		AND DATE(o.created_at) = ?
+		GROUP BY p.id, oi.product_name, oi.spec_name, oi.image, p.specs
+		ORDER BY p.id, oi.spec_name
+	`
+	pendingGoodsRows, err := database.DB.Query(pendingGoodsQuery, supplierID, dateStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取待备货货物明细失败: " + err.Error()})
+		return
+	}
+	defer pendingGoodsRows.Close()
+
+	pendingGoods := make([]map[string]interface{}, 0)
+	for pendingGoodsRows.Next() {
+		var productID int
+		var productName, specName string
+		var image sql.NullString
+		var totalQuantity int
+		var productSpecsJSON sql.NullString
+
+		if err := pendingGoodsRows.Scan(&productID, &productName, &specName, &image, &totalQuantity, &productSpecsJSON); err != nil {
+			continue
+		}
+
+		// 计算成本价
+		costPrice := 0.0
+		if productSpecsJSON.Valid {
+			var specs []model.Spec
+			if err := json.Unmarshal([]byte(productSpecsJSON.String), &specs); err == nil {
+				for _, spec := range specs {
+					if spec.Name == specName {
+						costPrice = spec.Cost
+						break
+					}
+				}
+				if costPrice == 0 && len(specs) > 0 {
+					costPrice = specs[0].Cost
+				}
+			}
+		}
+
+		totalCost := costPrice * float64(totalQuantity)
+
+		goodsData := map[string]interface{}{
+			"product_id":   productID,
+			"product_name": productName,
+			"spec_name":    specName,
+			"image":        image.String,
+			"quantity":     totalQuantity,
+			"cost_price":   costPrice,
+			"total_cost":   totalCost,
+		}
+
+		pendingGoods = append(pendingGoods, goodsData)
+	}
+
+	// 获取已取货货物明细
+	pickedGoodsQuery := `
+		SELECT 
+			p.id as product_id,
+			oi.product_name,
+			oi.spec_name,
+			oi.image,
+			SUM(oi.quantity) as total_quantity,
+			p.specs as product_specs
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ? 
+		AND o.status IN ('delivering', 'delivered', 'paid')
+		AND DATE(o.created_at) = ?
+		GROUP BY p.id, oi.product_name, oi.spec_name, oi.image, p.specs
+		ORDER BY p.id, oi.spec_name
+	`
+	pickedGoodsRows, err := database.DB.Query(pickedGoodsQuery, supplierID, dateStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取已取货货物明细失败: " + err.Error()})
+		return
+	}
+	defer pickedGoodsRows.Close()
+
+	pickedGoods := make([]map[string]interface{}, 0)
+	pickedAmount := 0.0
+	for pickedGoodsRows.Next() {
+		var productID int
+		var productName, specName string
+		var image sql.NullString
+		var totalQuantity int
+		var productSpecsJSON sql.NullString
+
+		if err := pickedGoodsRows.Scan(&productID, &productName, &specName, &image, &totalQuantity, &productSpecsJSON); err != nil {
+			continue
+		}
+
+		// 计算成本价
+		costPrice := 0.0
+		if productSpecsJSON.Valid {
+			var specs []model.Spec
+			if err := json.Unmarshal([]byte(productSpecsJSON.String), &specs); err == nil {
+				for _, spec := range specs {
+					if spec.Name == specName {
+						costPrice = spec.Cost
+						break
+					}
+				}
+				if costPrice == 0 && len(specs) > 0 {
+					costPrice = specs[0].Cost
+				}
+			}
+		}
+
+		totalCost := costPrice * float64(totalQuantity)
+		pickedAmount += totalCost
+
+		goodsData := map[string]interface{}{
+			"product_id":   productID,
+			"product_name": productName,
+			"spec_name":    specName,
+			"image":        image.String,
+			"quantity":     totalQuantity,
+			"cost_price":   costPrice,
+			"total_cost":   totalCost,
+		}
+
+		pickedGoods = append(pickedGoods, goodsData)
+	}
+
+	// 返回历史详情
+	detailData := map[string]interface{}{
+		"date":               dateStr,
+		"pending_item_count": pendingItemCount,
+		"picked_item_count":  pickedItemCount,
+		"total_item_count":   totalItemCount,
+		"total_goods_count":  totalGoodsCount,
+		"total_amount":       totalAmount,
+		"picked_amount":      pickedAmount,
+		"pending_goods":      pendingGoods,
+		"picked_goods":       pickedGoods,
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": detailData, "message": "获取成功"})
+}
+
+// GetMobilePendingGoods 移动端获取待备货货物列表（不需要token，通过供应商账号和ID参数验证）
+func GetMobilePendingGoods(c *gin.Context) {
+	// 获取URL参数
+	supplierUsername := c.Query("name") // name参数是供应商账号
+	supplierIDStr := c.Query("ID")
+	if supplierIDStr == "" {
+		supplierIDStr = c.Query("id") // 兼容小写id
+	}
+
+	// 验证参数
+	if supplierUsername == "" || supplierIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "缺少必要参数：name（供应商账号）和 ID"})
+		return
+	}
+
+	// 转换供应商ID
+	supplierID, err := strconv.Atoi(supplierIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "ID参数格式错误"})
+		return
+	}
+
+	// 验证供应商是否存在，并且账号和ID匹配
+	var actualSupplierID int
+	var supplierStatus int
+	checkQuery := "SELECT id, status FROM suppliers WHERE username = ? AND id = ?"
+	if err := database.DB.QueryRow(checkQuery, supplierUsername, supplierID).Scan(&actualSupplierID, &supplierStatus); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "供应商账号或ID验证失败"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "验证供应商失败: " + err.Error()})
+		return
+	}
+
+	// 检查供应商状态
+	if supplierStatus != 1 {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "供应商账号已禁用"})
+		return
+	}
+
+	// 查询待备货货物（不限制日期，因为所有待备货的都需要准备），按商品和规格分组
+	query := `
+		SELECT 
+			p.id as product_id,
+			oi.product_name,
+			oi.spec_name,
+			oi.image,
+			SUM(oi.quantity) as total_quantity,
+			p.specs as product_specs
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ? 
+		AND o.status IN ('pending_delivery', 'pending_pickup')
+		GROUP BY p.id, oi.product_name, oi.spec_name, oi.image, p.specs
+		ORDER BY p.id, oi.spec_name
+	`
+
+	rows, err := database.DB.Query(query, supplierID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取待备货货物列表失败: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	goodsList := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var productID int
+		var productName, specName string
+		var image sql.NullString
+		var totalQuantity int
+		var productSpecsJSON sql.NullString
+
+		if err := rows.Scan(&productID, &productName, &specName, &image, &totalQuantity, &productSpecsJSON); err != nil {
+			continue
+		}
+
+		// 计算成本价
+		costPrice := 0.0
+		if productSpecsJSON.Valid {
+			var specs []model.Spec
+			if err := json.Unmarshal([]byte(productSpecsJSON.String), &specs); err == nil {
+				// 优先根据规格名称匹配
+				for _, spec := range specs {
+					if spec.Name == specName {
+						costPrice = spec.Cost
+						break
+					}
+				}
+				// 如果没找到匹配的规格，使用第一个规格的成本价
+				if costPrice == 0 && len(specs) > 0 {
+					costPrice = specs[0].Cost
+				}
+			}
+		}
+
+		totalCost := costPrice * float64(totalQuantity)
+
+		goodsData := map[string]interface{}{
+			"product_id":   productID,
+			"product_name": productName,
+			"spec_name":    specName,
+			"image":        image.String,
+			"quantity":     totalQuantity,
+			"cost_price":   costPrice,
+			"total_cost":   totalCost,
+		}
+
+		goodsList = append(goodsList, goodsData)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"data":    gin.H{"list": goodsList},
+		"message": "获取成功",
+	})
+}

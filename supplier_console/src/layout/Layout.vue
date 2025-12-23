@@ -25,10 +25,10 @@
           <span>商品管理</span>
         </el-menu-item>
 
-        <!-- 订单管理 -->
+        <!-- 历史记录 -->
         <el-menu-item index="/orders">
           <el-icon><Document /></el-icon>
-          <span>订单管理</span>
+          <span>历史记录</span>
         </el-menu-item>
       </el-menu>
     </el-aside>

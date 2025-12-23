@@ -370,6 +370,19 @@ export const createOrder = (data, token) => {
 };
 
 /**
+ * 取消订单
+ * @param {string} token - 用户token
+ * @param {number} orderId - 订单ID
+ */
+export const cancelOrder = (token, orderId) => {
+  return post(`/mini-app/users/orders/${orderId}/cancel`, {}, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
  * 删除地址
  * @param {number} addressId - 地址ID
  * @param {string} token - 用户token

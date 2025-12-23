@@ -1,5 +1,26 @@
 <template>
   <view class="results-page">
+    <!-- 自定义头部 - 绿色背景 -->
+    <view class="custom-header">
+      <view class="navbar-fixed" style="background-color: #20CB6B;">
+        <!-- 状态栏撑起高度 -->
+        <view :style="{ height: statusBarHeight + 'px' }"></view>
+        <!-- 导航栏内容区域 -->
+        <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
+          <view class="navbar-left" @click="goBack">
+            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+          </view>
+          <view class="navbar-title">
+            <text class="navbar-title-text">搜索结果</text>
+          </view>
+          <view class="navbar-right"></view>
+        </view>
+      </view>
+    </view>
+    
+    <!-- 占位符，避免内容被导航栏遮挡 -->
+    <view :style="{ height: (statusBarHeight + navBarHeight) * 2 + 'rpx' }"></view>
+    
     <!-- 搜索结果列表 -->
     <view class="results-container">
       <!-- 商品列表 -->
@@ -53,6 +74,8 @@ export default {
   },
   data() {
     return {
+      statusBarHeight: 0, // 状态栏高度
+      navBarHeight: 45, // 导航栏高度（默认值）
       keyword: '',
       searchResults: [],
       total: 0,
@@ -61,6 +84,13 @@ export default {
     };
   },
   onLoad(options) {
+    // 获取设备信息，设置状态栏高度
+    const systemInfo = uni.getSystemInfoSync();
+    this.statusBarHeight = systemInfo.statusBarHeight || 0;
+    
+    // 获取胶囊按钮信息，计算导航栏高度
+    this.getMenuButtonInfo();
+    
     // 初始化用户类型
     this.initUserType();
     
@@ -241,6 +271,32 @@ export default {
     onAddBtnClick(product) {
       // 使用 ProductSelector 组件打开商品选择器
       this.$refs.productSelector?.open(product);
+    },
+    
+    // 获取胶囊按钮信息并计算导航栏高度
+    getMenuButtonInfo() {
+      try {
+        // #ifndef H5 || APP-PLUS || MP-ALIPAY
+        // 获取胶囊的位置信息
+        const menuButtonInfo = uni.getMenuButtonBoundingClientRect();
+        // 计算导航栏高度
+        this.navBarHeight = (menuButtonInfo.bottom - this.statusBarHeight) + (menuButtonInfo.top - this.statusBarHeight);
+        // #endif
+      } catch (error) {
+        console.error('获取胶囊按钮信息失败:', error);
+      }
+    },
+    
+    // 返回上一页
+    goBack() {
+      uni.navigateBack({
+        fail: () => {
+          // 如果无法返回，则跳转到搜索页
+          uni.navigateTo({
+            url: '/pages/search/search'
+          });
+        }
+      });
     }
   }
 };
@@ -250,6 +306,59 @@ export default {
 .results-page {
   min-height: 100vh;
   background-color: #f5f5f5;
+}
+
+/* 自定义头部样式 */
+.custom-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+}
+
+.navbar-fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+}
+
+.navbar-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20rpx;
+  box-sizing: border-box;
+}
+
+.navbar-left {
+  width: 60rpx;
+  height: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.navbar-title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navbar-title-text {
+  font-size: 32rpx;
+  font-weight: 500;
+  color: #fff;
+}
+
+.navbar-right {
+  width: 60rpx;
+  flex-shrink: 0;
 }
 
 .results-container {

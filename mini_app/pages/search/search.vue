@@ -1,21 +1,50 @@
 <template>
   <view class="search-page">
-    <!-- 搜索头部 -->
-    <view class="search-header">
+    <!-- 自定义头部 - 绿色背景 -->
+    <view class="custom-header">
+      <view class="navbar-fixed" style="background-color: #20CB6B;">
+        <!-- 状态栏撑起高度 -->
+        <view :style="{ height: statusBarHeight + 'px' }"></view>
+        <!-- 导航栏内容区域 -->
+        <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
+          <view class="navbar-left" @click="goBack">
+            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+          </view>
+          <view class="navbar-title">
+            <text class="navbar-title-text">搜索</text>
+          </view>
+          <view class="navbar-right"></view>
+        </view>
+      </view>
+    </view>
+    
+    <!-- 占位符，避免内容被导航栏遮挡 -->
+    <view :style="{ height: (statusBarHeight + navBarHeight) * 2 + 'rpx' }"></view>
+
+    <!-- 搜索内容区域 -->
+    <view class="search-content">
       <!-- 搜索输入区域 -->
       <view class="search-input-area">
         <view class="search-wrapper">
           <view class="search-input-container">
             <uni-icons type="search" size="16" color="#999" class="search-icon"></uni-icons>
-            <input type="text" v-model="searchText" placeholder="9折热销推荐" placeholder-style="color: #999;" @confirm="performSearch" @input="onSearchInput" />
+            <input 
+              ref="searchInput" 
+              type="text" 
+              v-model="searchText" 
+              placeholder="下拉抽纸" 
+              placeholder-style="color: #999;" 
+              @confirm="performSearch" 
+              @input="onSearchInput"
+              :focus="isInputFocused"
+            />
+            <view class="clear-btn" v-if="searchText.trim()" @click.stop="clearSearchText">
+              <uni-icons type="clear" size="16" color="#999"></uni-icons>
+            </view>
           </view>
           <view class="search-btn" @click.stop="performSearch">搜索</view>
         </view>
       </view>
-    </view>
-
-    <!-- 搜索内容区域 -->
-    <view class="search-content">
       <!-- 搜索建议列表 -->
       <view class="search-suggestions" v-if="searchText.trim() && suggestions.length > 0">
         <view class="suggestions-list">
@@ -27,6 +56,22 @@
             <view class="suggestion-arrow">
               <uni-icons type="right" size="14" color="#ccc"></uni-icons>
             </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 搜索历史 -->
+      <view class="search-history" v-if="!searchText.trim() && searchHistory.length > 0">
+        <view class="section-title">
+          <text class="title-text">搜索历史</text>
+          <view class="clear-history" @click="clearSearchHistory">
+            <uni-icons type="trash" size="16" color="#999"></uni-icons>
+            <text class="clear-text">清除</text>
+          </view>
+        </view>
+        <view class="history-tags">
+          <view class="tag-item history-item" v-for="(item, index) in searchHistory" :key="index" @click="selectHistoryItem(item)">
+            {{ item }}
           </view>
         </view>
       </view>
@@ -185,6 +230,8 @@ export default {
       hotSearchTags: [],
       specialProducts: [],
       featuredProducts: [],
+      searchHistory: [], // 搜索历史
+      isInputFocused: false, // 输入框聚焦状态
       // 弹窗相关状态
       showProductModal: false,
       selectedProduct: null,
@@ -203,6 +250,9 @@ export default {
     // 获取胶囊按钮信息，计算搜索框可用宽度
     this.getMenuButtonInfo();
     
+    // 加载搜索历史
+    this.loadSearchHistory();
+    
     // 获取热门搜索关键词
     this.loadHotSearchKeywords();
     
@@ -211,6 +261,20 @@ export default {
     
     // 获取精选商品作为特惠推荐
     this.loadFeaturedProducts();
+  },
+  onReady() {
+    // 页面渲染完成后自动聚焦输入框
+    this.$nextTick(() => {
+      this.isInputFocused = true;
+    });
+  },
+  onShow() {
+    // 页面显示时重新加载搜索历史（从搜索结果页返回时）
+    this.loadSearchHistory();
+    // 重新聚焦输入框
+    this.$nextTick(() => {
+      this.isInputFocused = true;
+    });
   },
   methods: {
     // 加载热门搜索关键词
@@ -279,6 +343,21 @@ export default {
       }
     },
     
+    // 清除搜索输入内容
+    clearSearchText() {
+      this.searchText = '';
+      this.suggestions = [];
+      // 清除防抖定时器
+      if (this.searchTimer) {
+        clearTimeout(this.searchTimer);
+        this.searchTimer = null;
+      }
+      // 重新聚焦输入框
+      this.$nextTick(() => {
+        this.isInputFocused = true;
+      });
+    },
+    
     // 获取搜索建议
     async getSearchSuggestions(keyword) {
       // 如果关键词为空，直接返回
@@ -314,6 +393,8 @@ export default {
     performSearch() {
       const keyword = this.searchText.trim();
       if (keyword) {
+        // 添加到搜索历史
+        this.addToSearchHistory(keyword);
         // 跳转到搜索结果页面
         uni.navigateTo({
           url: `/pages/search/results?keyword=${encodeURIComponent(keyword)}`
@@ -331,6 +412,71 @@ export default {
     searchByTag(tag) {
       this.searchText = tag;
       this.performSearch();
+    },
+    
+    // 加载搜索历史
+    loadSearchHistory() {
+      try {
+        const history = uni.getStorageSync('searchHistory');
+        if (history && Array.isArray(history)) {
+          this.searchHistory = history;
+        } else {
+          this.searchHistory = [];
+        }
+      } catch (error) {
+        console.error('加载搜索历史失败:', error);
+        this.searchHistory = [];
+      }
+    },
+    
+    // 添加到搜索历史
+    addToSearchHistory(keyword) {
+      if (!keyword || !keyword.trim()) {
+        return;
+      }
+      const trimmedKeyword = keyword.trim();
+      
+      // 移除已存在的相同关键词
+      this.searchHistory = this.searchHistory.filter(item => item !== trimmedKeyword);
+      
+      // 添加到开头
+      this.searchHistory.unshift(trimmedKeyword);
+      
+      // 限制历史记录数量（最多保存10条）
+      if (this.searchHistory.length > 10) {
+        this.searchHistory = this.searchHistory.slice(0, 10);
+      }
+      
+      // 保存到本地存储
+      try {
+        uni.setStorageSync('searchHistory', this.searchHistory);
+      } catch (error) {
+        console.error('保存搜索历史失败:', error);
+      }
+    },
+    
+    // 点击历史记录项
+    selectHistoryItem(keyword) {
+      this.searchText = keyword;
+      this.performSearch();
+    },
+    
+    // 清除搜索历史
+    clearSearchHistory() {
+      uni.showModal({
+        title: '提示',
+        content: '确定要清除所有搜索历史吗？',
+        success: (res) => {
+          if (res.confirm) {
+            this.searchHistory = [];
+            try {
+              uni.removeStorageSync('searchHistory');
+            } catch (error) {
+              console.error('清除搜索历史失败:', error);
+            }
+          }
+        }
+      });
     },
     
     // 生成模拟搜索结果
@@ -596,26 +742,32 @@ page{
   flex-direction: column;
 }
 
-/* 搜索头部样式 */
-.search-header {
-  border-bottom: 1rpx solid #eee;
-  position: sticky;
+/* 自定义头部样式 */
+.custom-header {
+  position: fixed;
   top: 0;
-  z-index: 100;
-  box-sizing: border-box;
+  left: 0;
+  right: 0;
+  z-index: 1000;
 }
 
-/* 导航栏样式 */
-.navbar {
+.navbar-fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+}
+
+.navbar-content {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10rpx 20rpx;
-  height: 88rpx;
+  padding: 0 20rpx;
   box-sizing: border-box;
 }
 
-.back-btn {
+.navbar-left {
   width: 60rpx;
   height: 60rpx;
   display: flex;
@@ -626,18 +778,20 @@ page{
 }
 
 .navbar-title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navbar-title-text {
   font-size: 32rpx;
   font-weight: 500;
-  color: #333;
+  color: #fff;
 }
 
 .navbar-right {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
+  width: 60rpx;
   flex-shrink: 0;
 }
 
@@ -669,7 +823,7 @@ page{
 /* 搜索输入区域样式 */
 .search-input-area {
   padding: 20rpx;
-  padding-top: 10rpx;
+  padding-top: 0 !important;
   box-sizing: border-box;
 }
 
@@ -692,6 +846,7 @@ page{
   padding: 0 20rpx;
   background-color: transparent;
   min-width: 0;
+  position: relative;
 }
 
 .search-icon {
@@ -707,6 +862,20 @@ page{
   background-color: transparent;
   border: none;
   outline: none;
+  padding-right: 40rpx;
+}
+
+.clear-btn {
+  position: absolute;
+  right: 20rpx;
+  width: 32rpx;
+  height: 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  z-index: 10;
 }
 
 .search-btn {
@@ -730,6 +899,35 @@ page{
   padding-top: 0;
   flex: 1;
   overflow-y: auto;
+}
+
+/* 搜索历史样式 */
+.search-history {
+  padding: 20rpx;
+  border-radius: 20rpx;
+  margin-bottom: 20rpx;
+}
+
+.clear-history {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  cursor: pointer;
+}
+
+.clear-text {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.history-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20rpx;
+}
+
+.history-item {
+  cursor: pointer;
 }
 
 /* 热门搜索样式 */

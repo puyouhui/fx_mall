@@ -30,7 +30,7 @@
       <view class="login-prompt" v-else @click="goToLogin">
         <view class="avatar-wrapper">
           <view class="avatar-placeholder">
-            <uni-icons type="person-filled" size="40" color="#fff"></uni-icons>
+            <uni-icons type="person-filled" size="40" color="#20CB6B"></uni-icons>
           </view>
         </view>
         <view class="user-info">
@@ -75,28 +75,28 @@
       <view class="order-tabs">
         <view class="order-tab" @click="goToOrderList('pending_delivery')">
           <view class="tab-icon-wrapper">
-            <uni-icons type="shop" size="24" color="#20CB6B"></uni-icons>
+            <image src="/static/icon/1.png" class="tab-icon" mode="aspectFit"></image>
             <view class="badge" v-if="orderCounts.pending_delivery > 0">{{ orderCounts.pending_delivery > 99 ? '99+' : orderCounts.pending_delivery }}</view>
           </view>
           <text class="tab-text">待配送</text>
         </view>
         <view class="order-tab" @click="goToOrderList('delivering')">
           <view class="tab-icon-wrapper">
-            <uni-icons type="car" size="24" color="#20CB6B"></uni-icons>
+            <image src="/static/icon/2.png" class="tab-icon" mode="aspectFit"></image>
             <view class="badge" v-if="orderCounts.delivering > 0">{{ orderCounts.delivering > 99 ? '99+' : orderCounts.delivering }}</view>
           </view>
           <text class="tab-text">配送中</text>
         </view>
         <view class="order-tab" @click="goToOrderList('delivered')">
           <view class="tab-icon-wrapper">
-            <uni-icons type="checkmarkempty" size="24" color="#20CB6B"></uni-icons>
+            <image src="/static/icon/3.png" class="tab-icon" mode="aspectFit"></image>
             <view class="badge" v-if="orderCounts.delivered > 0">{{ orderCounts.delivered > 99 ? '99+' : orderCounts.delivered }}</view>
           </view>
           <text class="tab-text">已送达</text>
         </view>
         <view class="order-tab" @click="goToOrderList()">
           <view class="tab-icon-wrapper">
-            <uni-icons type="list" size="24" color="#20CB6B"></uni-icons>
+            <image src="/static/icon/4.png" class="tab-icon" mode="aspectFit"></image>
           </view>
           <text class="tab-text">全部订单</text>
         </view>
@@ -107,12 +107,12 @@
     <!-- 我的功能 -->
     <view class="functions-section">
       <view class="section-header">
-        <text class="section-title">我的功能</text>
+        <text class="section-title">常用功能</text>
       </view>
       <view class="functions-grid">
         <view class="function-item" v-for="(func, index) in functions" :key="index" @click="handleFunctionClick(func)">
           <view class="function-icon-wrapper">
-            <uni-icons :type="func.icon" size="28" :color="func.color || '#20CB6B'"></uni-icons>
+            <image :src="func.iconPath || '/static/icon/About.png'" class="function-icon" mode="aspectFit"></image>
             <view class="function-badge" v-if="func.badge">{{ func.badge }}</view>
           </view>
           <text class="function-text">{{ func.name }}</text>
@@ -154,14 +154,14 @@ export default {
       userPoints: 0,
       carousels: [],
       functions: [
-        { name: '地址管理', icon: 'location', path: '/pages/address/address', color: '#20CB6B' },
-        { name: '我的账单', icon: 'wallet', path: '/pages/bill/bill', color: '#20CB6B' },
-        { name: '发票中心', icon: 'paperplane', path: '/pages/invoice/invoice', color: '#20CB6B' },
-        { name: '新品需求', icon: 'star', path: '/pages/product-request/product-request', color: '#20CB6B' },
-        { name: '客服与帮助', icon: 'chatbubble', path: '/pages/customer-service/customer-service', color: '#20CB6B' },
-        { name: '系统设置', icon: 'gear', path: '/pages/settings/settings', color: '#20CB6B' },
-        { name: '供应商合作', icon: 'shop', path: '/pages/supplier/supplier', color: '#20CB6B' },
-        { name: '加入我们', icon: 'person-add', path: '/pages/join-us/join-us', color: '#20CB6B' }
+        { name: '地址管理', icon: 'location', iconPath: '/static/icon/address.png', path: '/pages/address/address', color: '#20CB6B' },
+        { name: '我的账单', icon: 'wallet', iconPath: '/static/icon/bills.png', path: '/pages/bill/bill', color: '#20CB6B' },
+        { name: '发票中心', icon: 'paperplane', iconPath: '/static/icon/invoice.png', path: '/pages/invoice/invoice', color: '#20CB6B' },
+        { name: '新品需求', icon: 'star', iconPath: '/static/icon/new.png', path: '/pages/product-request/product-request', color: '#20CB6B' },
+        { name: '客服与帮助', icon: 'chatbubble', iconPath: '/static/icon/customer_service.png', path: '/pages/customer-service/customer-service', color: '#20CB6B' },
+        { name: '系统设置', icon: 'gear', iconPath: '/static/icon/set.png', path: '/pages/settings/settings', color: '#20CB6B' },
+        { name: '供应商合作', icon: 'shop', iconPath: '/static/icon/suppliers.png', path: '/pages/supplier/supplier', color: '#20CB6B' },
+        { name: '关于我们', icon: 'information', iconPath: '/static/icon/About.png', path: '/pages/about-us/about-us', color: '#20CB6B' }
       ]
     };
   },
@@ -613,7 +613,7 @@ export default {
 .avatar-placeholder {
   width: 100%;
   height: 100%;
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(32, 203, 107, 0.8);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -807,31 +807,35 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #F0F9F4;
-  border-radius: 50%;
   margin-bottom: 12rpx;
+}
+
+.tab-icon {
+  width: 74rpx;
+  height: 74rpx;
 }
 
 .badge {
   position: absolute;
   top: -8rpx;
   right: -8rpx;
-  min-width: 32rpx;
-  height: 32rpx;
+  min-width: 40rpx;
+  height: 40rpx;
   padding: 0 8rpx;
   background-color: #ff4d4f;
   color: #fff;
   font-size: 20rpx;
-  border-radius: 16rpx;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 2rpx solid #fff;
+  box-sizing: border-box;
 }
 
 .tab-text {
-  font-size: 24rpx;
-  color: #666;
+  font-size: 26rpx;
+  color: #555;
 }
 
 /* 轮播图 */
@@ -880,9 +884,13 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #F0F9F4;
   border-radius: 20rpx;
-  margin-bottom: 12rpx;
+  margin-bottom: 6rpx;
+}
+
+.function-icon {
+  width: 56rpx;
+  height: 56rpx;
 }
 
 .function-badge {
@@ -895,16 +903,17 @@ export default {
   background-color: #ff4d4f;
   color: #fff;
   font-size: 20rpx;
-  border-radius: 16rpx;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 2rpx solid #fff;
+  box-sizing: border-box;
 }
 
 .function-text {
   font-size: 24rpx;
-  color: #666;
+  color: #555;
   text-align: center;
 }
 </style>

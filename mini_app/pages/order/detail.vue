@@ -1,39 +1,31 @@
 <template>
   <view class="order-detail-page">
-    <!-- 自定义导航栏 -->
+    <!-- 自定义导航栏 - 绿色背景 -->
     <view class="custom-navbar">
-      <view :style="{ height: statusBarHeight + 'px' }"></view>
-      <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
-        <view class="navbar-left" @click="goBack">
-          <uni-icons type="left" size="20" color="#333"></uni-icons>
+      <view class="navbar-fixed" style="background-color: #20CB6B;">
+        <view :style="{ height: statusBarHeight + 'px' }"></view>
+        <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
+          <view class="navbar-left" @click="goBack">
+            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+          </view>
+          <view class="navbar-title">
+            <text class="navbar-title-text">订单详情</text>
+          </view>
+          <view class="navbar-right"></view>
         </view>
-        <view class="navbar-title">订单详情</view>
-        <view class="navbar-right"></view>
       </view>
     </view>
 
-    <scroll-view 
-      class="detail-scroll" 
-      scroll-y 
+    <view 
+      class="detail-content" 
       v-if="orderDetail"
       :style="{ 
-        height: `calc(100vh - ${statusBarHeight + navBarHeight}px)`,
-        marginTop: `${statusBarHeight + navBarHeight}px`,
-        paddingBottom: '40rpx'
+        paddingTop: `${statusBarHeight + navBarHeight}px`,
+        paddingBottom: canCancelOrder ? '140rpx' : '40rpx'
       }"
     >
-      <!-- 订单状态 -->
-      <view class="status-section">
-        <view class="status-icon">
-          <uni-icons :type="getStatusIcon(orderDetail.order?.status)" size="60" :color="getStatusColor(orderDetail.order?.status)"></uni-icons>
-        </view>
-        <text class="status-text">{{ formatStatus(orderDetail.order?.status) }}</text>
-        <text class="order-number">订单编号：{{ orderDetail.order?.order_number }}</text>
-      </view>
-
       <!-- 地图（仅在配送中状态显示，配送员取货后才显示） -->
       <view class="section map-section" v-if="showMap">
-        <view class="section-title">配送地图</view>
         <map
           :latitude="mapCenter.latitude"
           :longitude="mapCenter.longitude"
@@ -131,6 +123,16 @@
       <view class="section info-section">
         <view class="section-title">订单信息</view>
         <view class="info-row">
+          <text class="info-label">订单编号</text>
+          <text class="info-value">{{ orderDetail.order?.order_number }}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">订单状态</text>
+          <text class="info-value" :class="getStatusClass(orderDetail.order?.status)">
+            {{ formatStatus(orderDetail.order?.status) }}
+          </text>
+        </view>
+        <view class="info-row">
           <text class="info-label">下单时间</text>
           <text class="info-value">{{ formatDate(orderDetail.order?.created_at) }}</text>
         </view>
@@ -160,7 +162,14 @@
           </view>
         </view>
       </view>
-    </scroll-view>
+    </view>
+
+    <!-- 取消订单按钮（仅在配送员接单之前显示） -->
+    <view class="cancel-order-footer" v-if="canCancelOrder">
+      <view class="cancel-btn" @click="handleCancelOrder">
+        <text>取消订单</text>
+      </view>
+    </view>
 
     <view 
       class="loading" 
@@ -176,7 +185,7 @@
 </template>
 
 <script>
-import { getOrderDetail, getDeliveryEmployeeLocation } from '../../api/index.js'
+import { getOrderDetail, getDeliveryEmployeeLocation, cancelOrder } from '../../api/index.js'
 
 export default {
   data() {
@@ -200,6 +209,11 @@ export default {
       const status = this.orderDetail?.order?.status
       // 地图只在配送中状态显示（配送员取货后才显示）
       return status === 'delivering'
+    },
+    // 是否可以取消订单（配送员接单之前：pending_delivery 或 pending_pickup）
+    canCancelOrder() {
+      const status = this.orderDetail?.order?.status
+      return status === 'pending_delivery' || status === 'pending' || status === 'pending_pickup'
     }
   },
   onLoad(options) {
@@ -468,6 +482,20 @@ export default {
       }
       return colorMap[status] || '#666'
     },
+    getStatusClass(status) {
+      const classMap = {
+        'pending': 'status-pending',
+        'pending_delivery': 'status-pending',
+        'pending_pickup': 'status-pending',
+        'delivering': 'status-delivering',
+        'delivered': 'status-delivered',
+        'shipped': 'status-delivered',
+        'paid': 'status-paid',
+        'completed': 'status-paid',
+        'cancelled': 'status-cancelled'
+      }
+      return classMap[status] || ''
+    },
     formatDate(dateStr) {
       if (!dateStr) return ''
       const date = new Date(dateStr)
@@ -481,6 +509,74 @@ export default {
     formatMoney(amount) {
       if (amount === null || amount === undefined) return '0.00'
       return Number(amount).toFixed(2)
+    },
+    // 取消订单
+    async handleCancelOrder() {
+      const orderNumber = this.orderDetail?.order?.order_number || ''
+      const salesPhone = this.orderDetail?.sales_employee?.phone || ''
+      
+      // 构建提示内容
+      let content = `确定要取消订单吗？\n\n`
+      if (salesPhone) {
+        content += `如需修改订单，可联系销售员：${salesPhone}\n\n`
+      } else if (this.orderDetail?.sales_employee) {
+        content += `如需修改订单，可联系销售员修改\n\n`
+      }
+      content += `取消后订单将无法恢复，是否仍要取消？`
+      
+      // 显示确认对话框
+      const confirmed = await new Promise((resolve) => {
+        uni.showModal({
+          title: '确认取消订单',
+          content: content,
+          confirmText: '仍要取消',
+          cancelText: '我再想想',
+          confirmColor: '#ff4d4f',
+          success: (res) => {
+            resolve(res.confirm)
+          },
+          fail: () => {
+            resolve(false)
+          }
+        })
+      })
+      
+      if (!confirmed) {
+        return
+      }
+      
+      try {
+        uni.showLoading({ title: '取消中...' })
+        const res = await cancelOrder(this.token, this.orderId)
+        
+        if (res && res.code === 200) {
+          uni.showToast({
+            title: '订单已取消',
+            icon: 'success',
+            duration: 2000
+          })
+          
+          // 延迟返回，让用户看到成功提示
+          setTimeout(() => {
+            uni.navigateBack()
+          }, 1500)
+        } else {
+          uni.showToast({
+            title: res?.message || '取消订单失败',
+            icon: 'none',
+            duration: 2000
+          })
+        }
+      } catch (error) {
+        console.error('取消订单失败:', error)
+        uni.showToast({
+          title: '取消订单失败，请重试',
+          icon: 'none',
+          duration: 2000
+        })
+      } finally {
+        uni.hideLoading()
+      }
     }
   }
 }
@@ -489,52 +585,67 @@ export default {
 <style scoped>
 .order-detail-page {
   width: 100%;
-  height: 100vh;
-  background: linear-gradient(180deg, #f8f9fa 0%, #f5f5f5 100%);
-  overflow: hidden;
+  min-height: 100vh;
+  background: #f5f5f5;
 }
 
 .custom-navbar {
-  background-color: #fff;
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 1000;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+
+.navbar-fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
 }
 
 .navbar-content {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 30rpx;
+  padding: 0 20rpx;
+  box-sizing: border-box;
 }
 
 .navbar-left {
   width: 60rpx;
+  height: 60rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10rpx;
+  flex-shrink: 0;
+  cursor: pointer;
 }
 
 .navbar-title {
   flex: 1;
-  text-align: center;
-  font-size: 36rpx;
-  font-weight: 600;
-  color: #20253A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navbar-title-text {
+  font-size: 32rpx;
+  font-weight: 500;
+  color: #fff;
 }
 
 .navbar-right {
   width: 60rpx;
+  flex-shrink: 0;
 }
 
-.detail-scroll {
+.detail-content {
   width: 100%;
   box-sizing: border-box;
-  padding: 0 20rpx;
+  padding: 20rpx;
+  min-height: calc(100vh - var(--nav-height, 0px));
 }
 
 .loading {
@@ -602,9 +713,8 @@ export default {
   padding: 32rpx 30rpx;
   margin-bottom: 24rpx;
   box-sizing: border-box;
-  border-radius: 20rpx;
-  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.04);
-  border: 1rpx solid #f0f0f0;
+  border-radius: 8rpx;
+  border: 1rpx solid #e8e8e8;
 }
 
 .section:last-child {
@@ -613,24 +723,9 @@ export default {
 
 .section-title {
   font-size: 34rpx;
-  font-weight: 700;
-  color: #20253A;
-  margin-bottom: 28rpx;
-  display: flex;
-  align-items: center;
-  position: relative;
-  padding-bottom: 16rpx;
-}
-
-.section-title::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 60rpx;
-  height: 4rpx;
-  background: linear-gradient(90deg, #20CB6B 0%, #1AB85A 100%);
-  border-radius: 2rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 24rpx;
 }
 
 .address-content {
@@ -638,9 +733,13 @@ export default {
   flex-direction: column;
   gap: 16rpx;
   padding: 20rpx;
-  background: linear-gradient(135deg, #F0FDF6 0%, #E8F8F0 100%);
-  border-radius: 16rpx;
-  border: 1rpx solid #E0F5E8;
+  background: #f9f9f9;
+  border-radius: 8rpx;
+  border: 1rpx solid #e8e8e8;
+}
+
+.address-section{
+  margin-top: 20rpx !important;
 }
 
 .address-name {
@@ -680,10 +779,9 @@ export default {
   display: flex;
   gap: 24rpx;
   padding: 20rpx;
-  background: #fafafa;
-  border-radius: 16rpx;
-  border: 1rpx solid #f0f0f0;
-  transition: all 0.3s ease;
+  background: #f9f9f9;
+  border-radius: 8rpx;
+  border: 1rpx solid #e8e8e8;
 }
 
 .goods-image {
@@ -768,29 +866,17 @@ export default {
   position: relative;
 }
 
-.amount-row:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 1rpx;
-  background: linear-gradient(90deg, transparent 0%, #f0f0f0 20%, #f0f0f0 80%, transparent 100%);
+.amount-row:not(:last-child) {
+  border-bottom: 1rpx solid #e8e8e8;
 }
 
 .amount-row.total {
-  border-top: 2rpx solid #f0f0f0;
+  border-top: 2rpx solid #e8e8e8;
   margin-top: 20rpx;
   padding-top: 28rpx;
   font-size: 34rpx;
-  font-weight: 700;
-  color: #20253A;
-  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
-  margin-left: -30rpx;
-  margin-right: -30rpx;
-  padding-left: 30rpx;
-  padding-right: 30rpx;
-  border-radius: 0 0 20rpx 20rpx;
+  font-weight: 600;
+  color: #333;
 }
 
 .amount-row.total::after {
@@ -817,14 +903,8 @@ export default {
   position: relative;
 }
 
-.info-row:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 1rpx;
-  background: linear-gradient(90deg, transparent 0%, #f0f0f0 20%, #f0f0f0 80%, transparent 100%);
+.info-row:not(:last-child) {
+  border-bottom: 1rpx solid #e8e8e8;
 }
 
 .info-label {
@@ -841,14 +921,34 @@ export default {
   word-break: break-all;
 }
 
+.status-pending {
+  color: #ff4d4f;
+}
+
+.status-delivering {
+  color: #1890ff;
+}
+
+.status-delivered {
+  color: #fa8c16;
+}
+
+.status-paid {
+  color: #52c41a;
+}
+
+.status-cancelled {
+  color: #999;
+}
+
 .sales-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 20rpx;
-  background: linear-gradient(135deg, #F0FDF6 0%, #E8F8F0 100%);
-  border-radius: 16rpx;
-  border: 1rpx solid #E0F5E8;
+  background: #f9f9f9;
+  border-radius: 8rpx;
+  border: 1rpx solid #e8e8e8;
 }
 
 .sales-info {
@@ -887,18 +987,15 @@ export default {
   align-items: center;
   gap: 10rpx;
   padding: 20rpx 36rpx;
-  background: linear-gradient(135deg, #20CB6B 0%, #1AB85A 100%);
-  border-radius: 12rpx;
+  background: #20CB6B;
+  border-radius: 8rpx;
   font-size: 28rpx;
   color: #fff;
-  font-weight: 600;
-  box-shadow: 0 4rpx 12rpx rgba(32, 203, 107, 0.3);
-  transition: all 0.3s ease;
+  font-weight: 500;
 }
 
 .contact-btn:active {
-  transform: scale(0.95);
-  box-shadow: 0 2rpx 8rpx rgba(32, 203, 107, 0.2);
+  background-color: #1AB85A;
 }
 
 .map-section {
@@ -917,9 +1014,9 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 20rpx;
-  background: linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%);
-  border-radius: 16rpx;
-  border: 1rpx solid #D0E7F8;
+  background: #f9f9f9;
+  border-radius: 8rpx;
+  border: 1rpx solid #e8e8e8;
 }
 
 .delivery-info {
@@ -951,6 +1048,36 @@ export default {
   border-radius: 8rpx;
   display: inline-block;
   width: fit-content;
+}
+
+.cancel-order-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #fff;
+  padding: 20rpx 20rpx 0 20rpx;
+  padding-bottom: calc(env(safe-area-inset-bottom));
+  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.08);
+  z-index: 999;
+  box-sizing: border-box;
+}
+
+.cancel-btn {
+  width: 100%;
+  height: 88rpx;
+  background-color: #20CB6B;
+  border-radius: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  font-weight: 500;
+  color: #fff;
+}
+
+.cancel-btn:active {
+  background-color: #1AB85A;
 }
 </style>
 

@@ -283,32 +283,32 @@ func GetUserOrders(c *gin.Context) {
 	}
 
 	// 构建查询条件，只查询当前用户的订单
-	where := "user_id = ?"
+	where := "o.user_id = ?"
 	args := []interface{}{user.ID}
 
 	// 状态筛选（兼容旧状态）
 	if status != "" {
 		// 兼容旧状态：pending_delivery 也包含 pending 和 pending_pickup（待取货也显示在待配送中）
 		if status == "pending_delivery" {
-			where += " AND (status = ? OR status = 'pending' OR status = 'pending_pickup')"
+			where += " AND (o.status = ? OR o.status = 'pending' OR o.status = 'pending_pickup')"
 			args = append(args, status)
 		} else if status == "delivered" {
 			// 兼容旧状态：delivered 也包含 shipped
-			where += " AND (status = ? OR status = 'shipped')"
+			where += " AND (o.status = ? OR o.status = 'shipped')"
 			args = append(args, status)
 		} else if status == "paid" {
 			// 兼容旧状态：paid 也包含 completed
-			where += " AND (status = ? OR status = 'completed')"
+			where += " AND (o.status = ? OR o.status = 'completed')"
 			args = append(args, status)
 		} else {
-			where += " AND status = ?"
+			where += " AND o.status = ?"
 			args = append(args, status)
 		}
 	}
 
-	// 获取总数量
+	// 获取总数量（需要关联查询以保持 WHERE 条件一致）
 	var total int
-	countQuery := "SELECT COUNT(*) FROM orders WHERE " + where
+	countQuery := "SELECT COUNT(*) FROM orders o LEFT JOIN mini_app_addresses a ON o.address_id = a.id WHERE " + where
 	err := database.DB.QueryRow(countQuery, args...).Scan(&total)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单数量失败: " + err.Error()})
@@ -321,12 +321,15 @@ func GetUserOrders(c *gin.Context) {
 		offset = 0
 	}
 
-	// 获取分页数据
+	// 获取分页数据（关联查询地址表获取地址名称）
 	query := `
-		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
-		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
-		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, created_at, updated_at
-		FROM orders WHERE ` + where + ` ORDER BY id DESC LIMIT ? OFFSET ?`
+		SELECT o.id, o.order_number, o.user_id, o.address_id, o.status, o.goods_amount, o.delivery_fee, o.points_discount,
+		       o.coupon_discount, o.is_urgent, o.urgent_fee, o.total_amount, o.remark, o.out_of_stock_strategy, o.trust_receipt,
+		       o.hide_price, o.require_phone_contact, o.expected_delivery_at, o.weather_info, o.is_isolated, o.created_at, o.updated_at,
+		       a.name AS address_name
+		FROM orders o
+		LEFT JOIN mini_app_addresses a ON o.address_id = a.id
+		WHERE ` + where + ` ORDER BY o.id DESC LIMIT ? OFFSET ?`
 	args = append(args, pageSize, offset)
 
 	rows, err := database.DB.Query(query, args...)
@@ -341,13 +344,14 @@ func GetUserOrders(c *gin.Context) {
 		var order model.Order
 		var expectedDelivery sql.NullTime
 		var weatherInfo sql.NullString
+		var addressName sql.NullString
 		var isUrgentTinyInt, trustReceiptTinyInt, hidePriceTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
 
 		err := rows.Scan(
 			&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
 			&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
 			&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
-			&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &order.CreatedAt, &order.UpdatedAt,
+			&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &order.CreatedAt, &order.UpdatedAt, &addressName,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "解析订单数据失败: " + err.Error()})
@@ -382,6 +386,11 @@ func GetUserOrders(c *gin.Context) {
 			"item_count":      itemCount,
 			"created_at":      order.CreatedAt,
 			"updated_at":      order.UpdatedAt,
+		}
+
+		// 添加地址名称
+		if addressName.Valid {
+			orderData["address_name"] = addressName.String
 		}
 
 		orders = append(orders, orderData)
@@ -430,7 +439,7 @@ func GetUserOrderDetail(c *gin.Context) {
 	// 验证订单归属：允许订单创建者或销售员查看
 	isOrderOwner := order.UserID == user.ID
 	isSalesEmployee := user.IsSalesEmployee && user.SalesEmployeeID != nil
-	
+
 	// 如果是销售员，需要验证该订单是否属于该销售员负责的客户
 	if !isOrderOwner && isSalesEmployee {
 		// 获取订单创建者信息
@@ -525,5 +534,63 @@ func GetUserOrderDetail(c *gin.Context) {
 			"delivery_employee": deliveryEmployeeData,
 		},
 		"message": "获取成功",
+	})
+}
+
+// CancelUserOrder 小程序用户取消订单
+func CancelUserOrder(c *gin.Context) {
+	user, ok := getMiniUserFromContext(c)
+	if !ok {
+		return
+	}
+
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供订单ID"})
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
+		return
+	}
+
+	// 获取订单
+	order, err := model.GetOrderByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单失败: " + err.Error()})
+		return
+	}
+	if order == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
+		return
+	}
+
+	// 验证订单归属：只能取消自己的订单
+	if order.UserID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权取消该订单"})
+		return
+	}
+
+	// 验证订单状态是否可以取消（配送员接单之前：pending_delivery 或 pending_pickup）
+	if order.Status != "pending_delivery" && order.Status != "pending" && order.Status != "pending_pickup" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "订单状态不允许取消（只能取消待配送或待取货状态的订单）",
+		})
+		return
+	}
+
+	// 更新订单状态为已取消
+	err = model.UpdateOrderStatus(id, "cancelled")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "取消订单失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "订单已取消",
 	})
 }

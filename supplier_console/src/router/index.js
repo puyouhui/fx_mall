@@ -28,7 +28,7 @@ const routes = [
         name: 'Orders',
         component: () => import('../views/Orders.vue'),
         meta: {
-          title: '订单管理'
+          title: '历史记录'
         }
       }
     ]
@@ -39,6 +39,15 @@ const routes = [
     component: () => import('../views/Login.vue'),
     meta: {
       title: '登录'
+    }
+  },
+  {
+    path: '/mobile/goods',
+    name: 'MobileGoods',
+    component: () => import('../views/MobileGoods.vue'),
+    meta: {
+      title: '待备货货物列表',
+      requiresAuth: false // 不需要token验证
     }
   }
 ]
@@ -54,14 +63,19 @@ router.beforeEach((to, from, next) => {
   // 设置页面标题
   document.title = to.meta.title || '供应商后台管理系统'
   
-  // 检查是否需要登录
-  const token = localStorage.getItem('token')
-  if (to.path !== '/login' && !token) {
-    // 未登录，重定向到登录页
-    next('/login')
-  } else {
-    // 已登录，继续访问
+  // 检查是否需要登录（移动端页面不需要token）
+  if (to.meta.requiresAuth === false) {
+    // 不需要token验证的页面，直接访问
     next()
+  } else {
+    const token = localStorage.getItem('token')
+    if (to.path !== '/login' && !token) {
+      // 未登录，重定向到登录页
+      next('/login')
+    } else {
+      // 已登录，继续访问
+      next()
+    }
   }
 })
 

@@ -1,14 +1,18 @@
 <template>
   <view class="order-list-page">
-    <!-- 自定义导航栏 -->
+    <!-- 自定义导航栏 - 绿色背景 -->
     <view class="custom-navbar">
-      <view :style="{ height: statusBarHeight + 'px' }"></view>
-      <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
-        <view class="navbar-left" @click="goBack">
-          <uni-icons type="left" size="20" color="#333"></uni-icons>
+      <view class="navbar-fixed" style="background-color: #20CB6B;">
+        <view :style="{ height: statusBarHeight + 'px' }"></view>
+        <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
+          <view class="navbar-left" @click="goBack">
+            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+          </view>
+          <view class="navbar-title">
+            <text class="navbar-title-text">我的订单</text>
+          </view>
+          <view class="navbar-right"></view>
         </view>
-        <view class="navbar-title">我的订单</view>
-        <view class="navbar-right"></view>
       </view>
     </view>
 
@@ -47,7 +51,7 @@
         :class="{ active: currentStatus === 'paid' }"
         @click="switchStatus('paid')"
       >
-        已收款
+        已完成
       </view>
     </view>
 
@@ -68,13 +72,16 @@
           @click="goToDetail(order.id)"
         >
           <view class="order-header">
-            <text class="order-number">订单编号：{{ order.order_number }}</text>
+            <text class="order-title">{{ getAddressName(order) }}</text>
             <text class="order-status" :class="getStatusClass(order.status)">
               {{ formatStatus(order.status) }}
             </text>
           </view>
           <view class="order-info">
-            <text class="order-time">{{ formatDate(order.created_at) }}</text>
+            <view class="order-info-left">
+              <text class="order-time">{{ formatDate(order.created_at) }}</text>
+              <text class="order-number">订单编号：{{ order.order_number }}</text>
+            </view>
             <text class="order-amount">¥{{ formatMoney(order.total_amount) }}</text>
           </view>
           <view class="order-footer">
@@ -107,6 +114,8 @@ export default {
       statusBarHeight: 0,
       navBarHeight: 44,
       navbarTotalHeight: 0,
+      tabsHeight: 100, // 状态标签高度（rpx）
+      windowHeight: 0, // 窗口高度
       orders: [],
       currentStatus: '',
       loading: false,
@@ -121,11 +130,13 @@ export default {
     // 获取状态栏高度和屏幕信息
     const systemInfo = uni.getSystemInfoSync()
     this.statusBarHeight = systemInfo.statusBarHeight || 0
-    // 导航栏内容高度转换为px（44rpx ≈ 22px，但实际使用px值）
-    // 在uni-app中，通常导航栏高度是44px
-    const navBarHeightPx = this.navBarHeight
+    this.windowHeight = systemInfo.windowHeight || 0
+    
+    // 获取胶囊按钮信息，计算导航栏高度
+    this.getMenuButtonInfo()
+    
     // 计算导航栏总高度（状态栏 + 导航栏内容）
-    this.navbarTotalHeight = this.statusBarHeight + navBarHeightPx
+    this.navbarTotalHeight = this.statusBarHeight + this.navBarHeight
     
     // 获取token
     this.token = uni.getStorageSync('miniUserToken')
@@ -136,6 +147,11 @@ export default {
     }
     
     this.loadOrders()
+  },
+  onReady() {
+    // 页面渲染完成后，重新获取窗口信息以确保准确
+    const systemInfo = uni.getSystemInfoSync()
+    this.windowHeight = systemInfo.windowHeight || 0
   },
   methods: {
     goBack() {
@@ -215,8 +231,8 @@ export default {
         'delivering': '配送中',
         'delivered': '已送达',
         'shipped': '已送达',
-        'paid': '已收款',
-        'completed': '已收款',
+        'paid': '已完成',
+        'completed': '已完成',
         'cancelled': '已取消'
       }
       return statusMap[status] || status
@@ -248,20 +264,59 @@ export default {
     formatMoney(amount) {
       if (amount === null || amount === undefined) return '0.00'
       return Number(amount).toFixed(2)
+    },
+    // 获取地址名称
+    getAddressName(order) {
+      // 优先使用 address.name
+      if (order.address && order.address.name) {
+        return order.address.name
+      }
+      // 其次使用 address_name
+      if (order.address_name) {
+        return order.address_name
+      }
+      // 如果都没有，返回默认值
+      return '未设置地址'
+    },
+    // 获取胶囊按钮信息并计算导航栏高度
+    getMenuButtonInfo() {
+      try {
+        // #ifndef H5 || APP-PLUS || MP-ALIPAY
+        // 获取胶囊的位置信息
+        const menuButtonInfo = uni.getMenuButtonBoundingClientRect();
+        // 计算导航栏高度
+        this.navBarHeight = (menuButtonInfo.bottom - this.statusBarHeight) + (menuButtonInfo.top - this.statusBarHeight);
+        // #endif
+      } catch (error) {
+        console.error('获取胶囊按钮信息失败:', error);
+      }
     }
   },
   computed: {
     // 计算滚动区域样式
     scrollViewStyle() {
+      if (!this.windowHeight || !this.navbarTotalHeight) {
+        return {
+          height: '0px',
+          marginTop: '0px'
+        }
+      }
+      
+      // 获取屏幕宽度用于rpx转px
       const systemInfo = uni.getSystemInfoSync()
-      const windowHeight = systemInfo.windowHeight || 0
       const screenWidth = systemInfo.windowWidth || 375
-      // 状态标签高度：80rpx转px
-      const tabsHeightPx = (80 / 750) * screenWidth
-      const height = windowHeight - this.navbarTotalHeight - tabsHeightPx
+      
+      // 状态标签高度：rpx转px
+      const tabsHeightPx = (this.tabsHeight / 750) * screenWidth
+      
+      // 计算可用高度：窗口高度 - 导航栏高度 - 状态标签高度
+      const availableHeight = this.windowHeight - this.navbarTotalHeight - tabsHeightPx
+      
+      // 计算上边距：导航栏高度 + 状态标签高度
       const marginTop = this.navbarTotalHeight + tabsHeightPx
+      
       return {
-        height: height + 'px',
+        height: Math.max(0, availableHeight) + 'px',
         marginTop: marginTop + 'px'
       }
     }
@@ -271,12 +326,18 @@ export default {
 
 <style scoped>
 .order-list-page {
-  min-height: 100vh;
   background-color: #f5f5f5;
 }
 
 .custom-navbar {
-  background-color: #fff;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+}
+
+.navbar-fixed {
   position: fixed;
   top: 0;
   left: 0;
@@ -289,37 +350,47 @@ export default {
   align-items: center;
   justify-content: space-between;
   padding: 0 20rpx;
+  box-sizing: border-box;
 }
 
 .navbar-left {
   width: 60rpx;
+  height: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.navbar-title {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.navbar-title {
-  flex: 1;
-  text-align: center;
-  font-size: 36rpx;
-  font-weight: 600;
-  color: #333;
+.navbar-title-text {
+  font-size: 32rpx;
+  font-weight: 500;
+  color: #fff;
 }
 
 .navbar-right {
   width: 60rpx;
+  flex-shrink: 0;
 }
 
 .status-tabs {
   display: flex;
   background-color: #fff;
-  padding: 20rpx 0;
+  padding: 16rpx 0;
   border-bottom: 1px solid #eee;
   position: fixed;
   left: 0;
   right: 0;
   z-index: 999;
-  height: 80rpx;
+  height: 100rpx;
   box-sizing: border-box;
 }
 
@@ -372,9 +443,17 @@ export default {
   margin-bottom: 16rpx;
 }
 
+.order-title {
+  flex: 1;
+  font-size: 30rpx;
+  font-weight: 500;
+  color: #333;
+}
+
 .order-number {
-  font-size: 26rpx;
-  color: #666;
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 8rpx;
 }
 
 .order-status {
@@ -407,6 +486,12 @@ export default {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16rpx;
+}
+
+.order-info-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
 }
 
 .order-time {

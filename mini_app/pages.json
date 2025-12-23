@@ -27,17 +27,13 @@
 		{
 			"path": "pages/search/search",
 			"style": {
-				"navigationBarTitleText": "搜索",
-				"navigationBarBackgroundColor": "#F8F8F8",
-				"navigationBarTextStyle": "black"
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/search/results",
 			"style": {
-				"navigationBarTitleText": "搜索结果",
-				"navigationBarBackgroundColor": "#F8F8F8",
-				"navigationBarTextStyle": "black"
+				"navigationStyle": "custom"
 			}
 		},
 		{

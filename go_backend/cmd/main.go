@@ -86,6 +86,7 @@ func main() {
 			miniAppProtectedGroup.POST("/orders", api.CreateOrderFromCart)   // 从当前采购单创建订单
 			miniAppProtectedGroup.GET("/orders", api.GetUserOrders)          // 获取用户订单列表
 			miniAppProtectedGroup.GET("/orders/:id", api.GetUserOrderDetail) // 获取订单详情
+			miniAppProtectedGroup.POST("/orders/:id/cancel", api.CancelUserOrder) // 取消订单
 
 			// 配送员位置接口（小程序端查看配送员位置）
 			miniAppProtectedGroup.GET("/delivery-employee-location/:code", api.GetEmployeeLocationByCode) // 根据员工码获取配送员位置
@@ -260,6 +261,12 @@ func main() {
 		apiGroup.GET("/rich-contents", api.GetPublishedRichContentList)       // 获取已发布的富文本内容列表
 		apiGroup.GET("/rich-contents/:id", api.GetPublishedRichContentDetail) // 获取已发布的富文本内容详情
 
+		// 移动端接口（不需要token，通过参数验证）
+		mobileGroup := apiGroup.Group("/mobile")
+		{
+			mobileGroup.GET("/pending-goods", api.GetMobilePendingGoods) // 移动端获取待备货货物列表
+		}
+
 		// 供应商相关接口
 		supplierGroup := apiGroup.Group("/supplier")
 		{
@@ -275,6 +282,15 @@ func main() {
 				supplierProtectedGroup.GET("/products/:id", api.GetSupplierProductDetail) // 供应商查看自己的商品详情
 				supplierProtectedGroup.GET("/orders", api.GetSupplierOrders)              // 供应商查看包含自己商品的订单列表
 				supplierProtectedGroup.GET("/orders/:id", api.GetSupplierOrderDetail)     // 供应商查看订单详情
+				
+				// 货物管理接口
+				supplierProtectedGroup.GET("/goods/today/stats", api.GetTodayGoodsStats)      // 获取今日货物统计
+				supplierProtectedGroup.GET("/goods/today/pending", api.GetTodayPendingGoods) // 获取今日待备货货物列表
+				supplierProtectedGroup.GET("/goods/today/picked", api.GetTodayPickedGoods)   // 获取今日已取货货物列表
+				
+				// 历史记录接口
+				supplierProtectedGroup.GET("/history", api.GetHistoryByDate)        // 获取历史记录列表（按天）
+				supplierProtectedGroup.GET("/history/:date", api.GetHistoryDetail)  // 获取某天的历史详情
 			}
 		}
 
