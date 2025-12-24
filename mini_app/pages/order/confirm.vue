@@ -186,10 +186,45 @@
         class="submit-btn" 
         :class="{ 'submit-btn-disabled': submitting }"
         :disabled="submitting"
-        @click="submitOrder"
+        @click="showConfirmModal"
       >
         {{ submitting ? '提交中...' : '提交订单' }}
       </button>
+    </view>
+
+    <!-- 提交确认弹框 -->
+    <view class="confirm-modal-overlay" v-if="showConfirm" @click="handleCancelConfirm">
+      <view class="confirm-modal-content" @click.stop>
+        <view class="confirm-modal-header">
+          <view class="confirm-icon-wrapper">
+            <uni-icons type="info" size="48" color="#20CB6B"></uni-icons>
+          </view>
+          <text class="confirm-modal-title">确认提交订单</text>
+        </view>
+        <view class="confirm-modal-body">
+          <view class="confirm-tip-section">
+            <text class="confirm-tip-text">提交后如果需要修改订单，请联系销售员修改，无法自行修改</text>
+          </view>
+          <view class="confirm-order-info">
+            <text class="confirm-order-text">是否确认提交</text>
+            <view class="confirm-goods-info">
+              <text class="confirm-goods-name">{{ firstGoodsName }}</text>
+              <text class="confirm-goods-count" v-if="totalQuantity > 1">等{{ totalQuantity }}件商品</text>
+              <text class="confirm-goods-count" v-else-if="totalQuantity === 1">1件商品</text>
+            </view>
+            <text class="confirm-order-text">以免造成多收配送费</text>
+          </view>
+        </view>
+        <view class="confirm-modal-footer">
+          <view class="confirm-modal-btn cancel-btn" @click="handleCancelConfirm">
+            <text class="confirm-modal-btn-text">取消</text>
+          </view>
+          <view class="confirm-modal-btn confirm-btn" @click="handleConfirmSubmit" :class="{ 'loading': submitting }">
+            <text class="confirm-modal-btn-text" v-if="!submitting">确认提交</text>
+            <text class="confirm-modal-btn-text" v-else>提交中...</text>
+          </view>
+        </view>
+      </view>
     </view>
   </view>
 </template>
@@ -228,7 +263,8 @@ export default {
       amountCouponSaved: 0,
       submitting: false,
       isUrgent: false,
-      urgentFee: 0
+      urgentFee: 0,
+      showConfirm: false // 显示确认弹框
     }
   },
   computed: {
@@ -276,6 +312,16 @@ export default {
       const total = Number(this.amountCouponSaved || 0)
       if (!total) return ''
       return `-¥${total.toFixed(2)}`
+    },
+    // 第一个商品名称
+    firstGoodsName() {
+      if (!this.items.length) return ''
+      return this.items[0].product_name || '商品'
+    },
+    // 商品总数量
+    totalQuantity() {
+      if (!this.items.length) return 0
+      return this.items.reduce((sum, item) => sum + (item.quantity || 0), 0)
     }
   },
   onLoad(options) {
@@ -406,7 +452,8 @@ export default {
         console.log('加急费用:', this.urgentFee)
       }
     },
-    async submitOrder() {
+    // 显示确认弹框
+    showConfirmModal() {
       if (!this.defaultAddress) {
         uni.showToast({ title: '请先选择收货地址', icon: 'none' })
         return
@@ -415,6 +462,21 @@ export default {
         uni.showToast({ title: '采购单为空', icon: 'none' })
         return
       }
+      if (this.submitting) return
+      this.showConfirm = true
+    },
+    // 取消确认
+    handleCancelConfirm() {
+      if (this.submitting) return
+      this.showConfirm = false
+    },
+    // 确认提交
+    async handleConfirmSubmit() {
+      if (this.submitting) return
+      this.showConfirm = false
+      await this.submitOrder()
+    },
+    async submitOrder() {
       if (this.submitting) return
       this.submitting = true
       try {
@@ -975,6 +1037,202 @@ export default {
   background-color: #CCE8D9;
   box-shadow: none;
   opacity: 0.7;
+}
+
+/* 提交确认弹框样式 */
+.confirm-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.confirm-modal-content {
+  width: 640rpx;
+  background-color: #fff;
+  border-radius: 24rpx;
+  overflow: hidden;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.12);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(50rpx);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.confirm-modal-header {
+  padding: 50rpx 30rpx 30rpx;
+  text-align: center;
+  background: linear-gradient(180deg, #E8F8F0 0%, #fff 100%);
+}
+
+.confirm-icon-wrapper {
+  width: 120rpx;
+  height: 120rpx;
+  margin: 0 auto 24rpx;
+  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+}
+
+.confirm-modal-title {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #333;
+  display: block;
+}
+
+.confirm-modal-body {
+  padding: 40rpx 50rpx;
+  text-align: center;
+}
+
+.confirm-tip-section {
+  padding: 24rpx 20rpx;
+  background-color: #FFF9E6;
+  border-radius: 12rpx;
+  border-left: 4rpx solid #FFD700;
+  margin-bottom: 32rpx;
+}
+
+.confirm-tip-text {
+  font-size: 28rpx;
+  color: #666;
+  line-height: 1.8;
+  display: block;
+  text-align: left;
+}
+
+.confirm-order-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  align-items: center;
+}
+
+.confirm-order-text {
+  font-size: 30rpx;
+  color: #333;
+  line-height: 1.6;
+  display: block;
+}
+
+.confirm-goods-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  padding: 20rpx 32rpx;
+  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
+  border: 2rpx solid #20CB6B;
+  border-radius: 16rpx;
+  margin: 12rpx 0;
+}
+
+.confirm-goods-name {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #20CB6B;
+  max-width: 400rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirm-goods-count {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #20CB6B;
+}
+
+.confirm-modal-footer {
+  display: flex;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.confirm-modal-btn {
+  flex: 1;
+  height: 110rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.2s;
+}
+
+.confirm-modal-btn:active {
+  opacity: 0.7;
+}
+
+.confirm-modal-btn:first-child {
+  border-right: 1rpx solid #f0f0f0;
+}
+
+.confirm-modal-btn.cancel-btn {
+  background-color: #fff;
+}
+
+.confirm-modal-btn.confirm-btn {
+  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.confirm-modal-btn.confirm-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.confirm-modal-btn.confirm-btn:active::before {
+  left: 100%;
+}
+
+.confirm-modal-btn.loading {
+  opacity: 0.8;
+}
+
+.confirm-modal-btn-text {
+  font-size: 32rpx;
+  color: #333;
+  font-weight: 500;
+}
+
+.confirm-modal-btn.confirm-btn .confirm-modal-btn-text {
+  color: #fff;
+  font-weight: 600;
 }
 </style>
 
