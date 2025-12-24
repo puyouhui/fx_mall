@@ -429,30 +429,23 @@ func GetDeliveryOrderDetail(c *gin.Context) {
 	// 获取销售员信息
 	salesEmployeeData := map[string]interface{}{}
 	if user != nil && user.SalesCode != "" {
-		fmt.Printf("[GetDeliveryOrderDetail] 订单 %d 的用户销售员代码: %s (类型: %T, 长度: %d)\n", id, user.SalesCode, user.SalesCode, len(user.SalesCode))
-
 		// 先检查数据库中是否存在该员工代码（精确匹配）
 		var count int
 		checkErr := database.DB.QueryRow(`
 			SELECT COUNT(*) FROM employees WHERE employee_code = ?
 		`, user.SalesCode).Scan(&count)
 		if checkErr == nil {
-			fmt.Printf("[GetDeliveryOrderDetail] 数据库中 employee_code='%s' 的记录数: %d\n", user.SalesCode, count)
-
 			// 如果找不到，尝试查询所有员工代码，看看格式是否匹配
 			if count == 0 {
 				// 尝试去除前导零后查询
 				salesCodeTrimmed := strings.TrimLeft(user.SalesCode, "0")
 				if salesCodeTrimmed != user.SalesCode {
-					fmt.Printf("[GetDeliveryOrderDetail] 尝试去除前导零后查询: '%s'\n", salesCodeTrimmed)
 					var countTrimmed int
 					if database.DB.QueryRow(`SELECT COUNT(*) FROM employees WHERE employee_code = ?`, salesCodeTrimmed).Scan(&countTrimmed) == nil {
-						fmt.Printf("[GetDeliveryOrderDetail] 去除前导零后 employee_code='%s' 的记录数: %d\n", salesCodeTrimmed, countTrimmed)
 						if countTrimmed > 0 {
 							// 使用去除前导零后的代码查询
 							employee, err := model.GetEmployeeByEmployeeCode(salesCodeTrimmed)
 							if err == nil && employee != nil {
-								fmt.Printf("[GetDeliveryOrderDetail] 成功获取销售员信息（去除前导零后）: ID=%d, Code=%s, Name=%s, Phone=%s\n", employee.ID, employee.EmployeeCode, employee.Name, employee.Phone)
 								salesEmployeeData = map[string]interface{}{
 									"id":            employee.ID,
 									"employee_code": employee.EmployeeCode,
@@ -463,20 +456,6 @@ func GetDeliveryOrderDetail(c *gin.Context) {
 						}
 					}
 				}
-
-				// 如果还是找不到，列出一些示例员工代码
-				rows, _ := database.DB.Query(`SELECT employee_code FROM employees WHERE is_sales = 1 LIMIT 10`)
-				if rows != nil {
-					defer rows.Close()
-					fmt.Printf("[GetDeliveryOrderDetail] 数据库中的销售员代码示例: ")
-					for rows.Next() {
-						var code string
-						if rows.Scan(&code) == nil {
-							fmt.Printf("'%s' ", code)
-						}
-					}
-					fmt.Printf("\n")
-				}
 			}
 		}
 
@@ -484,29 +463,15 @@ func GetDeliveryOrderDetail(c *gin.Context) {
 		if len(salesEmployeeData) == 0 {
 			employee, err := model.GetEmployeeByEmployeeCode(user.SalesCode)
 			if err == nil && employee != nil {
-				fmt.Printf("[GetDeliveryOrderDetail] 成功获取销售员信息: ID=%d, Code=%s, Name=%s, Phone=%s\n", employee.ID, employee.EmployeeCode, employee.Name, employee.Phone)
 				salesEmployeeData = map[string]interface{}{
 					"id":            employee.ID,
 					"employee_code": employee.EmployeeCode,
 					"name":          employee.Name,
 					"phone":         employee.Phone,
 				}
-			} else {
-				if err != nil {
-					fmt.Printf("[GetDeliveryOrderDetail] 获取销售员信息失败 (employee_code: %s): %v\n", user.SalesCode, err)
-				} else {
-					fmt.Printf("[GetDeliveryOrderDetail] 销售员不存在 (employee_code: %s)\n", user.SalesCode)
-				}
 			}
 		}
-	} else {
-		if user == nil {
-			fmt.Printf("[GetDeliveryOrderDetail] 订单 %d 的用户信息为空\n", id)
-		} else {
-			fmt.Printf("[GetDeliveryOrderDetail] 订单 %d 的用户销售员代码为空\n", id)
-		}
 	}
-	fmt.Printf("[GetDeliveryOrderDetail] 返回的销售员数据: %+v\n", salesEmployeeData)
 
 	// 从订单表中读取已存储的配送费计算结果（配送员视图）
 	var deliveryFeeCalcJSON sql.NullString

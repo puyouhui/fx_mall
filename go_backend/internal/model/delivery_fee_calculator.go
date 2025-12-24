@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"strconv"
 
@@ -527,13 +528,13 @@ func UpdateOrderDeliveryInfo(orderID int) error {
 		// 注意：这里需要重新查询，因为可能已经有新订单了
 		if err := updateOrderIsolatedStatus(affectedOrderID, isolatedDistance); err != nil {
 			// 记录错误但不中断流程
-			fmt.Printf("[UpdateOrderDeliveryInfo] 更新订单 %d 的孤立状态失败: %v\n", affectedOrderID, err)
+			log.Printf("[UpdateOrderDeliveryInfo] 更新订单 %d 的孤立状态失败: %v", affectedOrderID, err)
 		} else {
 			// 孤立状态更新成功后，重新计算并存储配送费
 			// 因为孤立状态改变会影响配送费金额（孤立补贴）
 			if err := CalculateAndStoreOrderProfit(affectedOrderID); err != nil {
 				// 记录错误但不中断流程
-				fmt.Printf("[UpdateOrderDeliveryInfo] 重新计算订单 %d 的配送费失败: %v\n", affectedOrderID, err)
+				log.Printf("[UpdateOrderDeliveryInfo] 重新计算订单 %d 的配送费失败: %v", affectedOrderID, err)
 			}
 		}
 	}

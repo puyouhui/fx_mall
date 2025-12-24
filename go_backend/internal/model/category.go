@@ -2,7 +2,6 @@ package model
 
 import (
 	"database/sql"
-	"fmt"
 	"time"
 
 	"go_backend/internal/database"
@@ -22,15 +21,12 @@ type Category struct {
 
 // GetAllCategories 获取所有分类（包含树形结构）
 func GetAllCategories() ([]map[string]interface{}, error) {
-	fmt.Println("开始执行GetAllCategories函数")
 	var categories []Category
 
 	// 查询所有分类，不按排序字段排序
 	query := "SELECT id, name, parent_id, sort, status, created_at, updated_at, icon FROM categories ORDER BY parent_id ASC"
-	fmt.Println("执行SQL查询: ", query)
 	rows, err := database.DB.Query(query)
 	if err != nil {
-		fmt.Println("SQL查询失败: ", err)
 		return nil, err
 	}
 	defer rows.Close()

@@ -140,7 +140,6 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	deliveryFee := summary.DeliveryFee
 	if summary.IsFreeShipping {
 		deliveryFee = 0
-		log.Printf("订单创建: 满足免费配送条件，配送费设置为0 (商品金额: %.2f, 免费配送阈值: %.2f)\n", goodsAmount, summary.FreeShippingThreshold)
 	}
 	if pointsDiscount < 0 {
 		pointsDiscount = 0
@@ -159,9 +158,6 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	if totalAmount < 0 {
 		totalAmount = 0
 	}
-
-	log.Printf("订单创建: 商品金额=%.2f, 配送费=%.2f, 积分抵扣=%.2f, 优惠券抵扣=%.2f, 加急费=%.2f, 实付=%.2f\n",
-		goodsAmount, deliveryFee, pointsDiscount, couponDiscount, urgentFee, totalAmount)
 
 	// 生成唯一的订单编号
 	orderNumber, err := generateUniqueOrderNumber(userID, 5)

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -1425,7 +1426,7 @@ func GetSupplierDashboard(c *gin.Context) {
 	dailyRows, err := database.DB.Query(dailySalesQuery, supplierID)
 	if err != nil {
 		// 如果查询出错，记录错误但不影响其他数据返回
-		fmt.Printf("查询每日销售数据失败: %v, SQL: %s, supplierID: %d\n", err, dailySalesQuery, supplierID)
+		log.Printf("查询每日销售数据失败: %v, supplierID: %d", err, supplierID)
 	} else {
 		defer dailyRows.Close()
 		rowCount := 0
