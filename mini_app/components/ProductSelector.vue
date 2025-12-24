@@ -41,7 +41,7 @@
               </view>
               <view class="ps-spec-price-container" :class="{ 'wholesale-layout': isWholesaleUser }">
                 <text v-if="isWholesaleUser" class="ps-spec-price">
-                  批发价：¥{{ formatSpecPrice(spec, 'wholesale') }}
+                  ¥{{ formatSpecPrice(spec, 'wholesale') }}
                 </text>
                 <text v-else class="ps-spec-price">
                   ¥{{ formatSpecPrice(spec, 'retail') }}
