@@ -16,16 +16,16 @@
       </view>
     </view>
 
+    <!-- 顶部渐变背景或地图区域 -->
     <view 
-      class="detail-content" 
-      v-if="orderDetail"
+      class="top-gradient-section"
       :style="{ 
-        paddingTop: `${statusBarHeight + navBarHeight}px`,
-        paddingBottom: canCancelOrder ? '140rpx' : '40rpx'
+        paddingTop: `${statusBarHeight + navBarHeight}px`
       }"
+      v-if="orderDetail"
     >
       <!-- 地图（仅在配送中状态显示，配送员取货后才显示） -->
-      <view class="section map-section" v-if="showMap">
+      <view class="map-section" v-if="showMap">
         <map
           :latitude="mapCenter.latitude"
           :longitude="mapCenter.longitude"
@@ -36,38 +36,46 @@
           :enable-zoom="true"
           :enable-scroll="true"
         ></map>
+        <view class="map-refresh-btn" @click="refreshDeliveryLocation">
+          <uni-icons type="reload" size="20" color="#20CB6B"></uni-icons>
+        </view>
       </view>
-
-      <!-- 配送员信息（仅在待取货或配送中状态显示） -->
-      <view class="section delivery-section" v-if="orderDetail.delivery_employee && (orderDetail.delivery_employee.id || orderDetail.delivery_employee.employee_code)">
-        <view class="section-title">配送员信息</view>
-        <view class="delivery-content">
-          <view class="delivery-info">
-            <text class="delivery-name">{{ orderDetail.delivery_employee.name || orderDetail.delivery_employee.employee_code }}</text>
-            <text class="delivery-code" v-if="orderDetail.delivery_employee.employee_code">
-              工号：{{ orderDetail.delivery_employee.employee_code }}
-            </text>
-          </view>
-          <view 
-            class="contact-btn" 
-            v-if="orderDetail.delivery_employee.phone"
-            @click="contactDelivery"
-          >
-            <uni-icons type="phone" size="18" color="#20CB6B"></uni-icons>
-            <text>联系配送员</text>
+      
+      <!-- 渐变背景（不显示地图时） -->
+      <view class="gradient-background" v-else>
+        <view class="status-content">
+          <view class="status-left">
+            <view class="status-icon-circle">
+              <uni-icons :type="getStatusIcon(orderDetail.order?.status)" size="30" color="#fff"></uni-icons>
+            </view>
+            <view class="status-text-group">
+              <text class="status-main-text">{{ formatStatus(orderDetail.order?.status) }}</text>
+              <view class="status-tag" v-if="orderDetail.order?.order_type">
+                <text>{{ orderDetail.order.order_type }}</text>
+              </view>
+            </view>
           </view>
         </view>
       </view>
+    </view>
 
+    <view 
+      class="detail-content" 
+      v-if="orderDetail"
+      :style="{ 
+        paddingTop: showMap ? '0' : '0',
+        paddingBottom: showActionFooter ? '180rpx' : '80rpx'
+      }"
+    >
       <!-- 收货地址 -->
       <view class="section address-section" v-if="orderDetail.address">
-        <view class="section-title">收货地址</view>
         <view class="address-content">
           <text class="address-name">{{ orderDetail.address.name }}</text>
           <text class="address-contact">{{ orderDetail.address.contact }} {{ orderDetail.address.phone }}</text>
           <text class="address-detail">{{ orderDetail.address.address }}</text>
         </view>
       </view>
+
 
       <!-- 商品列表 -->
       <view class="section goods-section">
@@ -81,10 +89,15 @@
             <image :src="item.image || defaultImage" class="goods-image" mode="aspectFill" />
             <view class="goods-info">
               <text class="goods-name">{{ item.product_name }}</text>
-              <text class="goods-spec" v-if="item.spec_name">{{ item.spec_name }}</text>
+              <view class="goods-spec-group" v-if="item.spec_name">
+                <text class="goods-spec">{{ item.spec_name }}</text>
+                <text class="goods-qty">× {{ item.quantity }}</text>
+              </view>
+              <view class="goods-spec-group" v-else>
+                <text class="goods-qty">× {{ item.quantity }}</text>
+              </view>
               <view class="goods-bottom">
                 <text class="goods-price">¥{{ formatMoney(item.unit_price) }}</text>
-                <text class="goods-qty">× {{ item.quantity }}</text>
               </view>
             </view>
             <view class="goods-subtotal">
@@ -129,7 +142,7 @@
         <view class="info-row">
           <text class="info-label">订单状态</text>
           <text class="info-value" :class="getStatusClass(orderDetail.order?.status)">
-            {{ formatStatus(orderDetail.order?.status) }}
+            {{ formatStatusShort(orderDetail.order?.status) }}
           </text>
         </view>
         <view class="info-row">
@@ -142,38 +155,50 @@
         </view>
       </view>
 
-      <!-- 销售员信息 -->
-      <view class="section sales-section" v-if="orderDetail.sales_employee">
-        <view class="section-title">销售员</view>
-        <view class="sales-content">
-          <view class="sales-info">
-            <text class="sales-name">{{ orderDetail.sales_employee.name || orderDetail.sales_employee.employee_code }}</text>
-            <text class="sales-code" v-if="orderDetail.sales_employee.employee_code">
-              工号：{{ orderDetail.sales_employee.employee_code }}
-            </text>
-          </view>
-          <view 
-            class="contact-btn" 
-            v-if="orderDetail.sales_employee.phone"
-            @click="contactSales"
-          >
-            <uni-icons type="phone" size="18" color="#20CB6B"></uni-icons>
-            <text>联系销售员</text>
-          </view>
+      <!-- 客服提示 -->
+      <view class="customer-service-tip" @click="goToCustomerService">
+        <view class="service-avatar">
+          <uni-icons type="chatbubble" size="20" color="#20CB6B"></uni-icons>
+        </view>
+        <text class="service-text">有问题不能解决？点我试试~</text>
+      </view>
+
+    </view>
+
+    <!-- 底部操作按钮 -->
+    <view class="action-footer" v-if="orderDetail && showActionFooter">
+      <view class="action-buttons">
+        <view 
+          class="action-btn" 
+          v-if="orderDetail.sales_employee && orderDetail.sales_employee.phone"
+          @click="contactSales"
+        >
+          <uni-icons type="phone" size="18" color="#fff"></uni-icons>
+          <text>联系销售员</text>
+        </view>
+        <view 
+          class="action-btn cancel-btn" 
+          v-if="canCancelOrder"
+          @click="handleCancelOrder"
+        >
+        <uni-icons type="closeempty" size="18" color="#fff"></uni-icons>
+          <text>取消订单</text>
+        </view>
+        <view 
+          class="action-btn" 
+          v-if="showContactDeliveryBtn"
+          @click="contactDelivery"
+        >
+          <uni-icons type="phone" size="18" color="#fff"></uni-icons>
+          <text>联系配送员</text>
         </view>
       </view>
     </view>
 
-    <!-- 取消订单按钮（仅在配送员接单之前显示） -->
-    <view class="cancel-order-footer" v-if="canCancelOrder">
-      <view class="cancel-btn" @click="handleCancelOrder">
-        <text>取消订单</text>
-      </view>
-    </view>
-
+    <!-- 加载中提示（仅在订单详情未加载时显示） -->
     <view 
       class="loading" 
-      v-else
+      v-if="!orderDetail"
       :style="{ 
         height: `calc(100vh - ${statusBarHeight + navBarHeight}px)`,
         marginTop: `${statusBarHeight + navBarHeight}px`
@@ -201,7 +226,7 @@ export default {
         longitude: 116.39750
       },
       mapMarkers: [],
-      mapScale: 14 // 地图缩放级别
+      mapScale: 6 // 地图缩放级别
     }
   },
   computed: {
@@ -214,6 +239,31 @@ export default {
     canCancelOrder() {
       const status = this.orderDetail?.order?.status
       return status === 'pending_delivery' || status === 'pending' || status === 'pending_pickup'
+    },
+    // 是否显示配送员信息（接单后到配送完时显示）
+    showDeliveryEmployee() {
+      const status = this.orderDetail?.order?.status
+      // 配送员接单后的状态：pending_pickup, delivering, delivered, shipped, paid, completed
+      return status === 'pending_pickup' || 
+             status === 'delivering' || 
+             status === 'delivered' || 
+             status === 'shipped' || 
+             status === 'paid' || 
+             status === 'completed'
+    },
+    // 是否显示联系配送员按钮（仅配送中状态）
+    showContactDeliveryBtn() {
+      const status = this.orderDetail?.order?.status
+      // 只有 delivering 状态显示联系配送员按钮
+      return status === 'delivering' && 
+             this.orderDetail?.delivery_employee?.phone
+    },
+    // 是否显示底部操作按钮
+    showActionFooter() {
+      // 如果有销售员电话，或者可以取消订单，或者有配送员电话（接单后到配送中），则显示底部按钮
+      return (this.orderDetail?.sales_employee?.phone) || 
+             this.canCancelOrder || 
+             this.showContactDeliveryBtn
     }
   },
   onLoad(options) {
@@ -297,15 +347,15 @@ export default {
           longitude: address.longitude
         }
         
-        // 添加收货地址标记
+        // 添加收货地址标记（绿色原点）
         this.mapMarkers = [{
           id: 1,
           latitude: address.latitude,
           longitude: address.longitude,
           title: '收货地址',
-          iconPath: '/static/marker-destination.png', // 目的地标记图标
-          width: 30,
-          height: 30,
+          iconPath: '/static/icon/marker-customer-green.png', // 客户绿色原点图标
+          width: 24,
+          height: 24,
           callout: {
             content: address.name || '收货地址',
             color: '#333',
@@ -330,28 +380,37 @@ export default {
         if (res && res.code === 200 && res.data) {
           const location = res.data
           if (location.latitude && location.longitude) {
-            // 添加配送员位置标记
+            // 添加配送员位置标记（绿色车辆）
             const deliveryMarker = {
               id: 2,
               latitude: location.latitude,
               longitude: location.longitude,
               title: '配送员位置',
-              iconPath: '/static/marker-delivery.png', // 配送员标记图标
+              iconPath: '/static/icon/marker-delivery-car-green.png', // 配送员绿色车辆图标
               width: 30,
               height: 30,
               callout: {
                 content: `配送员${location.is_realtime ? '（实时）' : '（历史位置）'}`,
-                color: '#333',
+                color: '#fff',
                 fontSize: 12,
                 borderRadius: 4,
-                bgColor: location.is_realtime ? '#20CB6B' : '#FFA500',
+                bgColor: location.is_realtime ? '#20cb6b' : '#20cb6b',
                 padding: 8,
                 display: 'ALWAYS'
               }
             }
             
-            // 添加到地图标记数组
-            this.mapMarkers.push(deliveryMarker)
+            // 更新或添加配送员位置标记
+            const existingIndex = this.mapMarkers.findIndex(m => m.id === 2)
+            if (existingIndex >= 0) {
+              // 如果已存在，更新位置
+              this.mapMarkers[existingIndex] = deliveryMarker
+              // 触发视图更新
+              this.$forceUpdate()
+            } else {
+              // 如果不存在，添加新标记
+              this.mapMarkers.push(deliveryMarker)
+            }
             
             // 调整地图视野，同时显示收货地址和配送员位置
             if (this.orderDetail?.address?.latitude && this.orderDetail?.address?.longitude) {
@@ -367,11 +426,11 @@ export default {
               // 计算距离，调整缩放级别
               const distance = this.calculateDistance(lat1, lng1, lat2, lng2)
               let scale = 14
-              if (distance > 10000) scale = 11
-              else if (distance > 5000) scale = 12
-              else if (distance > 2000) scale = 13
-              else if (distance > 1000) scale = 14
-              else scale = 15
+              if (distance > 10000) scale = 10
+              else if (distance > 5000) scale = 11
+              else if (distance > 2000) scale = 12
+              else if (distance > 1000) scale = 13
+              else scale = 14
               
               this.mapCenter = {
                 latitude: centerLat,
@@ -444,9 +503,23 @@ export default {
     },
     formatStatus(status) {
       const statusMap = {
-        'pending': '订单正在中心仓库分拣，请耐心等待',
-        'pending_delivery': '订单正在中心仓库分拣，请耐心等待',
-        'pending_pickup': '中心分拣完成，待配送',
+        'pending': '订单正在分拣中心分拣中...',
+        'pending_delivery': '订单正在分拣中心分拣中...',
+        'pending_pickup': '订单分拣完成，待配送',
+        'delivering': '正在配送中...',
+        'delivered': '订单已送达',
+        'shipped': '订单已送达',
+        'paid': '订单已收款',
+        'completed': '订单已收款',
+        'cancelled': '订单已取消'
+      }
+      return statusMap[status] || status
+    },
+    formatStatusShort(status) {
+      const statusMap = {
+        'pending': '分拣中',
+        'pending_delivery': '分拣中',
+        'pending_pickup': '待配送',
         'delivering': '配送中',
         'delivered': '已送达',
         'shipped': '已送达',
@@ -484,14 +557,14 @@ export default {
     },
     getStatusClass(status) {
       const classMap = {
-        'pending': 'status-pending',
-        'pending_delivery': 'status-pending',
-        'pending_pickup': 'status-pending',
-        'delivering': 'status-delivering',
-        'delivered': 'status-delivered',
-        'shipped': 'status-delivered',
-        'paid': 'status-paid',
-        'completed': 'status-paid',
+        'pending': 'status-green',
+        'pending_delivery': 'status-green',
+        'pending_pickup': 'status-yellow',
+        'delivering': 'status-green',
+        'delivered': 'status-green',
+        'shipped': 'status-green',
+        'paid': 'status-green',
+        'completed': 'status-green',
         'cancelled': 'status-cancelled'
       }
       return classMap[status] || ''
@@ -516,11 +589,11 @@ export default {
       const salesPhone = this.orderDetail?.sales_employee?.phone || ''
       
       // 构建提示内容
-      let content = `确定要取消订单吗？\n\n`
+      let content = `确定要取消订单吗？\n`
       if (salesPhone) {
-        content += `如需修改订单，可联系销售员：${salesPhone}\n\n`
+        content += `如需修改订单，可联系销售员：${salesPhone}\n`
       } else if (this.orderDetail?.sales_employee) {
-        content += `如需修改订单，可联系销售员修改\n\n`
+        content += `如需修改订单，可联系销售员修改\n`
       }
       content += `取消后订单将无法恢复，是否仍要取消？`
       
@@ -577,6 +650,60 @@ export default {
       } finally {
         uni.hideLoading()
       }
+    },
+    // 修改订单
+    handleModifyOrder() {
+      const salesPhone = this.orderDetail?.sales_employee?.phone || ''
+      if (salesPhone) {
+        uni.makePhoneCall({
+          phoneNumber: salesPhone,
+          fail: (err) => {
+            console.error('拨打电话失败:', err)
+            uni.showToast({
+              title: '拨打电话失败',
+              icon: 'none'
+            })
+          }
+        })
+      } else {
+        uni.showToast({
+          title: '暂无销售员联系方式',
+          icon: 'none'
+        })
+      }
+    },
+    // 查看更多
+    handleViewMore() {
+      // 滚动到商品列表
+      uni.pageScrollTo({
+        scrollTop: 0,
+        duration: 300
+      })
+    },
+    // 跳转到客服中心
+    goToCustomerService() {
+      uni.navigateTo({
+        url: '/pages/customer-service/customer-service'
+      })
+    },
+    // 刷新配送员位置
+    async refreshDeliveryLocation() {
+      if (!this.orderDetail?.delivery_employee?.employee_code) {
+        uni.showToast({
+          title: '配送员信息不可用',
+          icon: 'none'
+        })
+        return
+      }
+      
+      uni.showLoading({ title: '刷新中...' })
+      await this.loadDeliveryEmployeeLocation()
+      uni.hideLoading()
+      uni.showToast({
+        title: '位置已更新',
+        icon: 'success',
+        duration: 1500
+      })
     }
   }
 }
@@ -644,8 +771,13 @@ export default {
 .detail-content {
   width: 100%;
   box-sizing: border-box;
-  padding: 20rpx;
+  padding: 0 30rpx;
   min-height: calc(100vh - var(--nav-height, 0px));
+  background: #fff;
+  margin-top: -148rpx;
+  position: relative;
+  z-index: 10;
+  border-radius: 40rpx 40rpx 0 0;
 }
 
 .loading {
@@ -709,88 +841,87 @@ export default {
 }
 
 .section {
-  background-color: #fff;
-  padding: 32rpx 30rpx;
-  margin-bottom: 24rpx;
+  background-color: transparent;
+  padding: 40rpx 0;
+  margin-bottom: 0;
   box-sizing: border-box;
-  border-radius: 8rpx;
-  border: 1rpx solid #e8e8e8;
+}
+
+.section:not(:last-child) {
+  border-bottom: 1rpx solid #f5f5f5;
 }
 
 .section:last-child {
-  margin-bottom: 40rpx;
+  margin-bottom: 0;
+  padding-bottom: 40rpx;
 }
 
 .section-title {
-  font-size: 34rpx;
+  font-size: 30rpx;
   font-weight: 600;
   color: #333;
-  margin-bottom: 24rpx;
+  margin-bottom: 32rpx;
+  padding: 0;
+  letter-spacing: 0.5rpx;
 }
 
 .address-content {
   display: flex;
   flex-direction: column;
   gap: 16rpx;
-  padding: 20rpx;
-  background: #f9f9f9;
-  border-radius: 8rpx;
-  border: 1rpx solid #e8e8e8;
+  padding: 0;
 }
 
-.address-section{
-  margin-top: 20rpx !important;
+.address-section {
+  padding-top: 32rpx;
 }
 
 .address-name {
-  font-size: 32rpx;
-  font-weight: 700;
+  font-size: 30rpx;
+  font-weight: 600;
   color: #20253A;
   display: flex;
   align-items: center;
-  gap: 12rpx;
-}
-
-.address-name::before {
-  content: '📍';
-  font-size: 28rpx;
+  /* gap: 12rpx; */
+  /* margin-bottom: 12rpx; */
 }
 
 .address-contact {
   font-size: 28rpx;
-  color: #40475C;
-  font-weight: 500;
+  color: #666;
+  font-weight: 400;
 }
 
 .address-detail {
-  font-size: 28rpx;
-  color: #666;
-  line-height: 1.8;
+  font-size: 26rpx;
+  color: #999;
+  line-height: 1.6;
   word-break: break-all;
 }
 
 .goods-list {
   display: flex;
   flex-direction: column;
-  gap: 24rpx;
+  gap: 0;
 }
 
 .goods-item {
   display: flex;
   gap: 24rpx;
-  padding: 20rpx;
-  background: #f9f9f9;
-  border-radius: 8rpx;
-  border: 1rpx solid #e8e8e8;
+  padding: 24rpx 0;
+  background: transparent;
+}
+
+.goods-item:not(:last-child) {
+  border-bottom: 1rpx solid #f5f5f5;
 }
 
 .goods-image {
   width: 140rpx;
   height: 140rpx;
-  border-radius: 16rpx;
+  border-radius: 12rpx;
   background-color: #f5f5f5;
   flex-shrink: 0;
-  border: 1rpx solid #e8e8e8;
 }
 
 .goods-info {
@@ -802,10 +933,10 @@ export default {
 }
 
 .goods-name {
-  font-size: 30rpx;
+  font-size: 28rpx;
   color: #20253A;
   margin-bottom: 12rpx;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -814,15 +945,21 @@ export default {
   -webkit-box-orient: vertical;
 }
 
-.goods-spec {
-  font-size: 26rpx;
-  color: #8C92A4;
+.goods-spec-group {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
   margin-bottom: 16rpx;
-  padding: 6rpx 12rpx;
+  flex-wrap: wrap;
+}
+
+.goods-spec {
+  font-size: 24rpx;
+  color: #999;
+  padding: 4rpx 12rpx;
   background-color: #f5f5f5;
-  border-radius: 8rpx;
+  border-radius: 6rpx;
   display: inline-block;
-  width: fit-content;
 }
 
 .goods-bottom {
@@ -833,26 +970,25 @@ export default {
 }
 
 .goods-price {
-  font-size: 28rpx;
+  font-size: 26rpx;
   color: #ff4d4f;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .goods-qty {
-  font-size: 26rpx;
-  color: #8C92A4;
-  background-color: #f5f5f5;
-  padding: 4rpx 12rpx;
-  border-radius: 8rpx;
+  font-size: 24rpx;
+  color: #999;
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
 }
 
 .goods-subtotal {
   display: flex;
   align-items: center;
-  font-size: 32rpx;
-  font-weight: 700;
+  font-size: 30rpx;
+  font-weight: 600;
   color: #20253A;
-  min-width: 120rpx;
+  min-width: 100rpx;
   justify-content: flex-end;
 }
 
@@ -860,21 +996,22 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20rpx 0;
-  font-size: 30rpx;
-  color: #40475C;
+  padding: 16rpx 0;
+  font-size: 28rpx;
+  color: #666;
   position: relative;
 }
 
 .amount-row:not(:last-child) {
-  border-bottom: 1rpx solid #e8e8e8;
+  border-bottom: 1rpx solid #f5f5f5;
 }
 
 .amount-row.total {
-  border-top: 2rpx solid #e8e8e8;
-  margin-top: 20rpx;
-  padding-top: 28rpx;
-  font-size: 34rpx;
+  border-top: 1rpx solid #f5f5f5;
+  margin-top: 16rpx;
+  padding-top: 24rpx;
+  padding-bottom: 8rpx;
+  font-size: 30rpx;
   font-weight: 600;
   color: #333;
 }
@@ -890,7 +1027,7 @@ export default {
 
 .total-amount {
   color: #ff4d4f;
-  font-size: 40rpx;
+  font-size: 36rpx;
   font-weight: 700;
 }
 
@@ -898,43 +1035,37 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 20rpx 0;
-  font-size: 30rpx;
+  padding: 16rpx 0;
+  font-size: 28rpx;
   position: relative;
 }
 
 .info-row:not(:last-child) {
-  border-bottom: 1rpx solid #e8e8e8;
+  border-bottom: 1rpx solid #f5f5f5;
 }
 
 .info-label {
-  color: #8C92A4;
-  min-width: 180rpx;
-  font-weight: 500;
+  color: #999;
+  min-width: 160rpx;
+  font-weight: 400;
+  font-size: 28rpx;
 }
 
 .info-value {
   flex: 1;
   text-align: right;
-  color: #20253A;
-  font-weight: 500;
+  color: #333;
+  font-weight: 400;
   word-break: break-all;
+  font-size: 28rpx;
 }
 
-.status-pending {
-  color: #ff4d4f;
+.status-yellow {
+  color: #faad14;
 }
 
-.status-delivering {
-  color: #1890ff;
-}
-
-.status-delivered {
-  color: #fa8c16;
-}
-
-.status-paid {
-  color: #52c41a;
+.status-green {
+  color: #20CB6B;
 }
 
 .status-cancelled {
@@ -948,7 +1079,6 @@ export default {
   padding: 20rpx;
   background: #f9f9f9;
   border-radius: 8rpx;
-  border: 1rpx solid #e8e8e8;
 }
 
 .sales-info {
@@ -998,15 +1128,154 @@ export default {
   background-color: #1AB85A;
 }
 
-.map-section {
+.contact-buttons-section {
+  padding: 32rpx 0;
+}
+
+.contact-buttons {
+  display: flex;
+  gap: 20rpx;
+  justify-content: space-between;
   padding: 0;
+}
+
+.contact-btn-small {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 16rpx 32rpx;
+  background: #20CB6B;
+  border: 1rpx solid #20CB6B;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  color: #fff;
+  font-weight: 400;
+  flex: 1;
+  transition: all 0.2s;
+}
+
+.contact-btn-small:active {
+  background-color: #1AB85A;
+  border-color: #1AB85A;
+}
+
+.top-gradient-section {
+  width: 100%;
+  position: relative;
+}
+
+.map-section {
+  width: 100%;
+  height: 600rpx;
   overflow: hidden;
+  position: relative;
 }
 
 .map-container {
   width: 100%;
-  height: 400rpx;
+  height: 100%;
   margin: 0;
+}
+
+.map-refresh-btn {
+  position: absolute;
+  right: 20rpx;
+  bottom: 166rpx;
+  width: 72rpx;
+  height: 72rpx;
+  background: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.15);
+  z-index: 100;
+}
+
+.map-refresh-btn:active {
+  background: #f5f5f5;
+}
+
+.gradient-background {
+  width: 100%;
+  background: linear-gradient(180deg, #20CB6B 0%, #1AB85A 30%, rgba(26, 184, 90, 0.6) 70%, rgba(245, 245, 245, 1) 100%);
+  padding: 40rpx 30rpx 120rpx;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+  border-radius: 0 0 40rpx 40rpx;
+}
+
+.status-content {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 60rpx;
+}
+
+.status-left {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  flex: 1;
+}
+
+.status-icon-circle {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.status-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  flex: 1;
+}
+
+.status-main-text {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.4;
+}
+
+.status-tag {
+  display: inline-block;
+  padding: 8rpx 20rpx;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 20rpx;
+  font-size: 24rpx;
+  color: #fff;
+  width: fit-content;
+}
+
+.status-actions {
+  display: flex;
+  gap: 20rpx;
+  justify-content: center;
+  margin-top: 40rpx;
+}
+
+.action-btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  color: #20CB6B;
+  font-weight: 500;
+}
+
+.action-btn:active {
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .delivery-content {
@@ -1016,7 +1285,6 @@ export default {
   padding: 20rpx;
   background: #f9f9f9;
   border-radius: 8rpx;
-  border: 1rpx solid #e8e8e8;
 }
 
 .delivery-info {
@@ -1050,34 +1318,93 @@ export default {
   width: fit-content;
 }
 
-.cancel-order-footer {
+.action-footer {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   background-color: #fff;
-  padding: 20rpx 20rpx 0 20rpx;
+  padding: 20rpx 30rpx;
   padding-bottom: calc(env(safe-area-inset-bottom));
   box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.08);
   z-index: 999;
   box-sizing: border-box;
 }
 
-.cancel-btn {
-  width: 100%;
+.action-buttons {
+  display: flex;
+  gap: 20rpx;
+  justify-content: space-between;
+}
+
+.action-btn {
+  flex: 1;
   height: 88rpx;
   background-color: #20CB6B;
-  border-radius: 8rpx;
+  border-radius: 44rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 36rpx;
+  gap: 8rpx;
+  font-size: 32rpx;
   font-weight: 500;
   color: #fff;
 }
 
-.cancel-btn:active {
+.action-btn:active {
   background-color: #1AB85A;
+}
+
+.action-btn.cancel-btn {
+  background-color: #ff4d4f;
+}
+
+.action-btn.cancel-btn:active {
+  background-color: #ff3333;
+}
+
+.customer-service-tip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  padding: 24rpx 30rpx;
+  /* margin: 40rpx 0 20rpx; */
+  /* background: #f5f5f5; */
+  /* border-radius: 16rpx; */
+  /* border: 1rpx solid #e8e8e8; */
+  cursor: pointer;
+}
+
+.order-notice {
+  margin: 32rpx 0;
+  padding: 24rpx 32rpx;
+  background: #f0e8ff;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notice-text {
+  font-size: 26rpx;
+  color: #6b46c1;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.service-avatar {
+  width: 48rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.service-text {
+  font-size: 28rpx;
+  color: #20CB6B;
 }
 </style>
 

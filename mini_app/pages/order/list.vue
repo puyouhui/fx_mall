@@ -85,7 +85,19 @@
             <text class="order-amount">¥{{ formatMoney(order.total_amount) }}</text>
           </view>
           <view class="order-footer">
-            <text class="item-count">{{ order.item_count || 0 }} 件商品</text>
+            <view class="item-count-wrapper">
+              <view class="goods-images-stack" v-if="getOrderImages(order).length > 0">
+                <view 
+                  class="goods-image-item" 
+                  v-for="(img, idx) in getOrderImages(order)" 
+                  :key="idx"
+                  :style="{ zIndex: getOrderImages(order).length - idx }"
+                >
+                  <image :src="img || '/static/default-product.png'" class="goods-thumb" mode="aspectFill"></image>
+                </view>
+              </view>
+              <text class="item-count">{{ order.item_count || 0 }} 件商品</text>
+            </view>
             <view class="action-buttons">
               <text class="action-btn" @click.stop="goToDetail(order.id)">查看详情</text>
             </view>
@@ -114,7 +126,7 @@ export default {
       statusBarHeight: 0,
       navBarHeight: 44,
       navbarTotalHeight: 0,
-      tabsHeight: 100, // 状态标签高度（rpx）
+      tabsHeight: 82, // 状态标签高度（rpx）
       windowHeight: 0, // 窗口高度
       orders: [],
       currentStatus: '',
@@ -239,14 +251,14 @@ export default {
     },
     getStatusClass(status) {
       const classMap = {
-        'pending': 'status-pending',
-        'pending_delivery': 'status-pending',
-        'pending_pickup': 'status-pending',
-        'delivering': 'status-delivering',
-        'delivered': 'status-delivered',
-        'shipped': 'status-delivered',
-        'paid': 'status-paid',
-        'completed': 'status-paid',
+        'pending': 'status-green',
+        'pending_delivery': 'status-green',
+        'pending_pickup': 'status-yellow',
+        'delivering': 'status-green',
+        'delivered': 'status-green',
+        'shipped': 'status-green',
+        'paid': 'status-green',
+        'completed': 'status-green',
         'cancelled': 'status-cancelled'
       }
       return classMap[status] || ''
@@ -277,6 +289,17 @@ export default {
       }
       // 如果都没有，返回默认值
       return '未设置地址'
+    },
+    // 获取订单商品图片（最多显示3张）
+    getOrderImages(order) {
+      if (!order.order_items || !Array.isArray(order.order_items)) {
+        return []
+      }
+      // 获取前3张商品图片
+      return order.order_items
+        .filter(item => item.image)
+        .slice(0, 3)
+        .map(item => item.image)
     },
     // 获取胶囊按钮信息并计算导航栏高度
     getMenuButtonInfo() {
@@ -384,13 +407,13 @@ export default {
 .status-tabs {
   display: flex;
   background-color: #fff;
-  padding: 16rpx 0;
+  padding: 10rpx 0;
   border-bottom: 1px solid #eee;
   position: fixed;
   left: 0;
   right: 0;
   z-index: 999;
-  height: 100rpx;
+  height: 82rpx;
   box-sizing: border-box;
 }
 
@@ -445,36 +468,28 @@ export default {
 
 .order-title {
   flex: 1;
-  font-size: 30rpx;
+  font-size: 28rpx;
   font-weight: 500;
   color: #333;
 }
 
 .order-number {
-  font-size: 22rpx;
+  font-size: 24rpx;
   color: #999;
   margin-top: 8rpx;
 }
 
 .order-status {
-  font-size: 26rpx;
+  font-size: 24rpx;
   font-weight: 600;
 }
 
-.status-pending {
-  color: #ff4d4f;
+.status-yellow {
+  color: #faad14;
 }
 
-.status-delivering {
-  color: #1890ff;
-}
-
-.status-delivered {
-  color: #fa8c16;
-}
-
-.status-paid {
-  color: #52c41a;
+.status-green {
+  color: #20CB6B;
 }
 
 .status-cancelled {
@@ -495,12 +510,12 @@ export default {
 }
 
 .order-time {
-  font-size: 24rpx;
+  font-size: 26rpx;
   color: #999;
 }
 
 .order-amount {
-  font-size: 32rpx;
+  font-size: 30rpx;
   font-weight: 600;
   color: #ff4d4f;
 }
@@ -513,9 +528,44 @@ export default {
   border-top: 1px solid #f0f0f0;
 }
 
+.item-count-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.goods-images-stack {
+  display: flex;
+  align-items: center;
+  position: relative;
+  height: 48rpx;
+}
+
+.goods-image-item {
+  position: relative;
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 6rpx;
+  overflow: hidden;
+  border: 2rpx solid #fff;
+  background: #f5f5f5;
+  margin-left: -12rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.1);
+}
+
+.goods-image-item:first-child {
+  margin-left: 0;
+}
+
+.goods-thumb {
+  width: 100%;
+  height: 100%;
+}
+
 .item-count {
-  font-size: 24rpx;
-  color: #999;
+  font-size: 26rpx;
+  color: #666;
 }
 
 .action-buttons {
@@ -524,8 +574,8 @@ export default {
 }
 
 .action-btn {
-  padding: 8rpx 24rpx;
-  font-size: 26rpx;
+  padding: 10rpx 28rpx;
+  font-size: 24rpx;
   color: #20CB6B;
   border: 1px solid #20CB6B;
   border-radius: 8rpx;

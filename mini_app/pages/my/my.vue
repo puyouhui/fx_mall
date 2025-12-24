@@ -49,7 +49,7 @@
         <text class="account-label">余额(元)</text>
         <text class="account-value">{{ userBalance.toFixed(2) }}</text>
       </view>
-      <view class="account-item">
+      <view class="account-item" @click="goToCoupons">
         <text class="account-label">优惠券</text>
         <text class="account-value">{{ couponCount }}</text>
       </view>
@@ -123,13 +123,13 @@
 
     
     <!-- 轮播图 -->
-    <view class="carousel-section" v-if="carousels.length > 0">
+    <!-- <view class="carousel-section" v-if="carousels.length > 0">
       <swiper class="carousel-swiper" :indicator-dots="true" :autoplay="true" :interval="3000" :duration="500" circular>
         <swiper-item v-for="(item, index) in carousels" :key="index" @click="handleCarouselClick(item)">
           <image :src="item.image" class="carousel-image" mode="aspectFill"></image>
         </swiper-item>
       </swiper>
-    </view>
+    </view> -->
   </view>
 </template>
 
@@ -155,8 +155,8 @@ export default {
       carousels: [],
       functions: [
         { name: '地址管理', icon: 'location', iconPath: '/static/icon/address.png', path: '/pages/address/address', color: '#20CB6B' },
-        { name: '我的账单', icon: 'wallet', iconPath: '/static/icon/bills.png', path: '/pages/bill/bill', color: '#20CB6B' },
-        { name: '发票中心', icon: 'paperplane', iconPath: '/static/icon/invoice.png', path: '/pages/invoice/invoice', color: '#20CB6B' },
+        // { name: '我的账单', icon: 'wallet', iconPath: '/static/icon/bills.png', path: '/pages/bill/bill', color: '#20CB6B' },
+        { name: '发票管理', icon: 'paperplane', iconPath: '/static/icon/invoice.png', path: '/pages/invoice/invoice', color: '#20CB6B' },
         { name: '新品需求', icon: 'star', iconPath: '/static/icon/new.png', path: '/pages/product-request/product-request', color: '#20CB6B' },
         { name: '客服与帮助', icon: 'chatbubble', iconPath: '/static/icon/customer_service.png', path: '/pages/customer-service/customer-service', color: '#20CB6B' },
         { name: '系统设置', icon: 'gear', iconPath: '/static/icon/set.png', path: '/pages/settings/settings', color: '#20CB6B' },
@@ -422,6 +422,21 @@ export default {
     goToCustomerService() {
       uni.navigateTo({
         url: '/pages/customer-service/customer-service'
+      });
+    },
+    
+    // 跳转到优惠券页面
+    goToCoupons() {
+      console.log(
+        11
+      );
+      
+      if (!this.isLoggedIn) {
+        this.goToLogin();
+        return;
+      }
+      uni.navigateTo({
+        url: '/pages/coupons/coupons'
       });
     },
     
@@ -740,6 +755,11 @@ export default {
   flex-direction: column;
   align-items: center;
   flex: 1;
+  transition: opacity 0.2s;
+}
+
+.account-item:active {
+  opacity: 0.7;
 }
 
 .account-label {

@@ -33,6 +33,7 @@
       <view class="mascot">
         <view class="mascot-placeholder">
           <uni-icons type="chatbubble-filled" size="48" color="#20CB6B"></uni-icons>
+          <text class="mascot-hi">hi</text>
         </view>
       </view>
     </view>
@@ -62,7 +63,10 @@
     <!-- 第一联系人：销售员信息 -->
     <view class="sales-employee-section" v-if="salesEmployee">
       <view class="section-header">
-        <text class="section-title">第一联系人</text>
+        <view class="section-title-wrapper">
+          <text class="section-title">专属销售经理</text>
+          <text class="section-tip">请先联系销售经理，联系不上再联系平台客服</text>
+        </view>
       </view>
       <view class="sales-employee-card" @click="callSalesEmployee">
         <view class="sales-employee-info">
@@ -75,8 +79,7 @@
           </view>
         </view>
         <view class="call-button">
-          <uni-icons type="phone" size="24" color="#20CB6B"></uni-icons>
-          <text class="call-text">拨打</text>
+          <uni-icons type="phone" size="32" color="#fff"></uni-icons>
         </view>
       </view>
     </view>
@@ -348,8 +351,8 @@ export default {
 <style scoped>
 .customer-service-page {
   min-height: 100vh;
-  background: linear-gradient(180deg, #E8F8F0 0%, #FFFFFF 30%);
-  padding-bottom: 120rpx;
+  background: linear-gradient(180deg, #E8F8F0 0%, #E8F8F0 15%, #F5FCF8 30%, #FFFFFF 60%);
+  padding-bottom: calc(128rpx + env(safe-area-inset-bottom));
 }
 
 /* 自定义导航栏 */
@@ -406,7 +409,7 @@ export default {
 .header-section {
   position: relative;
   padding: 40rpx 30rpx 30rpx;
-  background: linear-gradient(180deg, #E8F8F0 0%, #FFFFFF 100%);
+  background: transparent;
 }
 
 .greeting {
@@ -455,6 +458,18 @@ export default {
   align-items: center;
   justify-content: center;
   box-shadow: 0 4rpx 12rpx rgba(32, 203, 107, 0.2);
+  position: relative;
+}
+
+.mascot-hi {
+  position: absolute;
+  top: 48%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #fff;
+  z-index: 1;
 }
 
 /* 三个入口按钮 */
@@ -512,6 +527,28 @@ export default {
   box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
 }
 
+.section-header {
+  margin-bottom: 20rpx;
+}
+
+.section-title-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.section-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.section-tip {
+  font-size: 24rpx;
+  color: #999;
+  line-height: 1.5;
+}
+
 .sales-employee-card {
   display: flex;
   align-items: center;
@@ -566,21 +603,19 @@ export default {
 
 .call-button {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 16rpx 24rpx;
+  width: 80rpx;
+  height: 80rpx;
   background-color: #20CB6B;
-  border-radius: 12rpx;
-  min-width: 100rpx;
+  border-radius: 50%;
   flex-shrink: 0;
+  transition: all 0.3s;
 }
 
-.call-text {
-  font-size: 24rpx;
-  color: #fff;
-  margin-top: 4rpx;
-  font-weight: 500;
+.call-button:active {
+  background-color: #18B85A;
+  transform: scale(0.95);
 }
 
 /* 分类标签 */
@@ -665,7 +700,7 @@ export default {
   left: 0;
   right: 0;
   padding: 20rpx 30rpx;
-  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(env(safe-area-inset-bottom));
   background-color: #fff;
   box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
   z-index: 100;

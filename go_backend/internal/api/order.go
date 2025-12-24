@@ -374,6 +374,23 @@ func GetUserOrders(c *gin.Context) {
 		// 获取订单商品数量
 		itemCount, _ := model.GetOrderItemCountByOrderID(order.ID)
 
+		// 获取订单商品列表（用于获取商品图片）
+		orderItems, _ := model.GetOrderItemsByOrderID(order.ID)
+		orderItemsData := make([]map[string]interface{}, 0)
+		for _, item := range orderItems {
+			itemData := map[string]interface{}{
+				"id":           item.ID,
+				"product_id":   item.ProductID,
+				"product_name": item.ProductName,
+				"spec_name":    item.SpecName,
+				"quantity":     item.Quantity,
+				"unit_price":   item.UnitPrice,
+				"subtotal":     item.Subtotal,
+				"image":        item.Image,
+			}
+			orderItemsData = append(orderItemsData, itemData)
+		}
+
 		orderData := map[string]interface{}{
 			"id":              order.ID,
 			"order_number":    order.OrderNumber,
@@ -384,6 +401,7 @@ func GetUserOrders(c *gin.Context) {
 			"coupon_discount": order.CouponDiscount,
 			"total_amount":    order.TotalAmount,
 			"item_count":      itemCount,
+			"order_items":     orderItemsData,
 			"created_at":      order.CreatedAt,
 			"updated_at":      order.UpdatedAt,
 		}
