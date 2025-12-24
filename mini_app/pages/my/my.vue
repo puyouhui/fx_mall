@@ -18,7 +18,6 @@
             <view class="user-type" :class="userTypeClass">
               <image v-if="userInfo.user_type === 'wholesale'" src="/static/icon/vip.png" class="user-type-icon" mode="aspectFit" @error="handleIconError"></image>
               <image v-else-if="userInfo.user_type === 'retail'" src="/static/icon/zx.png" class="user-type-icon" mode="aspectFit" @error="handleIconError"></image>
-              <view v-else class="user-type-icon-placeholder"></view>
               <text class="user-type-text">{{ userTypeText }}</text>
             </view>
           </view>
@@ -44,7 +43,7 @@
     </view>
 
     <!-- 账户概览卡片 -->
-    <view class="account-card" v-if="isLoggedIn">
+    <view class="account-card">
       <view class="account-item">
         <text class="account-label">余额(元)</text>
         <text class="account-value">{{ userBalance.toFixed(2) }}</text>
@@ -64,7 +63,7 @@
     </view>
 
     <!-- 订单信息 -->
-    <view class="order-section" v-if="isLoggedIn">
+    <view class="order-section">
       <view class="section-header" @click="goToOrderList">
         <text class="section-title">订单信息</text>
         <!-- <view class="section-more">
@@ -130,13 +129,25 @@
         </swiper-item>
       </swiper>
     </view> -->
+    
+    <!-- 登录弹框组件 -->
+    <LoginModal 
+      :visible="showLoginModal"
+      @update:visible="showLoginModal = $event"
+      @login-success="handleLoginSuccess"
+      @close="handleLoginModalClose"
+    />
   </view>
 </template>
 
 <script>
 import { getMiniUserInfo, getMiniUserDefaultAddress, getUserCoupons, getUserOrders, getCarousels } from '../../api/index.js';
+import LoginModal from '../../components/LoginModal.vue';
 
 export default {
+  components: {
+    LoginModal
+  },
   data() {
     return {
       statusBarHeight: 20, // 状态栏高度（默认值）
@@ -153,6 +164,7 @@ export default {
       lockedOrdersCount: 0,
       userPoints: 0,
       carousels: [],
+      showLoginModal: false,
       functions: [
         { name: '地址管理', icon: 'location', iconPath: '/static/icon/address.png', path: '/pages/address/address', color: '#20CB6B' },
         // { name: '我的账单', icon: 'wallet', iconPath: '/static/icon/bills.png', path: '/pages/bill/bill', color: '#20CB6B' },
@@ -387,12 +399,29 @@ export default {
       }
     },
     
-    // 跳转到登录页
+    // 显示登录弹框
     goToLogin() {
-      uni.showToast({
-        title: '请先登录',
-        icon: 'none'
-      });
+      this.showLoginModal = true;
+    },
+    
+    // 处理登录成功
+    async handleLoginSuccess({ user, token, uniqueId }) {
+      // 更新用户信息
+      if (user) {
+        this.userInfo = user;
+      }
+      this.isLoggedIn = true;
+      
+      // 刷新用户信息
+      await this.updateUserInfo();
+      await this.loadOrderCounts();
+      await this.loadCouponCount();
+      await this.loadUserBalance();
+    },
+    
+    // 处理登录弹框关闭
+    handleLoginModalClose() {
+      this.showLoginModal = false;
     },
     
     // 跳转到个人资料页面
@@ -674,7 +703,7 @@ export default {
   align-items: center;
   gap: 8rpx;
   font-size: 24rpx;
-  padding: 0 16rpx;
+  padding: 0;
   border-radius: 20rpx;
   background-color: #E8F8F0;
   color: #20CB6B;
@@ -730,13 +759,13 @@ export default {
 .login-text {
   font-size: 36rpx;
   font-weight: 600;
-  color: #fff;
+  color: #333;
   margin-bottom: 8rpx;
 }
 
 .login-tip {
   font-size: 24rpx;
-  color: rgba(255, 255, 255, 0.8);
+  color: #333;
 }
 
 /* 账户概览卡片 */
@@ -936,4 +965,5 @@ export default {
   color: #555;
   text-align: center;
 }
+
 </style>

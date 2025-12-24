@@ -2,7 +2,8 @@
   <view class="profile-form-page">
     <!-- 地图背景 -->
     <map class="map-background" :latitude="mapLocation.latitude" :longitude="mapLocation.longitude" :scale="15"
-      :show-location="true" :enable-zoom="false" :enable-scroll="false" :markers="markers"></map>
+      :show-location="true" :enable-zoom="false" :enable-scroll="false" :markers="markers" 
+      @ready="onMapReady" :style="{ height: mapHeight + 'px' }"></map>
 
     <!-- 表单卡片 -->
     <view class="form-card">
@@ -163,6 +164,7 @@ export default {
         longitude: 116.397470
       },
       markers: [], // 地图标记点
+      mapHeight: 0, // 地图高度
       storeTypeOptions: [
 
         '餐饮店',
@@ -200,6 +202,9 @@ export default {
 
     this.userToken = token;
 
+    // 计算地图高度
+    this.calculateMapHeight();
+
     // 先获取用户信息，检查是否已绑定销售员
     this.loadUserInfo();
 
@@ -216,7 +221,32 @@ export default {
       this.getCurrentLocation();
     }
   },
+  onReady() {
+    // 页面渲染完成后重新计算地图高度
+    this.$nextTick(() => {
+      this.calculateMapHeight();
+    });
+  },
   methods: {
+    // 计算地图高度
+    calculateMapHeight() {
+      const systemInfo = uni.getSystemInfoSync();
+      const windowHeight = systemInfo.windowHeight;
+      // 如果未选择地址（表单内容较少），地图高度为屏幕高度的35%
+      // 如果已选择地址（表单内容较多），地图高度为屏幕高度的20%
+      if (!this.showAddressFields) {
+        this.mapHeight = Math.floor(windowHeight * 0.40);
+      } else {
+        this.mapHeight = Math.floor(windowHeight * 0.2);
+      }
+    },
+    // 地图加载完成事件
+    onMapReady() {
+      // 地图加载完成后，确保高度正确
+      this.$nextTick(() => {
+        this.calculateMapHeight();
+      });
+    },
     // 加载用户信息，检查是否已绑定销售员
     async loadUserInfo() {
       try {
@@ -294,6 +324,8 @@ export default {
           this.updateMarkers();
           // 选择定位后显示地址和店铺类型字段
           this.showAddressFields = true;
+          // 重新计算地图高度（因为表单内容变多了）
+          this.calculateMapHeight();
           // 延迟设置地址，确保textarea已经渲染
           this.$nextTick(() => {
             this.formData.address = res.address || res.name;
@@ -305,6 +337,8 @@ export default {
             });
             // 检查用户是否已有默认地址，如果没有则默认选中"设置为默认地址"
             this.checkDefaultAddress();
+            // 再次确保地图高度正确
+            this.calculateMapHeight();
           });
         },
         fail: (err) => {
@@ -519,6 +553,8 @@ export default {
           this.formData.address = res.detailInfo || this.formData.address;
           // 导入地址后显示地址和店铺类型字段
           this.showAddressFields = true;
+          // 重新计算地图高度
+          this.calculateMapHeight();
           // 尝试获取地址的经纬度
           // 注意：微信小程序需要配置相关权限
         },
@@ -730,7 +766,7 @@ export default {
   top: 0;
   left: 0;
   width: 100%;
-  height: 20vh;
+  min-height: 200rpx;
   z-index: 0;
 }
 

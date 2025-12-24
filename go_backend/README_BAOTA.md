@@ -48,3 +48,5 @@ chmod +x go_backend
 > 说明：当前后端配置写在代码里（`internal/config/config.go`），若服务器的数据库/MinIO 等配置与本地不同，需要改代码后重新编译，或再做一次“配置改为环境变量/配置文件”的改造。
 
 
+
+
