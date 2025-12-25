@@ -24,8 +24,8 @@
 
       <el-table v-loading="loading" :data="orders" border stripe class="orders-table" empty-text="暂无订单数据" row-key="id">
         <!-- <el-table-column prop="id" label="订单ID" width="100" /> -->
-        <el-table-column prop="order_number" label="订单编号" width="180" />
-        <el-table-column label="用户信息" min-width="180">
+        <el-table-column prop="order_number" label="订单编号" width="180" align="center" />
+        <el-table-column label="用户信息" min-width="180" align="center">
           <template #default="scope">
             <div v-if="scope.row.user">
               <div>{{ scope.row.user.name || '未命名' }}</div>
@@ -34,7 +34,7 @@
             <span v-else>用户ID: {{ scope.row.user_id }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="销售员" width="120">
+        <el-table-column label="销售员" width="120" align="center">
           <template #default="scope">
             <div v-if="scope.row.user && scope.row.user.sales_employee">
               <el-tag size="small" type="info">
@@ -48,7 +48,7 @@
             <span v-else style="color: #c0c4cc;">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="收货地址" min-width="200">
+        <el-table-column label="收货地址" min-width="200" align="center">
           <template #default="scope">
             <div v-if="scope.row.address">
               <div>{{ scope.row.address.name || '-' }}</div>
@@ -57,7 +57,7 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="订单状态" width="120">
+        <el-table-column prop="status" label="订单状态" width="120" align="center">
           <template #default="scope">
             <el-tag :type="getStatusType(scope.row.status)">
               {{ formatStatus(scope.row.status) }}
@@ -72,7 +72,7 @@
             </el-button>
           </template>
         </el-table-column>
-        <el-table-column label="金额信息" min-width="150">
+        <el-table-column label="金额信息" min-width="150" align="center">
           <template #default="scope">
             <div style="color: #ff4d4f; font-weight: 600; font-size: 14px;">
               实付: ¥{{ formatMoney(scope.row.total_amount) }}
@@ -140,12 +140,12 @@
             <span v-else style="color: #c0c4cc;">-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="下单时间" min-width="160">
+        <el-table-column prop="created_at" label="下单时间" min-width="160" align="center">
           <template #default="scope">
             {{ formatDate(scope.row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right" align="left">
+        <el-table-column label="操作" width="200" fixed="right" align="center">
           <template #default="scope">
             <div class="action-buttons">
               <el-button type="primary" link @click="handleViewDetail(scope.row.id)">

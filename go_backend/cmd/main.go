@@ -107,8 +107,11 @@ func main() {
 			miniAppProtectedGroup.GET("/supplier-applications", api.GetUserSupplierApplications) // 获取用户的申请列表
 		}
 
-		// 供应商合作申请接口（不需要登录也可以提交）
-		apiGroup.POST("/supplier-applications", api.CreateSupplierApplication) // 创建供应商合作申请
+			// 供应商合作申请接口（不需要登录也可以提交）
+			apiGroup.POST("/supplier-applications", api.CreateSupplierApplication) // 创建供应商合作申请
+
+			// 价格反馈接口（需要登录）
+			miniAppProtectedGroup.POST("/price-feedback", api.CreatePriceFeedback) // 创建价格反馈
 
 		// 分类相关接口
 		apiGroup.GET("/products/category", api.GetProductsByCategory) // 根据分类ID获取该分类下的商品列表
@@ -257,6 +260,10 @@ func main() {
 				// 供应商合作申请管理
 				protectedGroup.GET("/supplier-applications", api.GetAllSupplierApplications)                 // 获取所有申请列表
 				protectedGroup.PUT("/supplier-applications/:id/status", api.UpdateSupplierApplicationStatus) // 更新申请状态
+
+				// 价格反馈管理接口
+				protectedGroup.GET("/price-feedback", api.GetAllPriceFeedbacks)                 // 获取所有价格反馈列表
+				protectedGroup.PUT("/price-feedback/:id/status", api.UpdatePriceFeedbackStatus) // 更新价格反馈状态
 
 				// 仪表盘统计
 				protectedGroup.GET("/dashboard/stats", api.GetDashboardStats) // 获取仪表盘统计数据

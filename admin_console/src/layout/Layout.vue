@@ -166,6 +166,10 @@
             </el-icon>
             <span>供应商合作申请</span>
           </el-menu-item>
+          <el-menu-item index="/price-feedback" @click="handleMenuClick('/price-feedback')">
+            <el-icon><Document /></el-icon>
+            <span>价格反馈管理</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <!-- 供应商管理 -->
@@ -205,11 +209,36 @@
       <!-- 顶部导航栏 -->
       <el-header class="app-header">
         <div class="header-left">
-          <el-button type="text" @click="toggleSidebar">
-            <el-icon>
-              <menu />
-            </el-icon>
-          </el-button>
+          <div class="history-tabs-container">
+            <div class="history-tabs-wrapper" ref="tabsWrapperRef">
+              <div
+                v-for="(item, index) in historyList"
+                :key="item.path"
+                :class="['history-tab', { 'is-active': item.path === route.path }]"
+                @click="handleTabClick(item.path)"
+              >
+                <span class="tab-title">{{ item.title }}</span>
+                <el-icon
+                  v-if="historyList.length > 1"
+                  class="tab-close"
+                  @click.stop="handleCloseTab(item.path, index)"
+                >
+                  <Close />
+                </el-icon>
+              </div>
+            </div>
+            <el-button
+              v-if="historyList.length > 0"
+              type="text"
+              class="clear-history-btn"
+              @click="handleClearHistory"
+              title="清空所有标签"
+            >
+              <el-icon>
+                <Delete />
+              </el-icon>
+            </el-button>
+          </div>
         </div>
         <div class="header-right">
           <el-dropdown>
@@ -261,7 +290,10 @@ import {
   Document,
   Box,
   Location,
-  Search
+  Search,
+  Clock,
+  Delete,
+  Close
 } from '@element-plus/icons-vue'
 import { logout, getAdminInfo } from '../api/auth'
 import { ElMessage } from 'element-plus'
@@ -269,7 +301,12 @@ import { ElMessage } from 'element-plus'
 const router = useRouter()
 const route = useRoute()
 const username = ref('')
-const sidebarOpened = ref(true)
+const historyList = ref([])
+const tabsWrapperRef = ref(null)
+
+// 历史记录存储键名
+const HISTORY_STORAGE_KEY = 'admin_history_list'
+const MAX_HISTORY_COUNT = 15
 
 // 当前激活的菜单
 const activeMenu = computed(() => {
@@ -279,9 +316,91 @@ const activeMenu = computed(() => {
 // 默认展开的菜单（可以根据需要设置）
 const defaultOpeneds = ref([])
 
-// 切换侧边栏
-const toggleSidebar = () => {
-  sidebarOpened.value = !sidebarOpened.value
+// 加载历史记录
+const loadHistory = () => {
+  try {
+    const stored = localStorage.getItem(HISTORY_STORAGE_KEY)
+    if (stored) {
+      historyList.value = JSON.parse(stored)
+    }
+  } catch (error) {
+    console.error('加载历史记录失败:', error)
+    historyList.value = []
+  }
+}
+
+// 保存历史记录
+const saveHistory = () => {
+  try {
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(historyList.value))
+  } catch (error) {
+    console.error('保存历史记录失败:', error)
+  }
+}
+
+// 添加历史记录
+const addHistory = (path, title) => {
+  // 排除登录页和首页
+  if (path === '/login' || path === '/') {
+    return
+  }
+
+  // 检查是否已存在
+  const existingIndex = historyList.value.findIndex(item => item.path === path)
+  
+  if (existingIndex !== -1) {
+    // 如果已存在，只更新标题和时间戳，不改变位置
+    historyList.value[existingIndex].title = title
+    historyList.value[existingIndex].timestamp = Date.now()
+  } else {
+    // 如果不存在，添加到开头
+    historyList.value.unshift({
+      path,
+      title,
+      timestamp: Date.now()
+    })
+
+    // 限制最大数量
+    if (historyList.value.length > MAX_HISTORY_COUNT) {
+      historyList.value = historyList.value.slice(0, MAX_HISTORY_COUNT)
+    }
+  }
+
+  // 保存到localStorage
+  saveHistory()
+}
+
+// 处理标签点击
+const handleTabClick = (path) => {
+  router.push(path)
+}
+
+// 处理关闭标签
+const handleCloseTab = (path, index) => {
+  // 如果关闭的是当前页面，需要跳转到其他标签或首页
+  if (path === route.path) {
+    // 如果还有其他标签，跳转到下一个或上一个
+    if (historyList.value.length > 1) {
+      const nextIndex = index < historyList.value.length - 1 ? index : index - 1
+      const nextPath = historyList.value[nextIndex]?.path || '/dashboard'
+      router.push(nextPath)
+    } else {
+      // 没有其他标签了，跳转到首页
+      router.push('/dashboard')
+    }
+  }
+  
+  // 从历史记录中移除
+  historyList.value = historyList.value.filter(item => item.path !== path)
+  saveHistory()
+}
+
+// 清空所有历史记录
+const handleClearHistory = () => {
+  historyList.value = []
+  saveHistory()
+  router.push('/dashboard')
+  ElMessage.success('已清空所有标签')
 }
 
 // 退出登录
@@ -296,8 +415,23 @@ const handleLogout = async () => {
   }
 }
 
+// 监听路由变化，添加历史记录
+router.afterEach((to) => {
+  if (to.meta && to.meta.title) {
+    addHistory(to.path, to.meta.title)
+  }
+})
+
 // 初始化用户信息
 onMounted(async () => {
+  // 加载历史记录
+  loadHistory()
+
+  // 添加当前页面到历史记录
+  if (route.meta && route.meta.title) {
+    addHistory(route.path, route.meta.title)
+  }
+
   try {
     // 从localStorage获取用户名作为备用
     username.value = localStorage.getItem('username') || ''
@@ -378,6 +512,111 @@ onMounted(async () => {
 .header-left {
   display: flex;
   align-items: center;
+  gap: 10px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.history-tabs-container {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  overflow: hidden;
+  margin-left: 10px;
+}
+
+.history-tabs-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: #c0c4cc transparent;
+}
+
+.history-tabs-wrapper::-webkit-scrollbar {
+  height: 4px;
+}
+
+.history-tabs-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-tabs-wrapper::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 2px;
+}
+
+.history-tabs-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #a0a4a8;
+}
+
+.history-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+  position: relative;
+  min-width: 80px;
+  max-width: 200px;
+}
+
+.history-tab:hover {
+  background-color: #ecf5ff;
+  border-color: #b3d8ff;
+}
+
+.history-tab.is-active {
+  background-color: #409eff;
+  border-color: #409eff;
+  color: #fff;
+  z-index: 1;
+}
+
+.history-tab.is-active .tab-title {
+  color: #fff;
+}
+
+.tab-title {
+  font-size: 13px;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.tab-close {
+  font-size: 12px;
+  color: #909399;
+  cursor: pointer;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.tab-close:hover {
+  color: #f56c6c;
+}
+
+.history-tab.is-active .tab-close {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.history-tab.is-active .tab-close:hover {
+  color: #fff;
+}
+
+.clear-history-btn {
+  margin-left: 8px;
+  flex-shrink: 0;
+  padding: 4px 8px;
 }
 
 .header-right {

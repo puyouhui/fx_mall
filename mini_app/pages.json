@@ -88,6 +88,12 @@
       }
     },
     {
+      "path": "pages/price-feedback/price-feedback",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/product-request/product-request",
       "style": {
         "navigationStyle": "custom"

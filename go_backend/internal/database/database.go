@@ -1573,6 +1573,69 @@ func InitDB() error {
 			log.Println("供应商合作申请表初始化成功")
 		}
 
+		// 创建价格反馈表
+		createPriceFeedbackTableSQL := `
+		CREATE TABLE IF NOT EXISTS price_feedback (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    user_id INT COMMENT '用户ID（如果已登录）',
+		    product_id INT NOT NULL COMMENT '商品ID',
+		    product_name VARCHAR(255) NOT NULL COMMENT '商品名称',
+		    platform_price_min DECIMAL(10, 2) NOT NULL COMMENT '平台最低价格',
+		    platform_price_max DECIMAL(10, 2) NOT NULL COMMENT '平台最高价格',
+		    competitor_price DECIMAL(10, 2) NOT NULL COMMENT '用户反馈的竞争对手价格',
+		    images TEXT COMMENT '价格截图图片URL列表（JSON格式）',
+		    remark TEXT COMMENT '备注说明',
+		    status ENUM('pending', 'processed') NOT NULL DEFAULT 'pending' COMMENT '状态：pending-待处理，processed-已处理',
+		    admin_remark TEXT COMMENT '管理员备注',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    INDEX idx_user_id (user_id),
+		    INDEX idx_product_id (product_id),
+		    INDEX idx_status (status),
+		    INDEX idx_created_at (created_at),
+		    FOREIGN KEY (user_id) REFERENCES mini_app_users(id) ON DELETE SET NULL,
+		    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='价格反馈表';
+		`
+
+		if _, err = DB.Exec(createPriceFeedbackTableSQL); err != nil {
+			log.Printf("创建price_feedback表失败: %v", err)
+		} else {
+			log.Println("价格反馈表初始化成功")
+		}
+
+		// 检查并添加价格范围字段（如果表已存在但字段不存在，用于兼容旧表）
+		var priceMinExists int
+		err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'price_feedback' AND column_name = 'platform_price_min'", cfg.DBName).Scan(&priceMinExists)
+		if err == nil && priceMinExists == 0 {
+			// 表存在但没有新字段，需要迁移数据
+			_, err = DB.Exec(`
+				ALTER TABLE price_feedback 
+				ADD COLUMN platform_price_min DECIMAL(10, 2) NOT NULL DEFAULT 0 COMMENT '平台最低价格' AFTER product_name,
+				ADD COLUMN platform_price_max DECIMAL(10, 2) NOT NULL DEFAULT 0 COMMENT '平台最高价格' AFTER platform_price_min
+			`)
+			if err == nil {
+				// 迁移旧数据：将 platform_price 的值同时赋给 min 和 max
+				_, err = DB.Exec(`
+					UPDATE price_feedback 
+					SET platform_price_min = platform_price, 
+					    platform_price_max = platform_price 
+					WHERE platform_price_min = 0 OR platform_price_max = 0
+				`)
+				if err == nil {
+					// 删除旧字段
+					_, err = DB.Exec("ALTER TABLE price_feedback DROP COLUMN platform_price")
+					if err != nil {
+						log.Printf("删除旧字段platform_price失败: %v", err)
+					}
+				} else {
+					log.Printf("迁移价格数据失败: %v", err)
+				}
+			} else {
+				log.Printf("添加价格范围字段失败: %v", err)
+			}
+		}
+
 		log.Println("所有表创建成功")
 	})
 

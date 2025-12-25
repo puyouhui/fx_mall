@@ -297,6 +297,7 @@ export default {
     chooseImage(sourceType) {
       uni.chooseImage({
         count: 1,
+        sizeType: ['compressed'], // 使用压缩模式
         sourceType: sourceType === 'camera' ? ['camera'] : ['album'],
         success: async (res) => {
           const tempFilePath = res.tempFilePaths[0];
@@ -311,10 +312,17 @@ export default {
 
           try {
             uni.showLoading({
+              title: '压缩中...'
+            });
+
+            // 压缩图片
+            const compressedPath = await this.compressImage(tempFilePath);
+            
+            uni.showLoading({
               title: '上传中...'
             });
 
-            const uploadRes = await uploadMiniUserAvatar(tempFilePath, token);
+            const uploadRes = await uploadMiniUserAvatar(compressedPath, token);
             uni.hideLoading();
 
             if (uploadRes && uploadRes.code === 200) {
@@ -409,6 +417,23 @@ export default {
     },
     goBack() {
       uni.navigateBack();
+    },
+    // 压缩图片
+    compressImage(filePath) {
+      return new Promise((resolve, reject) => {
+        uni.compressImage({
+          src: filePath,
+          quality: 60, // 压缩质量，值越小压缩越多
+          success: (res) => {
+            resolve(res.tempFilePath);
+          },
+          fail: (err) => {
+            console.error('压缩图片失败:', err);
+            // 压缩失败时使用原图
+            resolve(filePath);
+          }
+        });
+      });
     }
   }
 };

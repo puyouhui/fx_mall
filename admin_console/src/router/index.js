@@ -160,6 +160,14 @@ const routes = [
         }
       },
       {
+        path: 'price-feedback',
+        name: 'PriceFeedback',
+        component: () => import('../views/PriceFeedback.vue'),
+        meta: {
+          title: '价格反馈管理'
+        }
+      },
+      {
         path: 'payment-verification',
         name: 'PaymentVerification',
         component: () => import('../views/PaymentVerification.vue'),

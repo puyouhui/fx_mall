@@ -562,3 +562,17 @@ export const getUserCoupons = (token) => {
     }
   });
 };
+
+/**
+ * 创建价格反馈
+ * @param {string} token - 用户token
+ * @param {object} feedbackData - 反馈数据
+ * @returns Promise
+ */
+export const createPriceFeedback = (token, feedbackData) => {
+  return post('/mini-app/users/price-feedback', feedbackData, {
+    header: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+};

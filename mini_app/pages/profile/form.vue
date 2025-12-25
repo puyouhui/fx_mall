@@ -369,14 +369,34 @@ export default {
             sourceType: sourceType,
             success: async (chooseRes) => {
               const tempFilePath = chooseRes.tempFilePaths[0];
+              // 先压缩图片
+              const compressedPath = await this.compressImage(tempFilePath);
               // 上传图片
-              await this.uploadAvatar(tempFilePath);
+              await this.uploadAvatar(compressedPath);
             },
             fail: (err) => {
               console.log('选择图片失败:', err);
             }
           });
         }
+      });
+    },
+    
+    // 压缩图片
+    compressImage(filePath) {
+      return new Promise((resolve, reject) => {
+        uni.compressImage({
+          src: filePath,
+          quality: 60, // 压缩质量，值越小压缩越多
+          success: (res) => {
+            resolve(res.tempFilePath);
+          },
+          fail: (err) => {
+            console.error('压缩图片失败:', err);
+            // 压缩失败时使用原图
+            resolve(filePath);
+          }
+        });
       });
     },
     // 上传地址照片到服务器（门头照片）

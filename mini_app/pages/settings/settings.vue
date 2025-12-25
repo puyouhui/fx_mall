@@ -23,6 +23,19 @@
 
     <!-- 设置内容 -->
     <view class="settings-content">
+      <!-- 个人资料（已登录时显示） -->
+      <view class="settings-group" v-if="isLoggedIn">
+        <view class="settings-item" @click="goToProfile">
+          <view class="item-left">
+            <view class="item-icon profile-icon">
+              <uni-icons type="person" size="22" color="#20CB6B"></uni-icons>
+            </view>
+            <text class="item-text">个人资料</text>
+          </view>
+          <uni-icons type="right" size="16" color="#ddd"></uni-icons>
+        </view>
+      </view>
+
       <!-- 关于我们 -->
       <view class="settings-group">
         <view class="settings-item" @click="goToAbout">
@@ -114,6 +127,21 @@ export default {
     // 返回上一页
     goBack() {
       uni.navigateBack();
+    },
+    
+    // 跳转到个人资料
+    goToProfile() {
+      const token = uni.getStorageSync('miniUserToken');
+      if (!token) {
+        uni.showToast({
+          title: '请先登录',
+          icon: 'none'
+        });
+        return;
+      }
+      uni.navigateTo({
+        url: '/pages/profile/profile'
+      });
     },
     
     // 跳转到关于我们
@@ -285,6 +313,10 @@ export default {
   align-items: center;
   justify-content: center;
   margin-right: 24rpx;
+}
+
+.profile-icon {
+  background-color: #E8F8F0;
 }
 
 .about-icon {

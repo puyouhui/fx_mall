@@ -25,7 +25,7 @@
 			<swiper class="image-swiper" v-if="product.images && product.images.length > 0" autoplay indicator-dots
 				circular @change="onSwiperChange">
 				<swiper-item v-for="(image, index) in product.images" :key="index">
-					<image :src="image" mode="aspectFill" class="product-image"></image>
+					<image :src="image" mode="aspectFill" class="product-image" @click="previewImage(index)"></image>
 				</swiper-item>
 			</swiper>
 			<view class="image-count" v-if="product.images && product.images.length > 0">{{ currentImageIndex + 1 }}/{{
@@ -37,7 +37,7 @@
 		<!-- 商品信息 -->
 		<view class="product-info">
 			<!-- 买贵反馈提示 -->
-			<view class="price-feedback">
+			<view class="price-feedback" @click="goToPriceFeedback">
 				<text class="feedback-text">价格贵了？点击反馈有惊喜哦~</text>
 				<text class="feedback-arrow">
 					<uni-icons type="right" size="16" color="#ffffff"></uni-icons>
@@ -70,7 +70,7 @@
 						<view class="spec-prices">
 							<view class="spec-price-container" :class="{ 'wholesale-layout': userType === 'wholesale' }">
 								<text v-if="userType === 'wholesale'" class="spec-price">
-									批发价: ￥{{ formatSpecPrice(spec, 'wholesale') }}
+									￥{{ formatSpecPrice(spec, 'wholesale') }}
 								</text>
 								<text v-else class="spec-price">
 									￥{{ formatSpecPrice(spec, 'retail') }}
@@ -195,24 +195,24 @@
 		<view class="bottom-action">
 			<view class="bottom-action-container">
 				<view class="action-buttons">
+					<!-- <view class="action-btn" @click="goToHome">
+						<uni-icons type="home" size="28" color="#2C2C2C"></uni-icons>
+						<text class="action-text">首页</text>
+					</view> -->
 					<view class="action-btn" @click="collectProduct">
 						<uni-icons type="star" size="28" color="#2C2C2C"></uni-icons>
 						<text class="action-text">收藏</text>
 					</view>
-					<view class="action-btn" @click="collectProduct">
-						<uni-icons type="cart" size="28" color="#2C2C2C"></uni-icons>
-						<text class="action-text">采购单</text>
-					</view>
-					<view class="action-btn" @click="collectProduct">
-						<uni-icons type="phone" size="28" color="#2C2C2C"></uni-icons>
+					<view class="action-btn" @click="goToCustomerService">
+						<uni-icons type="chat" size="28" color="#2C2C2C"></uni-icons>
 						<text class="action-text">客服</text>
 					</view>
 				</view>
 				<view class="right-actions">
-					<view class="add-to-cart-btn" @click="addToCart">
-						<uni-icons type="plusempty" color="#fff" size="20"
+					<view class="add-to-cart-btn" @click="goToCart">
+						<uni-icons type="plusempty" color="#fff" size="24"
 							style="padding-right: 14rpx;padding-top: 2rpx;"></uni-icons>
-						加入采购单
+						去下单
 					</view>
 				</view>
 			</view>
@@ -428,6 +428,17 @@ export default {
 			this.currentImageIndex = e.detail.current;
 		},
 
+		// 预览图片
+		previewImage(index) {
+			if (!this.product.images || this.product.images.length === 0) {
+				return;
+			}
+			uni.previewImage({
+				current: index, // 当前显示图片的索引
+				urls: this.product.images // 需要预览的图片http链接列表
+			});
+		},
+
 		// 计算价格范围（根据用户类型显示批发价或零售价）
 		calculatePriceRange() {
 			// 处理没有规格的情况
@@ -578,6 +589,7 @@ export default {
 			if (!spec || !this.product.id) return;
 			const ready = await this.ensureUserLoggedIn();
 			if (!ready) return;
+			uni.vibrateShort({ type: 'light' });
 			try {
 				await addItemToPurchaseList({
 					token: this.token,
@@ -597,6 +609,7 @@ export default {
 			if (!spec || !this.product.id) return;
 			const ready = await this.ensureUserLoggedIn();
 			if (!ready) return;
+			uni.vibrateShort({ type: 'light' });
 			try {
 				if (spec.purchaseItemId) {
 					await updatePurchaseListQuantity({
@@ -623,6 +636,7 @@ export default {
 			if (!spec || !this.product.id || !spec.purchaseItemId) return;
 			const ready = await this.ensureUserLoggedIn();
 			if (!ready) return;
+			uni.vibrateShort({ type: 'light' });
 			const current = spec.quantity || 0;
 			try {
 				if (current <= 1) {
@@ -654,14 +668,6 @@ export default {
 			}
 		},
 
-		addToCart() {
-			uni.showToast({
-				title: '请点击具体规格添加',
-				icon: 'none',
-				duration: 2000
-			});
-		},
-
 		// 收藏商品
 		collectProduct() {
 			// 模拟收藏功能
@@ -673,11 +679,71 @@ export default {
 			});
 		},
 
-		// 跳转到购物车
+		// 跳转到采购单
 		goToCart() {
-			uni.navigateTo({
-				url: '/pages/cart/index'
+			uni.switchTab({
+				url: '/pages/cart/cart'
 			});
+		},
+
+		// 跳转到首页
+		goToHome() {
+			uni.switchTab({
+				url: '/pages/index/index'
+			});
+		},
+
+		// 跳转到客服
+		goToCustomerService() {
+			uni.navigateTo({
+				url: '/pages/customer-service/customer-service'
+			});
+		},
+
+		// 跳转到价格反馈
+		goToPriceFeedback() {
+			if (!this.product.id) {
+				uni.showToast({
+					title: '商品信息加载中，请稍候',
+					icon: 'none'
+				});
+				return;
+			}
+			
+			// 获取价格范围（根据用户类型）
+			let priceMin = 0;
+			let priceMax = 0;
+			let priceDisplay = '¥0.00';
+			
+			if (this.product.specs && this.product.specs.length > 0) {
+				const isWholesale = this.userType === 'wholesale';
+				const prices = [];
+				this.product.specs.forEach(spec => {
+					const price = isWholesale 
+						? (spec.wholesale_price || spec.wholesalePrice || 0)
+						: (spec.retail_price || spec.retailPrice || 0);
+					if (price > 0) {
+						prices.push(parseFloat(price));
+					}
+				});
+				if (prices.length > 0) {
+					priceMin = Math.min(...prices);
+					priceMax = Math.max(...prices);
+					if (priceMin === priceMax) {
+						priceDisplay = `¥${priceMin.toFixed(2)}`;
+					} else {
+						priceDisplay = `¥${priceMin.toFixed(2)} - ¥${priceMax.toFixed(2)}`;
+					}
+				}
+			} else if (this.product.price) {
+				const price = parseFloat(this.product.price);
+				priceMin = price;
+				priceMax = price;
+				priceDisplay = `¥${price.toFixed(2)}`;
+			}
+			
+			const url = `/pages/price-feedback/price-feedback?productId=${this.product.id}&productName=${encodeURIComponent(this.product.name)}&priceMin=${priceMin}&priceMax=${priceMax}&price=${encodeURIComponent(priceDisplay)}`;
+			uni.navigateTo({ url });
 		},
 
 		// 跳转到登录页面
@@ -697,10 +763,8 @@ export default {
 
 		// 搜索商品
 		searchProduct() {
-			uni.showToast({
-				title: '打开搜索页面',
-				icon: 'none',
-				duration: 2000
+			uni.navigateTo({
+				url: '/pages/search/search'
 			});
 		},
 
@@ -1012,8 +1076,8 @@ export default {
 
 .minus-btn,
 .plus-btn {
-	width: 30px;
-	height: 30px;
+	width: 32px;
+	height: 32px;
 	background-color: #20CB6B;
 	color: #333;
 	font-size: 24rpx;
@@ -1346,16 +1410,18 @@ export default {
 }
 
 .action-buttons {
-	width: 50%;
+	width: 30%;
 	height: 48px;
 	/* background-color: #666; */
 	display: flex;
 	margin-right: 20rpx;
 	padding-left: 30rpx;
+	gap: 20rpx;
+	justify-content: space-between;
 }
 
 .right-actions {
-	width: 50%;
+	width: 70%;
 	height: 48px;
 	display: flex;
 	justify-content: flex-end;
@@ -1366,7 +1432,7 @@ export default {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	margin-right: 40rpx;
+	flex: 1;
 }
 
 .btn-icon {

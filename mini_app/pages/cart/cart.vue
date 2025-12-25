@@ -24,11 +24,11 @@
 
 			<view class="cart-list" v-if="cartItems.length > 0">
 				<view class="cart-item" v-for="item in cartItems" :key="item.id">
-					<view class="item-select" @click="toggleSelect(item)">
+					<view class="item-select" @click.stop="toggleSelect(item)">
 						<view :class="['select-dot', { active: selectedIds.includes(item.id) }]"></view>
 					</view>
-					<image :src="item.product_image || defaultImage" class="item-image" mode="aspectFill"></image>
-					<view class="item-info">
+					<image :src="item.product_image || defaultImage" class="item-image" mode="aspectFill" @click="goToProductDetail(item.product_id)"></image>
+					<view class="item-info" @click="goToProductDetail(item.product_id)">
 						<view class="item-title-row">
 							<text class="item-name">{{ item.product_name }}</text>
 							<text class="item-price">¥{{ getDisplayPrice(item).toFixed(2) }}</text>
@@ -41,15 +41,15 @@
 						<text class="item-tags">支持采购 · 现货供应</text>
 						<view class="item-actions">
 							<view class="qty-control" v-if="!isEditing">
-								<view class="qty-btn minus" @click="decreaseItem(item)">
+								<view class="qty-btn minus" @click.stop="decreaseItem(item)">
 									<image src="/static/icon/minus.png" class="qty-icon" />
 								</view>
 								<text class="qty-value">{{ item.quantity }}</text>
-								<view class="qty-btn plus" @click="increaseItem(item)">
+								<view class="qty-btn plus" @click.stop="increaseItem(item)">
 									<uni-icons type="plusempty" size="16" color="#fff"></uni-icons>
 								</view>
 							</view>
-							<view class="item-delete" v-if="isEditing" @click="deleteItem(item)">
+							<view class="item-delete" v-if="isEditing" @click.stop="deleteItem(item)">
 								<uni-icons type="trash" size="22" color="#fff"></uni-icons>
 							</view>
 						</view>
@@ -552,6 +552,18 @@ export default {
 		goToIndex() {
 			uni.switchTab({
 				url: '/pages/index/index'
+			});
+		},
+		goToProductDetail(productId) {
+			if (!productId) {
+				uni.showToast({
+					title: '商品信息错误',
+					icon: 'none'
+				});
+				return;
+			}
+			uni.navigateTo({
+				url: `/pages/product/detail?id=${productId}`
 			});
 		},
 		async increaseItem(item) {

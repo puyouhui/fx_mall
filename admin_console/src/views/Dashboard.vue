@@ -1,7 +1,7 @@
 <template>
   <div class="dashboard-container">
     <div class="dashboard-header">
-      <h1 class="page-title">运营数据中心</h1>
+      <h1 class="page-title">数据中心</h1>
       <div class="time-range-selector">
         <el-radio-group v-model="timeRange" @change="handleTimeRangeChange">
           <el-radio-button label="today">今日</el-radio-button>
@@ -19,7 +19,7 @@
             <el-icon class="stat-icon"><ShoppingCart /></el-icon>
           </div>
           <div class="stat-info">
-            <div class="stat-label">今日订单数</div>
+            <div class="stat-label">{{ timeRangeLabel }}订单数</div>
             <div class="stat-value">{{ formatNumber(orderStats.total_orders) }}</div>
             <div class="stat-growth" :class="orderStats.growth >= 0 ? 'positive' : 'negative'">
               <el-icon v-if="orderStats.growth >= 0"><ArrowUp /></el-icon>
@@ -37,7 +37,7 @@
             <el-icon class="stat-icon"><Money /></el-icon>
           </div>
           <div class="stat-info">
-            <div class="stat-label">今日收入</div>
+            <div class="stat-label">{{ timeRangeLabel }}收入</div>
             <div class="stat-value">¥{{ formatMoney(revenueStats.total_revenue) }}</div>
             <div class="stat-growth" :class="revenueStats.growth >= 0 ? 'positive' : 'negative'">
               <el-icon v-if="revenueStats.growth >= 0"><ArrowUp /></el-icon>
@@ -55,7 +55,7 @@
             <el-icon class="stat-icon"><TrendCharts /></el-icon>
           </div>
           <div class="stat-info">
-            <div class="stat-label">今日净利润</div>
+            <div class="stat-label">{{ timeRangeLabel }}净利润</div>
             <div class="stat-value">¥{{ formatMoney(revenueStats.net_profit) }}</div>
             <div class="stat-extra">
               <span class="profit-rate">利润率: {{ formatPercent(profitRate) }}%</span>
@@ -70,7 +70,7 @@
             <el-icon class="stat-icon"><User /></el-icon>
           </div>
           <div class="stat-info">
-            <div class="stat-label">今日新增用户</div>
+            <div class="stat-label">{{ timeRangeLabel }}新增用户</div>
             <div class="stat-value">{{ formatNumber(userStats.new_users) }}</div>
             <div class="stat-extra">
               <span class="total-users">总用户: {{ formatNumber(userStats.total_users) }}</span>
@@ -345,6 +345,16 @@ let revenueChartInstance = null
 const profitRate = computed(() => {
   if (revenueStats.value.total_revenue === 0) return 0
   return (revenueStats.value.net_profit / revenueStats.value.total_revenue) * 100
+})
+
+// 时间范围标签
+const timeRangeLabel = computed(() => {
+  const labelMap = {
+    'today': '今日',
+    'week': '本周',
+    'month': '本月'
+  }
+  return labelMap[timeRange.value] || '今日'
 })
 
 // 加载数据
