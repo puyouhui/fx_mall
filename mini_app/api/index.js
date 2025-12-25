@@ -224,6 +224,81 @@ export const getMiniUserAddresses = (token) => {
 };
 
 /**
+ * 获取用户的发票抬头
+ * @param {string} token - 用户token
+ */
+export const getMiniUserInvoice = (token) => {
+  return get('/mini-app/users/invoice', {}, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
+ * 保存用户的发票抬头
+ * @param {string} token - 用户token
+ * @param {Object} invoiceData - 发票抬头数据
+ */
+export const saveMiniUserInvoice = (token, invoiceData) => {
+  return post('/mini-app/users/invoice', invoiceData, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
+ * 创建新品需求
+ * @param {string} token - 用户token
+ * @param {Object} requestData - 需求数据
+ */
+export const createProductRequest = (token, requestData) => {
+  return post('/mini-app/users/product-requests', requestData, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
+ * 获取用户的新品需求列表
+ * @param {string} token - 用户token
+ */
+export const getUserProductRequests = (token) => {
+  return get('/mini-app/users/product-requests', {}, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
+ * 创建供应商合作申请
+ * @param {string} token - 用户token（可选，未登录也可以提交）
+ * @param {Object} applicationData - 申请数据
+ */
+export const createSupplierApplication = (token, applicationData) => {
+  return post('/supplier-applications', applicationData, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
+ * 获取用户的供应商合作申请列表
+ * @param {string} token - 用户token
+ */
+export const getUserSupplierApplications = (token) => {
+  return get('/mini-app/users/supplier-applications', {}, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
  * 获取用户的默认地址
  * @param {string} token - 用户token
  */

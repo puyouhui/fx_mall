@@ -285,6 +285,9 @@ func GetMiniAppUserDetail(c *gin.Context) {
 	// 获取用户的所有地址
 	allAddresses, _ := model.GetAddressesByUserID(user.ID)
 
+	// 获取用户的发票抬头
+	invoice, _ := model.GetInvoiceByUserID(user.ID)
+
 	// 构建返回数据
 	responseData := map[string]interface{}{
 		"id":                user.ID,
@@ -301,12 +304,90 @@ func GetMiniAppUserDetail(c *gin.Context) {
 		"updated_at":        user.UpdatedAt,
 		"default_address":   defaultAddress, // 默认地址信息（保留兼容）
 		"addresses":         allAddresses,   // 所有地址列表
+		"invoice":           invoice,         // 发票抬头信息
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "获取成功",
 		"data":    responseData,
+	})
+}
+
+// SaveAdminInvoice 管理员保存发票抬头
+func SaveAdminInvoice(c *gin.Context) {
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供用户ID"})
+		return
+	}
+
+	var id int
+	_, err := fmt.Sscanf(idStr, "%d", &id)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "用户ID格式错误"})
+		return
+	}
+
+	user, err := model.GetMiniAppUserByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	var req struct {
+		InvoiceType    string `json:"invoice_type" binding:"required"`
+		Title          string `json:"title" binding:"required"`
+		TaxNumber      string `json:"tax_number"`
+		CompanyAddress string `json:"company_address"`
+		CompanyPhone   string `json:"company_phone"`
+		BankName       string `json:"bank_name"`
+		BankAccount    string `json:"bank_account"`
+		IsDefault      bool   `json:"is_default"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误: " + err.Error()})
+		return
+	}
+
+	// 验证必填字段
+	if req.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "发票抬头不能为空"})
+		return
+	}
+
+	// 如果是企业类型，纳税人识别号必填
+	if req.InvoiceType == "company" && req.TaxNumber == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "企业发票纳税人识别号不能为空"})
+		return
+	}
+
+	invoiceData := map[string]interface{}{
+		"invoice_type":    req.InvoiceType,
+		"title":           req.Title,
+		"tax_number":      req.TaxNumber,
+		"company_address": req.CompanyAddress,
+		"company_phone":   req.CompanyPhone,
+		"bank_name":       req.BankName,
+		"bank_account":    req.BankAccount,
+		"is_default":      req.IsDefault,
+	}
+
+	invoice, err := model.CreateOrUpdateInvoice(user.ID, invoiceData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "保存发票抬头失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "保存成功",
+		"data":    invoice,
 	})
 }
 
@@ -1276,6 +1357,109 @@ func GetMiniAppDefaultAddress(c *gin.Context) {
 		"code":    200,
 		"message": "获取成功",
 		"data":    address,
+	})
+}
+
+// GetMiniAppInvoice 获取用户的发票抬头
+func GetMiniAppInvoice(c *gin.Context) {
+	openID, exists := c.Get("openID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
+		return
+	}
+
+	uniqueID := openID.(string)
+	user, err := model.GetMiniAppUserByUniqueID(uniqueID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	invoice, err := model.GetInvoiceByUserID(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取发票抬头失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "获取成功",
+		"data":    invoice,
+	})
+}
+
+// SaveMiniAppInvoice 保存发票抬头
+func SaveMiniAppInvoice(c *gin.Context) {
+	openID, exists := c.Get("openID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
+		return
+	}
+
+	uniqueID := openID.(string)
+	user, err := model.GetMiniAppUserByUniqueID(uniqueID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	var req struct {
+		InvoiceType    string `json:"invoice_type" binding:"required"`
+		Title          string `json:"title" binding:"required"`
+		TaxNumber      string `json:"tax_number"`
+		CompanyAddress string `json:"company_address"`
+		CompanyPhone   string `json:"company_phone"`
+		BankName       string `json:"bank_name"`
+		BankAccount    string `json:"bank_account"`
+		IsDefault      bool   `json:"is_default"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误: " + err.Error()})
+		return
+	}
+
+	// 验证必填字段
+	if req.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "发票抬头不能为空"})
+		return
+	}
+
+	// 如果是企业类型，纳税人识别号必填
+	if req.InvoiceType == "company" && req.TaxNumber == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "企业发票纳税人识别号不能为空"})
+		return
+	}
+
+	invoiceData := map[string]interface{}{
+		"invoice_type":    req.InvoiceType,
+		"title":            req.Title,
+		"tax_number":       req.TaxNumber,
+		"company_address":  req.CompanyAddress,
+		"company_phone":    req.CompanyPhone,
+		"bank_name":        req.BankName,
+		"bank_account":     req.BankAccount,
+		"is_default":       req.IsDefault,
+	}
+
+	invoice, err := model.CreateOrUpdateInvoice(user.ID, invoiceData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "保存发票抬头失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "保存成功",
+		"data":    invoice,
 	})
 }
 

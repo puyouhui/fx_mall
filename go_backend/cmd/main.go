@@ -71,6 +71,10 @@ func main() {
 			miniAppProtectedGroup.POST("/addresses/geocode", api.GeocodeAddress)              // 地址解析（将地址文本转换为经纬度）
 			miniAppProtectedGroup.POST("/addresses/reverse-geocode", api.ReverseGeocode)      // 逆地理编码（将经纬度转换为地址）
 
+			// 发票抬头相关接口
+			miniAppProtectedGroup.GET("/invoice", api.GetMiniAppInvoice)   // 获取用户的发票抬头
+			miniAppProtectedGroup.POST("/invoice", api.SaveMiniAppInvoice) // 保存发票抬头
+
 			// 采购单接口
 			miniAppProtectedGroup.GET("/purchase-list", api.GetPurchaseListItems)
 			miniAppProtectedGroup.POST("/purchase-list", api.AddPurchaseListItem)
@@ -83,9 +87,9 @@ func main() {
 			miniAppProtectedGroup.GET("/frequent-products", api.GetFrequentProducts)
 
 			// 订单接口
-			miniAppProtectedGroup.POST("/orders", api.CreateOrderFromCart)   // 从当前采购单创建订单
-			miniAppProtectedGroup.GET("/orders", api.GetUserOrders)          // 获取用户订单列表
-			miniAppProtectedGroup.GET("/orders/:id", api.GetUserOrderDetail) // 获取订单详情
+			miniAppProtectedGroup.POST("/orders", api.CreateOrderFromCart)        // 从当前采购单创建订单
+			miniAppProtectedGroup.GET("/orders", api.GetUserOrders)               // 获取用户订单列表
+			miniAppProtectedGroup.GET("/orders/:id", api.GetUserOrderDetail)      // 获取订单详情
 			miniAppProtectedGroup.POST("/orders/:id/cancel", api.CancelUserOrder) // 取消订单
 
 			// 配送员位置接口（小程序端查看配送员位置）
@@ -94,7 +98,17 @@ func main() {
 			// 优惠券接口
 			miniAppProtectedGroup.GET("/coupons", api.GetUserCoupons)                // 获取用户的优惠券列表
 			miniAppProtectedGroup.GET("/coupons/available", api.GetAvailableCoupons) // 获取可用优惠券
+
+			// 新品需求接口
+			miniAppProtectedGroup.POST("/product-requests", api.CreateProductRequest)  // 创建新品需求
+			miniAppProtectedGroup.GET("/product-requests", api.GetUserProductRequests) // 获取用户的新品需求列表
+
+			// 供应商合作申请接口
+			miniAppProtectedGroup.GET("/supplier-applications", api.GetUserSupplierApplications) // 获取用户的申请列表
 		}
+
+		// 供应商合作申请接口（不需要登录也可以提交）
+		apiGroup.POST("/supplier-applications", api.CreateSupplierApplication) // 创建供应商合作申请
 
 		// 分类相关接口
 		apiGroup.GET("/products/category", api.GetProductsByCategory) // 根据分类ID获取该分类下的商品列表
@@ -183,6 +197,7 @@ func main() {
 				protectedGroup.GET("/mini-app/users", api.GetMiniAppUsers)                            // 查看小程序用户列表
 				protectedGroup.GET("/mini-app/users/:id/coupons", api.GetAdminUserCoupons)            // 管理员获取用户优惠券列表（必须在 /:id 之前）
 				protectedGroup.GET("/mini-app/users/:id", api.GetMiniAppUserDetail)                   // 查看小程序用户详情
+				protectedGroup.POST("/mini-app/users/:id/invoice", api.SaveAdminInvoice)              // 保存发票抬头
 				protectedGroup.PUT("/mini-app/users/:id", api.UpdateMiniAppUserByAdmin)               // 管理员更新小程序用户信息
 				protectedGroup.POST("/mini-app/users/:id/avatar", api.UploadMiniAppUserAvatarByAdmin) // 管理员上传用户头像
 				protectedGroup.GET("/mini-app/addresses/:id", api.GetAdminAddressByID)                // 管理员获取地址详情
@@ -235,6 +250,14 @@ func main() {
 				protectedGroup.POST("/sales-commission/reset-account", api.AdminResetAccountSalesCommissions)   // 重新计入销售分成（重置分成）
 				protectedGroup.PUT("/sales-commission/config", api.AdminUpdateSalesCommissionConfig)            // 更新销售员的分成配置
 
+				// 新品需求管理
+				protectedGroup.GET("/product-requests", api.GetAllProductRequests)                 // 获取所有新品需求列表
+				protectedGroup.PUT("/product-requests/:id/status", api.UpdateProductRequestStatus) // 更新新品需求状态
+
+				// 供应商合作申请管理
+				protectedGroup.GET("/supplier-applications", api.GetAllSupplierApplications)                 // 获取所有申请列表
+				protectedGroup.PUT("/supplier-applications/:id/status", api.UpdateSupplierApplicationStatus) // 更新申请状态
+
 				// 仪表盘统计
 				protectedGroup.GET("/dashboard/stats", api.GetDashboardStats) // 获取仪表盘统计数据
 
@@ -282,15 +305,15 @@ func main() {
 				supplierProtectedGroup.GET("/products/:id", api.GetSupplierProductDetail) // 供应商查看自己的商品详情
 				supplierProtectedGroup.GET("/orders", api.GetSupplierOrders)              // 供应商查看包含自己商品的订单列表
 				supplierProtectedGroup.GET("/orders/:id", api.GetSupplierOrderDetail)     // 供应商查看订单详情
-				
+
 				// 货物管理接口
-				supplierProtectedGroup.GET("/goods/today/stats", api.GetTodayGoodsStats)      // 获取今日货物统计
+				supplierProtectedGroup.GET("/goods/today/stats", api.GetTodayGoodsStats)     // 获取今日货物统计
 				supplierProtectedGroup.GET("/goods/today/pending", api.GetTodayPendingGoods) // 获取今日待备货货物列表
 				supplierProtectedGroup.GET("/goods/today/picked", api.GetTodayPickedGoods)   // 获取今日已取货货物列表
-				
+
 				// 历史记录接口
-				supplierProtectedGroup.GET("/history", api.GetHistoryByDate)        // 获取历史记录列表（按天）
-				supplierProtectedGroup.GET("/history/:date", api.GetHistoryDetail)  // 获取某天的历史详情
+				supplierProtectedGroup.GET("/history", api.GetHistoryByDate)       // 获取历史记录列表（按天）
+				supplierProtectedGroup.GET("/history/:date", api.GetHistoryDetail) // 获取某天的历史详情
 			}
 		}
 

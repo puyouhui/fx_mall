@@ -63,19 +63,27 @@
       class="detail-content" 
       v-if="orderDetail"
       :style="{ 
-        paddingTop: showMap ? '0' : '0',
+        paddingTop: showMap ? '0' : '2rpx',
         paddingBottom: showActionFooter ? '180rpx' : '80rpx'
       }"
     >
       <!-- 收货地址 -->
       <view class="section address-section" v-if="orderDetail.address">
         <view class="address-content">
-          <text class="address-name">{{ orderDetail.address.name }}</text>
-          <text class="address-contact">{{ orderDetail.address.contact }} {{ orderDetail.address.phone }}</text>
-          <text class="address-detail">{{ orderDetail.address.address }}</text>
+          <view class="address-main">
+            <view class="address-header">
+              <view class="address-title-row">
+                <text class="address-store">{{ orderDetail.address.name || '收货地址' }}</text>
+              </view>
+              <view class="address-contact-row">
+                <text class="address-contact">{{ orderDetail.address.contact }}</text>
+                <text class="address-phone">{{ orderDetail.address.phone }}</text>
+              </view>
+              <view class="address-detail">{{ orderDetail.address.address }}</view>
+            </view>
+          </view>
         </view>
       </view>
-
 
       <!-- 商品列表 -->
       <view class="section goods-section">
@@ -88,20 +96,31 @@
           >
             <image :src="item.image || defaultImage" class="goods-image" mode="aspectFill" />
             <view class="goods-info">
-              <text class="goods-name">{{ item.product_name }}</text>
-              <view class="goods-spec-group" v-if="item.spec_name">
-                <text class="goods-spec">{{ item.spec_name }}</text>
-                <text class="goods-qty">× {{ item.quantity }}</text>
+              <view class="goods-name-row">
+                <text class="goods-name">{{ item.product_name }}</text>
               </view>
-              <view class="goods-spec-group" v-else>
-                <text class="goods-qty">× {{ item.quantity }}</text>
-              </view>
+              <text class="goods-spec" v-if="item.spec_name">{{ item.spec_name }}</text>
               <view class="goods-bottom">
                 <text class="goods-price">¥{{ formatMoney(item.unit_price) }}</text>
+                <text class="goods-qty">× {{ item.quantity }}</text>
               </view>
             </view>
-            <view class="goods-subtotal">
-              <text>¥{{ formatMoney(item.subtotal) }}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 加急订单显示 -->
+      <view class="section urgent-section" v-if="orderDetail.order?.is_urgent">
+        <view class="urgent-container urgent-active">
+          <view class="urgent-left">
+            <view class="urgent-header">
+              <text class="urgent-title">加急订单</text>
+              <text class="urgent-tag">平台将为您加急配送</text>
+            </view>
+          </view>
+          <view class="urgent-right">
+            <view class="urgent-price-wrapper" v-if="orderDetail.order?.urgent_fee > 0">
+              <text class="urgent-price">¥{{ formatMoney(orderDetail.order?.urgent_fee) }}</text>
             </view>
           </view>
         </view>
@@ -111,24 +130,32 @@
       <view class="section amount-section">
         <view class="section-title">金额明细</view>
         <view class="amount-row">
-          <text>商品金额</text>
-          <text>¥{{ formatMoney(orderDetail.order?.goods_amount) }}</text>
+          <text class="amount-label">商品金额</text>
+          <text class="amount-value">¥{{ formatMoney(orderDetail.order?.goods_amount) }}</text>
         </view>
         <view class="amount-row">
-          <text>配送费</text>
-          <text>¥{{ formatMoney(orderDetail.order?.delivery_fee) }}</text>
+          <text class="amount-label">配送费</text>
+          <text class="amount-value">¥{{ formatMoney(orderDetail.order?.delivery_fee) }}</text>
         </view>
         <view class="amount-row" v-if="orderDetail.order?.points_discount > 0">
-          <text>积分抵扣</text>
-          <text class="discount">-¥{{ formatMoney(orderDetail.order?.points_discount) }}</text>
+          <text class="amount-label">积分抵扣</text>
+          <text class="amount-value discount-text">-¥{{ formatMoney(orderDetail.order?.points_discount) }}</text>
         </view>
         <view class="amount-row" v-if="orderDetail.order?.coupon_discount > 0">
-          <text>优惠券</text>
-          <text class="discount">-¥{{ formatMoney(orderDetail.order?.coupon_discount) }}</text>
+          <text class="amount-label">优惠券</text>
+          <text class="amount-value discount-text">-¥{{ formatMoney(orderDetail.order?.coupon_discount) }}</text>
         </view>
-        <view class="amount-row total">
-          <text>实付金额</text>
-          <text class="total-amount">¥{{ formatMoney(orderDetail.order?.total_amount) }}</text>
+        <view class="amount-row urgent-fee-row" v-if="orderDetail.order?.is_urgent && orderDetail.order?.urgent_fee > 0">
+          <view class="urgent-fee-label-wrapper">
+            <text class="amount-label urgent-fee-label">加急费用</text>
+            <text class="urgent-fee-tag">将优先为您配送</text>
+          </view>
+          <text class="amount-value urgent-fee-value">¥{{ formatMoney(orderDetail.order?.urgent_fee) }}</text>
+        </view>
+        <view class="amount-divider"></view>
+        <view class="amount-row total-row">
+          <text class="amount-label total-label">实付金额</text>
+          <text class="amount-value total-value">¥{{ formatMoney(orderDetail.order?.total_amount) }}</text>
         </view>
       </view>
 
@@ -149,9 +176,59 @@
           <text class="info-label">下单时间</text>
           <text class="info-value">{{ formatDate(orderDetail.order?.created_at) }}</text>
         </view>
-        <view class="info-row" v-if="orderDetail.order?.remark">
-          <text class="info-label">订单备注</text>
-          <text class="info-value">{{ orderDetail.order?.remark }}</text>
+      </view>
+
+      <!-- 订单备注 -->
+      <view class="section remark-section" v-if="orderDetail.order?.remark">
+        <view class="remark-header">
+          <text class="section-title">订单备注</text>
+        </view>
+        <view class="remark-content">
+          <text class="remark-text">{{ orderDetail.order?.remark }}</text>
+        </view>
+      </view>
+
+      <!-- 其他选项 -->
+      <view class="section options-section">
+        <view class="section-title">其他选项</view>
+        <view class="option-row" v-if="orderDetail.order?.out_of_stock_strategy">
+          <view class="option-text">
+            <text class="option-title">缺货处理</text>
+            <text class="option-desc">遇到缺货时的处理方式</text>
+          </view>
+          <view class="option-status">
+            <text class="option-status-value">{{ getOutOfStockStrategyText(orderDetail.order?.out_of_stock_strategy) }}</text>
+          </view>
+        </view>
+        <view class="option-row" v-if="orderDetail.order?.trust_receipt !== undefined">
+          <view class="option-text">
+            <text class="option-title">信任签收</text>
+            <text class="option-desc">配送电话联系不上时，允许放门口或指定位置</text>
+          </view>
+          <view class="option-status">
+            <text v-if="orderDetail.order?.trust_receipt" class="option-status-active">已开启</text>
+            <text v-else class="option-status-text">未开启</text>
+          </view>
+        </view>
+        <view class="option-row" v-if="orderDetail.order?.hide_price !== undefined">
+          <view class="option-text">
+            <text class="option-title">隐藏价格</text>
+            <text class="option-desc">选择后，小票中将不显示商品价格</text>
+          </view>
+          <view class="option-status">
+            <text v-if="orderDetail.order?.hide_price" class="option-status-active">已开启</text>
+            <text v-else class="option-status-text">未开启</text>
+          </view>
+        </view>
+        <view class="option-row" v-if="orderDetail.order?.require_phone_contact !== undefined">
+          <view class="option-text">
+            <text class="option-title">配送时电话联系</text>
+            <text class="option-desc">建议保持电话畅通，方便配送员联系</text>
+          </view>
+          <view class="option-status">
+            <text v-if="orderDetail.order?.require_phone_contact" class="option-status-active">已开启</text>
+            <text v-else class="option-status-text">未开启</text>
+          </view>
         </view>
       </view>
 
@@ -583,6 +660,14 @@ export default {
       if (amount === null || amount === undefined) return '0.00'
       return Number(amount).toFixed(2)
     },
+    getOutOfStockStrategyText(strategy) {
+      const strategyMap = {
+        'cancel_item': '缺货商品不要，其他正常发货',
+        'ship_available': '有货的先发，缺货的后续补发',
+        'contact_me': '缺货时联系我'
+      }
+      return strategyMap[strategy] || '缺货时联系我'
+    },
     // 取消订单
     async handleCancelOrder() {
       const orderNumber = this.orderDetail?.order?.order_number || ''
@@ -771,9 +856,9 @@ export default {
 .detail-content {
   width: 100%;
   box-sizing: border-box;
-  padding: 0 30rpx;
+  padding: 20rpx 24rpx;
   min-height: calc(100vh - var(--nav-height, 0px));
-  background: #fff;
+  background: #F5F6FA;
   margin-top: -148rpx;
   position: relative;
   z-index: 10;
@@ -841,19 +926,16 @@ export default {
 }
 
 .section {
-  background-color: transparent;
-  padding: 40rpx 0;
-  margin-bottom: 0;
+  background-color: #fff;
+  padding: 32rpx 28rpx;
+  margin-bottom: 20rpx;
+  border-radius: 20rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
   box-sizing: border-box;
-}
-
-.section:not(:last-child) {
-  border-bottom: 1rpx solid #f5f5f5;
 }
 
 .section:last-child {
   margin-bottom: 0;
-  padding-bottom: 40rpx;
 }
 
 .section-title {
@@ -865,62 +947,80 @@ export default {
   letter-spacing: 0.5rpx;
 }
 
+.address-section {
+  margin-top: 24rpx;
+}
+
 .address-content {
   display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-  padding: 0;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.address-section {
-  padding-top: 32rpx;
+.address-main {
+  flex: 1;
+  /* padding-right: 24rpx; */
 }
 
-.address-name {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #20253A;
+.address-header {
+  width: 100%;
+}
+
+.address-title-row {
   display: flex;
   align-items: center;
-  /* gap: 12rpx; */
-  /* margin-bottom: 12rpx; */
+  margin-bottom: 12rpx;
+}
+
+.address-store {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+  line-height: 1.4;
+}
+
+.address-contact-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8rpx;
 }
 
 .address-contact {
   font-size: 28rpx;
   color: #666;
-  font-weight: 400;
+  margin-right: 16rpx;
+  font-weight: 500;
+}
+
+.address-phone {
+  font-size: 28rpx;
+  color: #666;
 }
 
 .address-detail {
   font-size: 26rpx;
-  color: #999;
-  line-height: 1.6;
-  word-break: break-all;
+  color: #909399;
+  line-height: 1.5;
+  margin-top: 4rpx;
 }
 
 .goods-list {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 24rpx;
 }
 
 .goods-item {
   display: flex;
-  gap: 24rpx;
-  padding: 24rpx 0;
-  background: transparent;
-}
-
-.goods-item:not(:last-child) {
-  border-bottom: 1rpx solid #f5f5f5;
+  align-items: flex-start;
 }
 
 .goods-image {
   width: 140rpx;
   height: 140rpx;
-  border-radius: 12rpx;
-  background-color: #f5f5f5;
+  border-radius: 16rpx;
+  margin-right: 20rpx;
+  background-color: #F5F5F5;
   flex-shrink: 0;
 }
 
@@ -929,37 +1029,30 @@ export default {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-width: 0;
+  min-height: 140rpx;
+  padding-top: 4rpx;
+}
+
+.goods-name-row {
+  margin-bottom: 8rpx;
 }
 
 .goods-name {
   font-size: 28rpx;
-  color: #20253A;
-  margin-bottom: 12rpx;
+  color: #333;
   font-weight: 500;
-  line-height: 1.5;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.4;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-}
-
-.goods-spec-group {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-  flex-wrap: wrap;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .goods-spec {
   font-size: 24rpx;
-  color: #999;
-  padding: 4rpx 12rpx;
-  background-color: #f5f5f5;
-  border-radius: 6rpx;
-  display: inline-block;
+  color: #909399;
+  margin-bottom: 12rpx;
+  line-height: 1.4;
 }
 
 .goods-bottom {
@@ -970,82 +1063,198 @@ export default {
 }
 
 .goods-price {
-  font-size: 26rpx;
-  color: #ff4d4f;
-  font-weight: 500;
+  font-size: 30rpx;
+  color: #FF4D4F;
+  font-weight: 600;
 }
 
 .goods-qty {
-  font-size: 24rpx;
-  color: #999;
-  padding: 4rpx 10rpx;
-  border-radius: 6rpx;
-}
-
-.goods-subtotal {
-  display: flex;
-  align-items: center;
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #20253A;
-  min-width: 100rpx;
-  justify-content: flex-end;
+  font-size: 28rpx;
+  color: #666;
+  font-weight: 500;
 }
 
 .amount-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16rpx 0;
+  margin-bottom: 20rpx;
+  min-height: 44rpx;
+}
+
+.amount-label {
   font-size: 28rpx;
   color: #666;
-  position: relative;
+  font-weight: 400;
 }
 
-.amount-row:not(:last-child) {
-  border-bottom: 1rpx solid #f5f5f5;
-}
-
-.amount-row.total {
-  border-top: 1rpx solid #f5f5f5;
-  margin-top: 16rpx;
-  padding-top: 24rpx;
-  padding-bottom: 8rpx;
-  font-size: 30rpx;
-  font-weight: 600;
+.amount-value {
+  font-size: 28rpx;
   color: #333;
+  font-weight: 500;
+  text-align: right;
 }
 
-.amount-row.total::after {
-  display: none;
-}
-
-.discount {
+.amount-value.discount-text {
   color: #20CB6B;
+  font-weight: 500;
+}
+
+.amount-divider {
+  height: 1rpx;
+  background-color: #F0F0F0;
+  margin: 20rpx 0;
+}
+
+.amount-row.total-row {
+  margin-top: 8rpx;
+  margin-bottom: 0;
+  padding-top: 12rpx;
+}
+
+.total-label {
+  font-size: 32rpx;
+  color: #333;
   font-weight: 600;
 }
 
-.total-amount {
-  color: #ff4d4f;
+.total-value {
   font-size: 36rpx;
+  color: #FF4D4F;
+  font-weight: 600;
+}
+
+/* 加急订单模块样式 */
+.urgent-section {
+  margin-top: 0;
+}
+
+.urgent-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 12rpx;
+  transition: all 0.3s ease;
+}
+
+.urgent-container.urgent-active {
+  background-color: #E8F8F0;
+  padding: 20rpx;
+}
+
+.urgent-left {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.urgent-header {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.urgent-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #20CB6B;
+}
+
+.urgent-tag {
+  display: inline-block;
+  padding: 4rpx 12rpx;
+  color: #20CB6B;
+  font-size: 24rpx;
+  font-weight: 500;
+  border-radius: 12rpx;
+  background-color: #fff;
+}
+
+.urgent-right {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.urgent-price-wrapper {
+  display: flex;
+  align-items: baseline;
+  padding: 8rpx 16rpx;
+  border-radius: 8rpx;
+}
+
+.urgent-price {
+  font-size: 32rpx;
   font-weight: 700;
+  color: #20CB6B;
+  line-height: 1;
+}
+
+/* 加急费用突出显示 */
+.urgent-fee-row {
+  border-radius: 12rpx;
+  margin: 16rpx 0;
+}
+
+.urgent-fee-label-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.urgent-fee-tag {
+  display: inline-block;
+  padding: 4rpx 12rpx;
+  background-color: #E8F8F0;
+  color: #20CB6B;
+  font-size: 20rpx;
+  border-radius: 8rpx;
+  font-weight: 500;
+}
+
+.urgent-fee-value {
+  color: #20CB6B;
+  font-size: 30rpx;
+}
+
+/* 备注部分 */
+.remark-section {
+  margin-top: 0;
+}
+
+.remark-header {
+  margin-bottom: 20rpx;
+}
+
+.remark-content {
+  padding: 20rpx;
+  background-color: #F5F6FA;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  color: #333;
+  min-height: 80rpx;
+  line-height: 1.6;
+}
+
+.remark-text {
+  display: block;
+  word-break: break-all;
 }
 
 .info-row {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 16rpx 0;
-  font-size: 28rpx;
-  position: relative;
+  padding: 20rpx 0;
+  min-height: 44rpx;
 }
 
 .info-row:not(:last-child) {
-  border-bottom: 1rpx solid #f5f5f5;
+  border-bottom: 1rpx solid #F0F0F0;
 }
 
 .info-label {
-  color: #999;
+  color: #666;
   min-width: 160rpx;
   font-weight: 400;
   font-size: 28rpx;
@@ -1055,9 +1264,72 @@ export default {
   flex: 1;
   text-align: right;
   color: #333;
-  font-weight: 400;
+  font-weight: 500;
   word-break: break-all;
   font-size: 28rpx;
+}
+
+/* 其他选项部分 */
+.options-section {
+  margin-top: 0;
+}
+
+.options-section .option-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24rpx 0;
+  min-height: 80rpx;
+}
+
+.options-section .option-row:not(:last-child) {
+  border-bottom: 1rpx solid #F0F0F0;
+}
+
+.option-text {
+  flex: 1;
+  padding-right: 24rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.option-title {
+  font-size: 30rpx;
+  color: #333;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.option-desc {
+  font-size: 24rpx;
+  color: #909399;
+  line-height: 1.5;
+}
+
+.option-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.option-status-text {
+  font-size: 26rpx;
+  color: #909399;
+}
+
+.option-status-active {
+  font-size: 26rpx;
+  color: #20CB6B;
+}
+
+.option-status-value {
+  font-size: 26rpx;
+  color: #333;
+  text-align: right;
+  max-width: 300rpx;
+  word-break: break-all;
 }
 
 .status-yellow {

@@ -154,6 +154,18 @@
             </el-icon>
             <span>富文本内容</span>
           </el-menu-item>
+          <el-menu-item index="/product-requests">
+            <el-icon>
+              <Document />
+            </el-icon>
+            <span>新品需求管理</span>
+          </el-menu-item>
+          <el-menu-item index="/supplier-applications">
+            <el-icon>
+              <Document />
+            </el-icon>
+            <span>供应商合作申请</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <!-- 供应商管理 -->

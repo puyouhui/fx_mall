@@ -197,27 +197,25 @@
       <view class="confirm-modal-content" @click.stop>
         <view class="confirm-modal-header">
           <view class="confirm-icon-wrapper">
-            <uni-icons type="info" size="48" color="#20CB6B"></uni-icons>
+            <uni-icons type="info" size="48" color="rgb(255, 255, 255, 0.8)"></uni-icons>
           </view>
           <text class="confirm-modal-title">确认提交订单</text>
         </view>
         <view class="confirm-modal-body">
-          <view class="confirm-tip-section">
-            <text class="confirm-tip-text">提交后如果需要修改订单，请联系销售员修改，无法自行修改</text>
-          </view>
+          <text class="confirm-tip-text">请核对商品信息和数量</text>
+          <text class="confirm-tip-text">修改订单请联系客服</text>
           <view class="confirm-order-info">
-            <text class="confirm-order-text">是否确认提交</text>
             <view class="confirm-goods-info">
               <text class="confirm-goods-name">{{ firstGoodsName }}</text>
               <text class="confirm-goods-count" v-if="totalQuantity > 1">等{{ totalQuantity }}件商品</text>
               <text class="confirm-goods-count" v-else-if="totalQuantity === 1">1件商品</text>
             </view>
-            <text class="confirm-order-text">以免造成多收配送费</text>
+            <!-- <text class="confirm-order-text">以免造成多收配送费！</text> -->
           </view>
         </view>
         <view class="confirm-modal-footer">
           <view class="confirm-modal-btn cancel-btn" @click="handleCancelConfirm">
-            <text class="confirm-modal-btn-text">取消</text>
+            <text class="confirm-modal-btn-text">再看看</text>
           </view>
           <view class="confirm-modal-btn confirm-btn" @click="handleConfirmSubmit" :class="{ 'loading': submitting }">
             <text class="confirm-modal-btn-text" v-if="!submitting">确认提交</text>
@@ -500,7 +498,7 @@ export default {
           const orderData = res.data?.order || {}
           const orderId = orderData.id || orderData.order_id
           const orderNumber = orderData.order_number || ''
-          const successMsg = orderNumber ? `下单成功！订单编号：${orderNumber}` : '下单成功'
+          const successMsg = orderNumber ? `下单成功` : '下单成功'
           uni.showToast({ 
             title: successMsg, 
             icon: 'success',
@@ -1069,7 +1067,7 @@ export default {
   border-radius: 24rpx;
   overflow: hidden;
   box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.12);
-  animation: slideUp 0.3s ease;
+  transform: translateY(-80rpx);
 }
 
 @keyframes slideUp {
@@ -1109,24 +1107,16 @@ export default {
 }
 
 .confirm-modal-body {
-  padding: 40rpx 50rpx;
+  padding: 0 50rpx 40rpx 50rpx;
   text-align: center;
-}
-
-.confirm-tip-section {
-  padding: 24rpx 20rpx;
-  background-color: #FFF9E6;
-  border-radius: 12rpx;
-  border-left: 4rpx solid #FFD700;
-  margin-bottom: 32rpx;
 }
 
 .confirm-tip-text {
   font-size: 28rpx;
   color: #666;
-  line-height: 1.8;
   display: block;
-  text-align: left;
+  line-height: 1.6;
+  margin-bottom: 20rpx;
 }
 
 .confirm-order-info {
@@ -1150,8 +1140,6 @@ export default {
   flex-wrap: wrap;
   gap: 8rpx;
   padding: 20rpx 32rpx;
-  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
-  border: 2rpx solid #20CB6B;
   border-radius: 16rpx;
   margin: 12rpx 0;
 }

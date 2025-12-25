@@ -1490,6 +1490,89 @@ func InitDB() error {
 			log.Println("富文本内容表初始化成功")
 		}
 
+		// 创建发票抬头表
+		createInvoicesTableSQL := `
+		CREATE TABLE IF NOT EXISTS mini_app_invoices (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    user_id INT NOT NULL COMMENT '用户ID',
+		    invoice_type VARCHAR(20) NOT NULL DEFAULT 'personal' COMMENT '发票类型：personal(个人), company(企业)',
+		    title VARCHAR(200) NOT NULL COMMENT '发票抬头',
+		    tax_number VARCHAR(50) DEFAULT '' COMMENT '纳税人识别号（企业必填）',
+		    company_address VARCHAR(255) DEFAULT '' COMMENT '公司地址（企业可选）',
+		    company_phone VARCHAR(50) DEFAULT '' COMMENT '公司电话（企业可选）',
+		    bank_name VARCHAR(100) DEFAULT '' COMMENT '开户银行（企业可选）',
+		    bank_account VARCHAR(100) DEFAULT '' COMMENT '银行账号（企业可选）',
+		    is_default TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    INDEX idx_user_id (user_id),
+		    INDEX idx_is_default (is_default),
+		    FOREIGN KEY (user_id) REFERENCES mini_app_users(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发票抬头表';
+		`
+
+		if _, err = DB.Exec(createInvoicesTableSQL); err != nil {
+			log.Printf("创建mini_app_invoices表失败: %v", err)
+		} else {
+			log.Println("发票抬头表初始化成功")
+		}
+
+		// 创建新品需求表
+		createProductRequestsTableSQL := `
+		CREATE TABLE IF NOT EXISTS product_requests (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    user_id INT NOT NULL COMMENT '用户ID',
+		    product_name VARCHAR(255) NOT NULL COMMENT '需求产品名称',
+		    brand VARCHAR(100) DEFAULT '' COMMENT '品牌',
+		    monthly_quantity INT DEFAULT 0 COMMENT '月消耗数量',
+		    description TEXT COMMENT '需求说明',
+		    status ENUM('pending', 'processing', 'completed', 'rejected') NOT NULL DEFAULT 'pending' COMMENT '状态：pending-待处理，processing-处理中，completed-已完成，rejected-已拒绝',
+		    admin_remark TEXT COMMENT '管理员备注',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    INDEX idx_user_id (user_id),
+		    INDEX idx_status (status),
+		    INDEX idx_created_at (created_at),
+		    FOREIGN KEY (user_id) REFERENCES mini_app_users(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='新品需求表';
+		`
+
+		if _, err = DB.Exec(createProductRequestsTableSQL); err != nil {
+			log.Printf("创建product_requests表失败: %v", err)
+		} else {
+			log.Println("新品需求表初始化成功")
+		}
+
+		// 创建供应商合作申请表
+		createSupplierApplicationsTableSQL := `
+		CREATE TABLE IF NOT EXISTS supplier_applications (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    user_id INT COMMENT '用户ID（如果已登录）',
+		    company_name VARCHAR(255) NOT NULL COMMENT '公司名称',
+		    contact_name VARCHAR(100) NOT NULL COMMENT '联系人',
+		    contact_phone VARCHAR(20) NOT NULL COMMENT '联系电话',
+		    email VARCHAR(100) DEFAULT '' COMMENT '邮箱',
+		    address VARCHAR(500) DEFAULT '' COMMENT '公司地址',
+		    main_category VARCHAR(100) NOT NULL COMMENT '主营类目',
+		    company_intro TEXT COMMENT '公司简介',
+		    cooperation_intent TEXT COMMENT '合作意向说明',
+		    status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending' COMMENT '状态：pending-待审核，approved-已通过，rejected-已拒绝',
+		    admin_remark TEXT COMMENT '管理员备注',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    INDEX idx_user_id (user_id),
+		    INDEX idx_status (status),
+		    INDEX idx_created_at (created_at),
+		    FOREIGN KEY (user_id) REFERENCES mini_app_users(id) ON DELETE SET NULL
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='供应商合作申请表';
+		`
+
+		if _, err = DB.Exec(createSupplierApplicationsTableSQL); err != nil {
+			log.Printf("创建supplier_applications表失败: %v", err)
+		} else {
+			log.Println("供应商合作申请表初始化成功")
+		}
+
 		log.Println("所有表创建成功")
 	})
 

@@ -168,7 +168,7 @@ export default {
       functions: [
         { name: '地址管理', icon: 'location', iconPath: '/static/icon/address.png', path: '/pages/address/address', color: '#20CB6B' },
         // { name: '我的账单', icon: 'wallet', iconPath: '/static/icon/bills.png', path: '/pages/bill/bill', color: '#20CB6B' },
-        { name: '发票管理', icon: 'paperplane', iconPath: '/static/icon/invoice.png', path: '/pages/invoice/invoice', color: '#20CB6B' },
+        { name: '发票抬头', icon: 'paperplane', iconPath: '/static/icon/invoice.png', path: '/pages/invoice/invoice', color: '#20CB6B' },
         { name: '新品需求', icon: 'star', iconPath: '/static/icon/new.png', path: '/pages/product-request/product-request', color: '#20CB6B' },
         { name: '客服与帮助', icon: 'chatbubble', iconPath: '/static/icon/customer_service.png', path: '/pages/customer-service/customer-service', color: '#20CB6B' },
         { name: '系统设置', icon: 'gear', iconPath: '/static/icon/set.png', path: '/pages/settings/settings', color: '#20CB6B' },
@@ -449,6 +449,10 @@ export default {
     
     // 跳转到客服页面
     goToCustomerService() {
+      if (!this.isLoggedIn) {
+        this.goToLogin();
+        return;
+      }
       uni.navigateTo({
         url: '/pages/customer-service/customer-service'
       });
@@ -597,7 +601,16 @@ export default {
     
     // 处理功能点击
     handleFunctionClick(func) {
-      if (!this.isLoggedIn && func.requireLogin) {
+      // 关于我们不需要登录
+      if (func.path === '/pages/about-us/about-us') {
+        uni.navigateTo({
+          url: func.path
+        });
+        return;
+      }
+      
+      // 其他功能都需要登录
+      if (!this.isLoggedIn) {
         this.goToLogin();
         return;
       }

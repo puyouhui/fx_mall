@@ -114,173 +114,227 @@
       >
         <div v-loading="detailLoading" class="user-detail">
           <div v-if="userDetail" class="detail-content">
-            <!-- 基本信息（包含头像） -->
-            <div class="detail-section">
-              <div class="section-title">基本信息</div>
-              <div class="section-content">
-                <div class="basic-info-wrapper">
-                  <!-- 头像 -->
-                  <div class="avatar-container">
-                    <el-image
-                      v-if="userDetail.avatar"
-                      :src="userDetail.avatar"
-                      class="avatar-image-small"
-                      fit="cover"
-                      :preview-src-list="[userDetail.avatar]"
-                    />
-                    <div v-else class="no-avatar-small">
-                      <el-icon :size="20"><Picture /></el-icon>
+            <el-tabs v-model="activeTab" class="user-detail-tabs">
+              <!-- 基本信息 -->
+              <el-tab-pane label="基本信息" name="basic">
+                <div class="tab-content">
+                  <div class="basic-info-wrapper">
+                    <!-- 头像 -->
+                    <div class="avatar-container">
+                      <el-image
+                        v-if="userDetail.avatar"
+                        :src="userDetail.avatar"
+                        class="avatar-image-small"
+                        fit="cover"
+                        :preview-src-list="[userDetail.avatar]"
+                      />
+                      <div v-else class="no-avatar-small">
+                        <el-icon :size="20"><Picture /></el-icon>
+                      </div>
+                    </div>
+                    <!-- 信息列表 -->
+                    <div class="info-list">
+                      <el-descriptions :column="2" border class="custom-descriptions">
+                        <el-descriptions-item label="用户ID" label-class-name="desc-label">
+                          <span class="desc-value">{{ userDetail.id }}</span>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="用户编号" label-class-name="desc-label">
+                          <span v-if="userDetail.user_code" class="desc-value user-code-text">用户{{ userDetail.user_code }}</span>
+                          <span v-else class="desc-value">-</span>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="用户姓名" label-class-name="desc-label">
+                          <span class="desc-value">{{ userDetail.name || '-' }}</span>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="唯一ID" label-class-name="desc-label">
+                          <span class="desc-value unique-id">{{ userDetail.unique_id }}</span>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="手机号" label-class-name="desc-label">
+                          <span class="desc-value phone-number">{{ userDetail.phone || '-' }}</span>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="用户类型" label-class-name="desc-label">
+                          <el-tag 
+                            :type="userDetail.user_type === 'wholesale' ? 'warning' : (userDetail.user_type === 'retail' ? 'success' : 'info')"
+                            class="user-type-tag"
+                          >
+                            {{ formatUserType(userDetail.user_type) }}
+                          </el-tag>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="资料完善" label-class-name="desc-label">
+                          <el-tag 
+                            :type="userDetail.profile_completed ? 'success' : 'info'"
+                            class="profile-tag"
+                          >
+                            {{ userDetail.profile_completed ? '已完善' : '未完善' }}
+                          </el-tag>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="店铺类型" label-class-name="desc-label">
+                          <span class="desc-value">{{ userDetail.store_type || '-' }}</span>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="销售员代码" label-class-name="desc-label">
+                          <span class="desc-value">{{ userDetail.sales_code || '-' }}</span>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="首次登录时间" label-class-name="desc-label">
+                          <span class="desc-value time-text">{{ formatDate(userDetail.created_at) }}</span>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="最近更新时间" label-class-name="desc-label">
+                          <span class="desc-value time-text">{{ formatDate(userDetail.updated_at) }}</span>
+                        </el-descriptions-item>
+                      </el-descriptions>
                     </div>
                   </div>
-                  <!-- 信息列表 -->
-                  <div class="info-list">
-                    <el-descriptions :column="2" border class="custom-descriptions">
-                      <el-descriptions-item label="用户ID" label-class-name="desc-label">
-                        <span class="desc-value">{{ userDetail.id }}</span>
-                      </el-descriptions-item>
-                      <el-descriptions-item label="用户编号" label-class-name="desc-label">
-                        <span v-if="userDetail.user_code" class="desc-value user-code-text">用户{{ userDetail.user_code }}</span>
-                        <span v-else class="desc-value">-</span>
-                      </el-descriptions-item>
-                      <el-descriptions-item label="用户姓名" label-class-name="desc-label">
-                        <span class="desc-value">{{ userDetail.name || '-' }}</span>
-                      </el-descriptions-item>
-                      <el-descriptions-item label="唯一ID" label-class-name="desc-label">
-                        <span class="desc-value unique-id">{{ userDetail.unique_id }}</span>
-                      </el-descriptions-item>
-                      <el-descriptions-item label="手机号" label-class-name="desc-label">
-                        <span class="desc-value phone-number">{{ userDetail.phone || '-' }}</span>
-                      </el-descriptions-item>
-                      <el-descriptions-item label="用户类型" label-class-name="desc-label">
-                        <el-tag 
-                          :type="userDetail.user_type === 'wholesale' ? 'warning' : (userDetail.user_type === 'retail' ? 'success' : 'info')"
-                          class="user-type-tag"
-                        >
-                          {{ formatUserType(userDetail.user_type) }}
-                        </el-tag>
-                      </el-descriptions-item>
-                      <el-descriptions-item label="资料完善" label-class-name="desc-label">
-                        <el-tag 
-                          :type="userDetail.profile_completed ? 'success' : 'info'"
-                          class="profile-tag"
-                        >
-                          {{ userDetail.profile_completed ? '已完善' : '未完善' }}
-                        </el-tag>
-                      </el-descriptions-item>
-                    </el-descriptions>
-                  </div>
                 </div>
-              </div>
-            </div>
+              </el-tab-pane>
 
-            <!-- 地址列表 -->
-            <div class="detail-section">
-              <div class="section-title">
-                <span>收货地址</span>
-                <span class="address-count" v-if="userDetail.addresses && userDetail.addresses.length > 0">
-                  (共{{ userDetail.addresses.length }}个)
-                </span>
-              </div>
-              <div class="section-content">
-                <div v-if="userDetail.addresses && userDetail.addresses.length > 0" class="addresses-list">
-                  <div 
-                    v-for="address in userDetail.addresses" 
-                    :key="address.id" 
-                    class="address-item"
-                    :class="{ 'is-default': address.is_default }"
-                  >
-                    <div class="address-header">
-                      <el-tag v-if="address.is_default" type="success" size="small">默认地址</el-tag>
-                      <span style="margin-left: auto;"></span>
-                      <el-button 
-                        type="primary" 
-                        link 
-                        size="small" 
-                        @click="handleEditAddress(address)"
+              <!-- 收货地址 -->
+              <el-tab-pane label="收货地址" name="addresses">
+                <div class="tab-content">
+                  <div class="section-title">
+                    <span>收货地址</span>
+                    <span class="address-count" v-if="userDetail.addresses && userDetail.addresses.length > 0">
+                      (共{{ userDetail.addresses.length }}个)
+                    </span>
+                  </div>
+                  <div class="section-content">
+                    <div v-if="userDetail.addresses && userDetail.addresses.length > 0" class="addresses-list">
+                      <div 
+                        v-for="address in userDetail.addresses" 
+                        :key="address.id" 
+                        class="address-item"
+                        :class="{ 'is-default': address.is_default }"
                       >
-                        编辑
-                      </el-button>
-                      <el-button
-                        type="danger"
-                        link
-                        size="small"
-                        @click="handleDeleteAddress(address)"
-                      >
-                        删除
-                      </el-button>
+                        <div class="address-header">
+                          <el-tag v-if="address.is_default" type="success" size="small">默认地址</el-tag>
+                          <span style="margin-left: auto;"></span>
+                          <el-button 
+                            type="primary" 
+                            link 
+                            size="small" 
+                            @click="handleEditAddress(address)"
+                          >
+                            编辑
+                          </el-button>
+                          <el-button
+                            type="danger"
+                            link
+                            size="small"
+                            @click="handleDeleteAddress(address)"
+                          >
+                            删除
+                          </el-button>
+                        </div>
+                        <el-descriptions :column="2" border class="address-descriptions">
+                          <el-descriptions-item label="地址名称" label-class-name="desc-label">
+                            <span class="desc-value">{{ address.name || '-' }}</span>
+                          </el-descriptions-item>
+                          <el-descriptions-item label="联系人" label-class-name="desc-label">
+                            <span class="desc-value">{{ address.contact || '-' }}</span>
+                          </el-descriptions-item>
+                          <el-descriptions-item label="手机号" label-class-name="desc-label">
+                            <span class="desc-value phone-number">{{ address.phone || '-' }}</span>
+                          </el-descriptions-item>
+                          <el-descriptions-item label="店铺类型" label-class-name="desc-label">
+                            <span class="desc-value">{{ address.store_type || '-' }}</span>
+                          </el-descriptions-item>
+                          <el-descriptions-item label="详细地址" label-class-name="desc-label" :span="2">
+                            <span class="desc-value address-text">{{ address.address || '-' }}</span>
+                          </el-descriptions-item>
+                          <el-descriptions-item label="经纬度" label-class-name="desc-label">
+                            <span v-if="address.latitude && address.longitude" class="desc-value coordinates">
+                              {{ address.latitude }}, {{ address.longitude }}
+                            </span>
+                            <span v-else class="desc-value">-</span>
+                          </el-descriptions-item>
+                          <el-descriptions-item label="门头照片" label-class-name="desc-label" v-if="address.avatar" :span="2">
+                            <el-image
+                              :src="address.avatar"
+                              class="address-avatar-image"
+                              fit="cover"
+                              :preview-src-list="[address.avatar]"
+                            />
+                          </el-descriptions-item>
+                        </el-descriptions>
+                      </div>
                     </div>
-                    <el-descriptions :column="2" border class="address-descriptions">
-                      <el-descriptions-item label="地址名称" label-class-name="desc-label">
-                        <span class="desc-value">{{ address.name || '-' }}</span>
-                      </el-descriptions-item>
-                      <el-descriptions-item label="联系人" label-class-name="desc-label">
-                        <span class="desc-value">{{ address.contact || '-' }}</span>
-                      </el-descriptions-item>
-                      <el-descriptions-item label="手机号" label-class-name="desc-label">
-                        <span class="desc-value phone-number">{{ address.phone || '-' }}</span>
-                      </el-descriptions-item>
-                      <el-descriptions-item label="店铺类型" label-class-name="desc-label">
-                        <span class="desc-value">{{ address.store_type || '-' }}</span>
-                      </el-descriptions-item>
-                      <el-descriptions-item label="详细地址" label-class-name="desc-label" :span="2">
-                        <span class="desc-value address-text">{{ address.address || '-' }}</span>
-                      </el-descriptions-item>
-                      <el-descriptions-item label="经纬度" label-class-name="desc-label">
-                        <span v-if="address.latitude && address.longitude" class="desc-value coordinates">
-                          {{ address.latitude }}, {{ address.longitude }}
-                        </span>
-                        <span v-else class="desc-value">-</span>
-                      </el-descriptions-item>
-                      <el-descriptions-item label="门头照片" label-class-name="desc-label" v-if="address.avatar" :span="2">
-                        <el-image
-                          :src="address.avatar"
-                          class="address-avatar-image"
-                          fit="cover"
-                          :preview-src-list="[address.avatar]"
-                        />
-                      </el-descriptions-item>
-                    </el-descriptions>
+                    <el-empty v-else description="暂无地址" :image-size="80" />
                   </div>
                 </div>
-                <el-empty v-else description="暂无地址" :image-size="80" />
-              </div>
-            </div>
+              </el-tab-pane>
 
-            <!-- 店铺信息 -->
-            <div class="detail-section">
-              <div class="section-title">店铺信息</div>
-              <div class="section-content">
-                <el-descriptions :column="2" border class="custom-descriptions">
-                  <el-descriptions-item label="店铺类型" label-class-name="desc-label">
-                    <span class="desc-value">{{ userDetail.store_type || '-' }}</span>
-                  </el-descriptions-item>
-                  <el-descriptions-item label="销售员代码" label-class-name="desc-label">
-                    <span class="desc-value">{{ userDetail.sales_code || '-' }}</span>
-                  </el-descriptions-item>
-                </el-descriptions>
-              </div>
-            </div>
+              <!-- 发票信息 -->
+              <el-tab-pane label="发票信息" name="invoice">
+                <div class="tab-content" v-if="invoiceForm">
+                  <el-form :model="invoiceForm" label-width="140px" class="invoice-form">
+                    <el-row :gutter="20">
+                      <el-col :span="12">
+                        <el-form-item label="发票类型">
+                          <el-radio-group v-model="invoiceForm.invoice_type">
+                            <el-radio label="company">企业</el-radio>
+                            <el-radio label="personal">个人</el-radio>
+                          </el-radio-group>
+                        </el-form-item>
+                      </el-col>
+                      <el-col :span="12">
+                        <el-form-item label="发票抬头" required>
+                          <el-input v-model="invoiceForm.title" placeholder="请输入发票抬头" />
+                        </el-form-item>
+                      </el-col>
+                    </el-row>
+                    <el-row :gutter="20" v-if="invoiceForm && invoiceForm.invoice_type === 'company'">
+                      <el-col :span="12">
+                        <el-form-item label="纳税人识别号" required>
+                          <el-input v-model="invoiceForm.tax_number" placeholder="请输入纳税人识别号" />
+                        </el-form-item>
+                      </el-col>
+                      <el-col :span="12">
+                        <el-form-item label="公司地址">
+                          <el-input v-model="invoiceForm.company_address" placeholder="请输入公司地址" />
+                        </el-form-item>
+                      </el-col>
+                    </el-row>
+                    <el-row :gutter="20" v-if="invoiceForm && invoiceForm.invoice_type === 'company'">
+                      <el-col :span="12">
+                        <el-form-item label="公司电话">
+                          <el-input v-model="invoiceForm.company_phone" placeholder="请输入公司电话" />
+                        </el-form-item>
+                      </el-col>
+                      <el-col :span="12">
+                        <el-form-item label="开户银行">
+                          <el-input v-model="invoiceForm.bank_name" placeholder="请输入开户银行" />
+                        </el-form-item>
+                      </el-col>
+                    </el-row>
+                    <el-row :gutter="20" v-if="invoiceForm && invoiceForm.invoice_type === 'company'">
+                      <el-col :span="12">
+                        <el-form-item label="银行账号">
+                          <el-input v-model="invoiceForm.bank_account" placeholder="请输入银行账号" />
+                        </el-form-item>
+                      </el-col>
+                    </el-row>
+                  </el-form>
+                </div>
+              </el-tab-pane>
 
-            <!-- 时间信息 -->
-            <div class="detail-section">
-              <div class="section-title">时间信息</div>
-              <div class="section-content">
-                <el-descriptions :column="2" border class="custom-descriptions">
-                  <el-descriptions-item label="首次登录时间" label-class-name="desc-label">
-                    <span class="desc-value time-text">{{ formatDate(userDetail.created_at) }}</span>
-                  </el-descriptions-item>
-                  <el-descriptions-item label="最近更新时间" label-class-name="desc-label">
-                    <span class="desc-value time-text">{{ formatDate(userDetail.updated_at) }}</span>
-                  </el-descriptions-item>
-                </el-descriptions>
-              </div>
-            </div>
+            </el-tabs>
           </div>
         </div>
         <template #footer>
           <div class="dialog-footer">
             <el-button @click="detailDialogVisible = false">关闭</el-button>
-            <el-button type="primary" @click="handleEdit">编辑</el-button>
+            <el-button 
+              v-if="activeTab === 'invoice'" 
+              type="primary" 
+              :loading="invoiceSaving" 
+              @click="handleSaveInvoice"
+            >
+              保存发票
+            </el-button>
+            <el-button 
+              v-if="activeTab === 'basic'" 
+              type="primary" 
+              @click="handleEdit"
+            >
+              编辑
+            </el-button>
           </div>
         </template>
       </el-dialog>
@@ -707,7 +761,7 @@
 import { reactive, ref, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Picture, Plus } from '@element-plus/icons-vue'
-import { getMiniUsers, getMiniUserDetail, updateMiniUser, getAdminAddressDetail, updateAdminAddress, deleteAdminAddress, getSalesEmployees, uploadUserAvatar, getUserCoupons, geocodeAddress, reverseGeocode } from '../api/miniUsers'
+import { getMiniUsers, getMiniUserDetail, updateMiniUser, getAdminAddressDetail, updateAdminAddress, deleteAdminAddress, getSalesEmployees, uploadUserAvatar, getUserCoupons, geocodeAddress, reverseGeocode, saveInvoice } from '../api/miniUsers'
 import { getMapSettings } from '../api/settings'
 import { getCoupons, issueCouponToUser } from '../api/coupons'
 
@@ -827,6 +881,21 @@ let addressPickerMap = null
 let addressPickerMarker = null
 let addressPickerGeocoder = null
 
+// 发票信息相关
+const invoiceForm = ref({
+  invoice_type: 'company',
+  title: '',
+  tax_number: '',
+  company_address: '',
+  company_phone: '',
+  bank_name: '',
+  bank_account: ''
+})
+const invoiceSaving = ref(false)
+
+// Tab 切换
+const activeTab = ref('basic')
+
 const addressEditFormRules = {
   name: [
     { required: true, message: '请输入地址名称', trigger: 'blur' }
@@ -899,11 +968,35 @@ const handleViewDetail = async (id) => {
   detailDialogVisible.value = true
   detailLoading.value = true
   userDetail.value = null
+  activeTab.value = 'basic' // 重置到第一个 tab
+  
+  // 立即初始化发票表单，避免模板渲染时出错
+  invoiceForm.value = {
+    invoice_type: 'company',
+    title: '',
+    tax_number: '',
+    company_address: '',
+    company_phone: '',
+    bank_name: '',
+    bank_account: ''
+  }
   
   try {
     const res = await getMiniUserDetail(id)
     if (res.code === 200) {
       userDetail.value = res.data
+      // 初始化发票表单
+      if (res.data && res.data.invoice) {
+        invoiceForm.value = {
+          invoice_type: res.data.invoice.invoice_type || 'company',
+          title: res.data.invoice.title || '',
+          tax_number: res.data.invoice.tax_number || '',
+          company_address: res.data.invoice.company_address || '',
+          company_phone: res.data.invoice.company_phone || '',
+          bank_name: res.data.invoice.bank_name || '',
+          bank_account: res.data.invoice.bank_account || ''
+        }
+      }
     } else {
       ElMessage.error(res.message || '获取用户详情失败')
       detailDialogVisible.value = false
@@ -914,6 +1007,50 @@ const handleViewDetail = async (id) => {
     detailDialogVisible.value = false
   } finally {
     detailLoading.value = false
+  }
+}
+
+const handleSaveInvoice = async () => {
+  if (!userDetail.value || !invoiceForm.value) return
+  
+  // 验证必填字段
+  if (!invoiceForm.value.title || invoiceForm.value.title.trim() === '') {
+    ElMessage.warning('请输入发票抬头')
+    return
+  }
+  
+  if (invoiceForm.value.invoice_type === 'company' && (!invoiceForm.value.tax_number || invoiceForm.value.tax_number.trim() === '')) {
+    ElMessage.warning('企业发票纳税人识别号不能为空')
+    return
+  }
+  
+  invoiceSaving.value = true
+  try {
+    const res = await saveInvoice(userDetail.value.id, {
+      invoice_type: invoiceForm.value.invoice_type,
+      title: invoiceForm.value.title.trim(),
+      tax_number: invoiceForm.value.tax_number.trim(),
+      company_address: invoiceForm.value.company_address.trim(),
+      company_phone: invoiceForm.value.company_phone.trim(),
+      bank_name: invoiceForm.value.bank_name.trim(),
+      bank_account: invoiceForm.value.bank_account.trim(),
+      is_default: true
+    })
+    
+    if (res.code === 200) {
+      ElMessage.success('保存成功')
+      // 更新用户详情中的发票信息
+      if (userDetail.value) {
+        userDetail.value.invoice = res.data
+      }
+    } else {
+      ElMessage.error(res.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('保存发票失败:', error)
+    ElMessage.error('保存失败，请稍后再试')
+  } finally {
+    invoiceSaving.value = false
   }
 }
 
@@ -2077,6 +2214,20 @@ onMounted(() => {
   color: #303133;
 }
 
+/* 发票表单样式 */
+.invoice-form {
+  padding: 20px 0;
+}
+
+.invoice-form :deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+
+.invoice-form :deep(.el-form-item__label) {
+  font-weight: 500;
+  color: #606266;
+}
+
 /* 编辑地址对话框样式优化 */
 .address-edit-dialog :deep(.el-dialog__body) {
   padding: 24px;
@@ -2164,6 +2315,34 @@ onMounted(() => {
   font-size: 12px;
   color: #909399;
   line-height: 1.5;
+}
+
+/* Tab 样式 */
+.user-detail-tabs {
+  margin-top: 0;
+}
+
+.user-detail-tabs :deep(.el-tabs__header) {
+  margin-bottom: 20px;
+}
+
+.tab-content {
+  padding: 20px 0;
+  min-height: 200px;
+}
+
+/* 发票表单样式 */
+.invoice-form {
+  padding: 20px 0;
+}
+
+.invoice-form :deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+
+.invoice-form :deep(.el-form-item__label) {
+  font-weight: 500;
+  color: #606266;
 }
 </style>
 

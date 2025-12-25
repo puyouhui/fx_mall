@@ -92,3 +92,12 @@ export function reverseGeocode(longitude, latitude) {
   })
 }
 
+// 保存发票抬头
+export function saveInvoice(userId, data) {
+  return request({
+    url: `/admin/mini-app/users/${userId}/invoice`,
+    method: 'post',
+    data
+  })
+}
+

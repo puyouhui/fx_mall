@@ -144,6 +144,22 @@ const routes = [
         }
       },
       {
+        path: 'product-requests',
+        name: 'ProductRequests',
+        component: () => import('../views/ProductRequests.vue'),
+        meta: {
+          title: '新品需求管理'
+        }
+      },
+      {
+        path: 'supplier-applications',
+        name: 'SupplierApplications',
+        component: () => import('../views/SupplierApplications.vue'),
+        meta: {
+          title: '供应商合作申请'
+        }
+      },
+      {
         path: 'payment-verification',
         name: 'PaymentVerification',
         component: () => import('../views/PaymentVerification.vue'),

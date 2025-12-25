@@ -82,6 +82,30 @@
       }
     },
     {
+      "path": "pages/invoice/invoice",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/product-request/product-request",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/supplier/supplier",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/about-us/about-us",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/coupons/coupons",
       "style": {
         "navigationBarTitleText": "我的优惠券",
