@@ -30,6 +30,12 @@
           <el-icon><Document /></el-icon>
           <span>历史记录</span>
         </el-menu-item>
+
+        <!-- 付款对账 -->
+        <el-menu-item index="/payments">
+          <el-icon><Money /></el-icon>
+          <span>付款对账</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -58,7 +64,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { HomeFilled, ShoppingBag, Document } from '@element-plus/icons-vue'
+import { HomeFilled, ShoppingBag, Document, Money } from '@element-plus/icons-vue'
 import { logout } from '../api/auth'
 import Watermark from '../components/Watermark.vue'
 

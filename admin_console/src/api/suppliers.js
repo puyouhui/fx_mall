@@ -16,6 +16,24 @@ export function getSupplierById(id) {
   })
 }
 
+// 获取供应商付款统计列表
+export function getSupplierPaymentsStats(params = {}) {
+  return request({
+    url: '/admin/suppliers/payments/stats',
+    method: 'get',
+    params
+  })
+}
+
+// 获取供应商详细付款清单
+export function getSupplierPaymentDetail(id, params = {}) {
+  return request({
+    url: `/admin/suppliers/${id}/payments/detail`,
+    method: 'get',
+    params
+  })
+}
+
 // 创建供应商
 export function createSupplier(data) {
   return request({
@@ -48,6 +66,32 @@ export function reverseGeocode(longitude, latitude) {
     url: '/admin/mini-app/addresses/reverse-geocode',
     method: 'post',
     data: { longitude, latitude }
+  })
+}
+
+// 创建供应商付款记录
+export function createSupplierPayment(data) {
+  return request({
+    url: '/admin/suppliers/payments',
+    method: 'post',
+    data
+  })
+}
+
+// 获取供应商付款记录列表
+export function getSupplierPayments(params = {}) {
+  return request({
+    url: '/admin/suppliers/payments',
+    method: 'get',
+    params
+  })
+}
+
+// 撤销供应商付款
+export function cancelSupplierPayment(id) {
+  return request({
+    url: `/admin/suppliers/payments/${id}`,
+    method: 'delete'
   })
 }
 

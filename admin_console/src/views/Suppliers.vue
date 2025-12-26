@@ -42,9 +42,9 @@
               <el-button type="primary" size="small" @click="handleEditSupplier(scope.row)">
                 编辑
               </el-button>
-              <el-button 
-                type="danger" 
-                size="small" 
+              <el-button
+                type="danger"
+                size="small"
                 :disabled="scope.row.username === 'self_operated'"
                 @click="handleDeleteSupplier(scope.row.id)">
                 删除
@@ -126,6 +126,9 @@ import { ref, reactive, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { getAllSuppliers, createSupplier, updateSupplier, deleteSupplier, reverseGeocode } from '../api/suppliers'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 import { getMapSettings } from '../api/settings'
 import { formatDate } from '../utils/time-format'
 

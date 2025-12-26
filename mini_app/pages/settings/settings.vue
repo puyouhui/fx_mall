@@ -2,13 +2,13 @@
   <view class="settings-page">
     <!-- 自定义导航栏 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #E8F8F0;">
+      <view class="navbar-fixed" style="background-color: #20CB6B;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#333"></uni-icons>
+            <uni-icons type="left" size="20" color="#fff"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">设置</text>
@@ -261,7 +261,7 @@ export default {
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 600;
-  color: #333;
+  color: #fff;
 }
 
 .navbar-right {
@@ -344,7 +344,7 @@ export default {
 .logout-btn {
   width: 100%;
   height: 88rpx;
-  background-color: #fff;
+  background-color: #20CB6B;
   border-radius: 44rpx;
   display: flex;
   align-items: center;
@@ -359,7 +359,7 @@ export default {
 
 .logout-text {
   font-size: 30rpx;
-  color: #ff4d4f;
+  color: #fff;
   font-weight: 500;
 }
 </style>

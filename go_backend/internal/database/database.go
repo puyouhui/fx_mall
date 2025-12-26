@@ -1543,6 +1543,31 @@ func InitDB() error {
 			log.Println("新品需求表初始化成功")
 		}
 
+		// 创建收藏表
+		createFavoritesTableSQL := `
+		CREATE TABLE IF NOT EXISTS favorites (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    user_id INT NOT NULL COMMENT '用户ID',
+		    product_id INT NOT NULL COMMENT '商品ID',
+		    product_name VARCHAR(255) NOT NULL COMMENT '商品名称快照',
+		    product_image VARCHAR(255) DEFAULT NULL COMMENT '商品图片快照',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    UNIQUE KEY uk_user_product (user_id, product_id),
+		    INDEX idx_user_id (user_id),
+		    INDEX idx_product_id (product_id),
+		    INDEX idx_created_at (created_at),
+		    FOREIGN KEY (user_id) REFERENCES mini_app_users(id) ON DELETE CASCADE,
+		    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户收藏表';
+		`
+
+		if _, err = DB.Exec(createFavoritesTableSQL); err != nil {
+			log.Printf("创建favorites表失败: %v", err)
+		} else {
+			log.Println("收藏表初始化成功")
+		}
+
 		// 创建供应商合作申请表
 		createSupplierApplicationsTableSQL := `
 		CREATE TABLE IF NOT EXISTS supplier_applications (
@@ -1571,6 +1596,64 @@ func InitDB() error {
 			log.Printf("创建supplier_applications表失败: %v", err)
 		} else {
 			log.Println("供应商合作申请表初始化成功")
+		}
+
+		// 创建供应商付款记录表
+		createSupplierPaymentsTableSQL := `
+		CREATE TABLE IF NOT EXISTS supplier_payments (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    supplier_id INT NOT NULL COMMENT '供应商ID',
+		    payment_date DATE NOT NULL COMMENT '付款日期',
+		    payment_amount DECIMAL(10,2) NOT NULL COMMENT '付款金额',
+		    payment_method VARCHAR(50) COMMENT '付款方式：bank_transfer/cash/alipay/wechat',
+		    payment_account VARCHAR(100) COMMENT '付款账户',
+		    payment_receipt VARCHAR(255) COMMENT '付款凭证（图片URL）',
+		    remark TEXT COMMENT '备注',
+		    created_by VARCHAR(50) COMMENT '创建人（管理员账号）',
+		    status TINYINT DEFAULT 1 COMMENT '状态：1-有效，0-已撤销',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    KEY idx_supplier_id (supplier_id),
+		    KEY idx_payment_date (payment_date),
+		    KEY idx_status (status),
+		    FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='供应商付款记录表';
+		`
+
+		if _, err = DB.Exec(createSupplierPaymentsTableSQL); err != nil {
+			log.Printf("创建supplier_payments表失败: %v", err)
+		} else {
+			log.Println("供应商付款记录表初始化成功")
+		}
+
+		// 创建供应商付款明细表
+		createSupplierPaymentItemsTableSQL := `
+		CREATE TABLE IF NOT EXISTS supplier_payment_items (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    payment_id INT NOT NULL COMMENT '付款记录ID',
+		    order_id INT NOT NULL COMMENT '订单ID',
+		    order_item_id INT NOT NULL COMMENT '订单商品ID',
+		    product_id INT NOT NULL COMMENT '商品ID',
+		    product_name VARCHAR(200) NOT NULL COMMENT '商品名称',
+		    spec_name VARCHAR(100) COMMENT '规格名称',
+		    quantity INT NOT NULL COMMENT '数量',
+		    cost_price DECIMAL(10,2) NOT NULL COMMENT '成本价',
+		    subtotal DECIMAL(10,2) NOT NULL COMMENT '小计',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    KEY idx_payment_id (payment_id),
+		    KEY idx_order_id (order_id),
+		    KEY idx_order_item_id (order_item_id),
+		    UNIQUE KEY uk_order_item (order_item_id),
+		    FOREIGN KEY (payment_id) REFERENCES supplier_payments(id) ON DELETE CASCADE,
+		    FOREIGN KEY (order_id) REFERENCES orders(id),
+		    FOREIGN KEY (order_item_id) REFERENCES order_items(id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='供应商付款明细表';
+		`
+
+		if _, err = DB.Exec(createSupplierPaymentItemsTableSQL); err != nil {
+			log.Printf("创建supplier_payment_items表失败: %v", err)
+		} else {
+			log.Println("供应商付款明细表初始化成功")
 		}
 
 		// 创建价格反馈表

@@ -146,6 +146,12 @@
       }
     },
     {
+      "path": "pages/favorites/favorites",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/rich-content/rich-content",
       "style": {
         "navigationStyle": "custom"

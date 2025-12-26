@@ -24,8 +24,9 @@
 	<view class="categories-container" :style="{ top: statusBarHeight + navBarHeight + 'px' }">
 		<!-- 一级分类左右滑动选择 - 仅在分类未展开时显示 -->
 		<view class="primary-categories" v-if="!isCategoriesExpanded">
-			<scroll-view scroll-x enable-flex class="primary-scroll">
+			<scroll-view scroll-x enable-flex class="primary-scroll" :scroll-into-view="scrollIntoViewId" scroll-with-animation>
 				<view class="primary-category-item" v-for="category in primaryCategories" :key="category.id"
+					:id="'category-' + category.id"
 					:class="{ active: selectedPrimaryCategoryId === category.id }"
 					@click="selectPrimaryCategory(category.id)">
 					<image :src="category.icon" class="primary-category-icon"></image>
@@ -158,6 +159,9 @@ export default {
 			currentProducts: [],
 			userType: null, // 用户类型：'retail' | 'wholesale' | null（未登录）
 
+			// 滚动相关
+			scrollIntoViewId: '', // 用于滚动到指定分类
+
 			// 布局相关
 			categoriesContainerHeight: 100, // 分类容器固定高度
 			containerHeight: 0, // 主体区域高度（通过计算设置）
@@ -191,7 +195,10 @@ export default {
 
 		// 如果有传入分类ID，则选中对应分类
 		if (options && options.id) {
-			this.selectedPrimaryCategoryId = parseInt(options.id);
+			const categoryId = parseInt(options.id);
+			this.selectedPrimaryCategoryId = categoryId;
+			// 设置滚动目标
+			this.scrollIntoViewId = 'category-' + categoryId;
 			// 只加载二级分类，商品加载会在loadSecondaryCategories方法中自动处理
 			this.loadSecondaryCategories(this.selectedPrimaryCategoryId);
 		}
@@ -216,6 +223,10 @@ export default {
 			const categoryId = parseInt(targetCategoryId);
 			if (categoryId !== this.selectedPrimaryCategoryId) {
 				this.selectedPrimaryCategoryId = categoryId;
+				// 设置滚动目标（使用 nextTick 确保 DOM 更新后再滚动）
+				this.$nextTick(() => {
+					this.scrollIntoViewId = 'category-' + categoryId;
+				});
 				// 加载对应二级分类和商品
 				this.loadSecondaryCategories(this.selectedPrimaryCategoryId);
 			}
@@ -305,6 +316,11 @@ export default {
 				// 设置默认选中第一个分类
 				if (this.primaryCategories.length > 0 && this.selectedPrimaryCategoryId === 0) {
 					this.selectPrimaryCategory(this.primaryCategories[0].id);
+				} else if (this.selectedPrimaryCategoryId > 0) {
+					// 如果已经有选中的分类ID，确保滚动到该分类
+					this.$nextTick(() => {
+						this.scrollIntoViewId = 'category-' + this.selectedPrimaryCategoryId;
+					});
 				}
 
 				// 构建分类网格数据
@@ -626,6 +642,9 @@ export default {
 		selectPrimaryCategory(categoryId) {
 			this.selectedPrimaryCategoryId = categoryId;
 			this.selectedSecondaryCategoryId = 0; // 重置二级分类选中状态
+
+			// 设置滚动目标
+			this.scrollIntoViewId = 'category-' + categoryId;
 
 			// 获取当前分类名称
 			const selectedCategory = this.primaryCategories.find(cat => cat.id === categoryId);

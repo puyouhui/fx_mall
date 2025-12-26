@@ -30,6 +30,14 @@ const routes = [
         meta: {
           title: '历史记录'
         }
+      },
+      {
+        path: 'payments',
+        name: 'Payments',
+        component: () => import('../views/Payments.vue'),
+        meta: {
+          title: '付款对账'
+        }
       }
     ]
   },

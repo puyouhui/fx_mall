@@ -22,12 +22,14 @@
 
 		<view class="product-image-container">
 			<!-- 商品图片轮播 -->
-			<swiper class="image-swiper" v-if="product.images && product.images.length > 0" autoplay indicator-dots
-				circular @change="onSwiperChange">
-				<swiper-item v-for="(image, index) in product.images" :key="index">
-					<image :src="image" mode="aspectFill" class="product-image" @click="previewImage(index)"></image>
-				</swiper-item>
-			</swiper>
+			<view class="swiper-wrapper" v-if="product.images && product.images.length > 0">
+				<swiper class="image-swiper" autoplay indicator-dots
+					circular @change="onSwiperChange">
+					<swiper-item v-for="(image, index) in product.images" :key="index" class="swiper-item-wrapper">
+						<image :src="image" mode="aspectFill" class="product-image" @click="previewImage(index)"></image>
+					</swiper-item>
+				</swiper>
+			</view>
 			<view class="image-count" v-if="product.images && product.images.length > 0">{{ currentImageIndex + 1 }}/{{
 				product.images.length }}</view>
 		</view>
@@ -200,8 +202,8 @@
 						<text class="action-text">首页</text>
 					</view> -->
 					<view class="action-btn" @click="collectProduct">
-						<uni-icons type="star" size="28" color="#2C2C2C"></uni-icons>
-						<text class="action-text">收藏</text>
+						<uni-icons :type="isCollected ? 'star-filled' : 'star'" size="28" :color="isCollected ? '#20CB6B' : '#2C2C2C'"></uni-icons>
+						<text class="action-text" :style="{ color: isCollected ? '#20CB6B' : '#2C2C2C' }">收藏</text>
 					</view>
 					<view class="action-btn" @click="goToCustomerService">
 						<uni-icons type="chat" size="28" color="#2C2C2C"></uni-icons>
@@ -210,8 +212,7 @@
 				</view>
 				<view class="right-actions">
 					<view class="add-to-cart-btn" @click="goToCart">
-						<uni-icons type="plusempty" color="#fff" size="24"
-							style="padding-right: 14rpx;padding-top: 2rpx;"></uni-icons>
+						<image src="/static/icon/cart_icon.png" mode="aspectFit" class="cart-icon"></image>
 						去下单
 					</view>
 				</view>
@@ -222,7 +223,7 @@
 
 <script>
 import { getProductDetail } from '../../api/products';
-import { getMiniUserInfo } from '../../api/index';
+import { getMiniUserInfo, addFavorite, deleteFavorite, deleteFavoriteByProductId, checkFavorite } from '../../api/index';
 import { fetchPurchaseList, addItemToPurchaseList, updatePurchaseListQuantity, deletePurchaseListItemById } from '../../utils/purchaseList';
 export default {
 	data() {
@@ -248,6 +249,7 @@ export default {
 			},
 			currentImageIndex: 0,
 			isCollected: false,
+			favoriteId: null, // 收藏ID
 			deliveryAddress: '',
 			refundDays: 6,
 			statusBarHeight: 0,
@@ -402,6 +404,8 @@ export default {
 					// 初始化规格数量并同步采购单
 					this.resetSpecQuantities();
 					await this.refreshPurchaseList(true);
+					// 检查是否已收藏
+					await this.checkFavoriteStatus();
 				} else {
 					// 商品不存在，显示错误提示
 					uni.showToast({
@@ -669,14 +673,87 @@ export default {
 		},
 
 		// 收藏商品
-		collectProduct() {
-			// 模拟收藏功能
-			this.isCollected = !this.isCollected;
-			uni.showToast({
-				title: this.isCollected ? '收藏成功' : '取消收藏',
-				icon: 'none',
-				duration: 2000
-			});
+		async collectProduct() {
+			const token = uni.getStorageSync('miniUserToken');
+			if (!token) {
+				uni.showToast({
+					title: '请先登录',
+					icon: 'none',
+					duration: 2000
+				});
+				return;
+			}
+
+			if (!this.product.id) {
+				uni.showToast({
+					title: '商品信息加载中，请稍候',
+					icon: 'none',
+					duration: 2000
+				});
+				return;
+			}
+
+			try {
+				if (this.isCollected) {
+					// 取消收藏 - 优先使用favoriteId，如果没有则使用productId
+					let res;
+					if (this.favoriteId) {
+						res = await deleteFavorite(token, this.favoriteId);
+					} else {
+						// 尝试通过商品ID删除
+						try {
+							res = await deleteFavoriteByProductId(token, this.product.id);
+						} catch (e) {
+							// 如果通过商品ID删除失败，尝试使用商品ID作为收藏ID
+							res = await deleteFavorite(token, this.product.id);
+						}
+					}
+					
+					if (res && res.code === 200) {
+						this.isCollected = false;
+						this.favoriteId = null;
+						uni.showToast({
+							title: '取消收藏成功',
+							icon: 'success',
+							duration: 2000
+						});
+					} else {
+						uni.showToast({
+							title: res.message || '取消收藏失败',
+							icon: 'none',
+							duration: 2000
+						});
+					}
+				} else {
+					// 添加收藏
+					const res = await addFavorite(token, this.product.id);
+					if (res && res.code === 200) {
+						this.isCollected = true;
+						// 如果后端返回收藏ID，保存它
+						if (res.data && res.data.id) {
+							this.favoriteId = res.data.id;
+						}
+						uni.showToast({
+							title: '收藏成功',
+							icon: 'success',
+							duration: 2000
+						});
+					} else {
+						uni.showToast({
+							title: res.message || '收藏失败',
+							icon: 'none',
+							duration: 2000
+						});
+					}
+				}
+			} catch (error) {
+				console.error('收藏操作失败:', error);
+				uni.showToast({
+					title: '操作失败，请稍后再试',
+					icon: 'none',
+					duration: 2000
+				});
+			}
 		},
 
 		// 跳转到采购单
@@ -774,6 +851,34 @@ export default {
 				withShareTicket: true,
 				menus: ['shareAppMessage', 'shareTimeline']
 			});
+		},
+
+		// 检查收藏状态
+		async checkFavoriteStatus() {
+			const token = uni.getStorageSync('miniUserToken');
+			if (!token || !this.product.id) {
+				this.isCollected = false;
+				this.favoriteId = null;
+				return;
+			}
+
+			try {
+				const res = await checkFavorite(token, this.product.id);
+				if (res && res.code === 200 && res.data) {
+					this.isCollected = res.data.is_favorite || false;
+					if (res.data.favorite_id) {
+						this.favoriteId = res.data.favorite_id;
+					}
+				} else {
+					this.isCollected = false;
+					this.favoriteId = null;
+				}
+			} catch (error) {
+				console.error('检查收藏状态失败:', error);
+				// 静默失败，不影响页面显示
+				this.isCollected = false;
+				this.favoriteId = null;
+			}
 		}
 	}
 };
@@ -885,15 +990,34 @@ export default {
 }
 
 /* 商品图片轮播样式 */
-.image-swiper {
-	min-height: 375px;
+.swiper-wrapper {
 	width: 100%;
+	height: 0;
+	padding-bottom: 100%; /* 使用 padding-bottom 技巧实现 1:1 正方形 */
+	position: relative;
 	background-color: #fff;
 }
 
-.product-image {
-	height: 375px;
+.image-swiper {
+	position: absolute;
+	top: 0;
+	left: 0;
 	width: 100%;
+	height: 100%;
+}
+
+.swiper-item-wrapper {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.product-image {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
 }
 
 .product-image-container {
@@ -1458,6 +1582,13 @@ export default {
 	margin-right: 15rpx;
 	display: flex;
 	justify-content: center;
+	align-items: center;
+}
+
+.cart-icon {
+	width: 36rpx;
+	height: 36rpx;
+	margin-right: 14rpx;
 }
 
 .login-btn {

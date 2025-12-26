@@ -576,3 +576,72 @@ export const createPriceFeedback = (token, feedbackData) => {
     }
   });
 };
+
+/**
+ * 获取用户收藏列表
+ * @param {string} token - 用户token
+ * @returns Promise
+ */
+export const getUserFavorites = (token) => {
+  return get('/mini-app/users/favorites', {}, {
+    header: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+};
+
+/**
+ * 添加商品到收藏
+ * @param {string} token - 用户token
+ * @param {number} productId - 商品ID
+ * @returns Promise
+ */
+export const addFavorite = (token, productId) => {
+  return post('/mini-app/users/favorites', { product_id: productId }, {
+    header: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+};
+
+/**
+ * 删除收藏
+ * @param {string} token - 用户token
+ * @param {number} favoriteIdOrProductId - 收藏ID或商品ID
+ * @returns Promise
+ */
+export const deleteFavorite = (token, favoriteIdOrProductId) => {
+  return deleteRequest(`/mini-app/users/favorites/${favoriteIdOrProductId}`, {}, {
+    header: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+};
+
+/**
+ * 通过商品ID删除收藏
+ * @param {string} token - 用户token
+ * @param {number} productId - 商品ID
+ * @returns Promise
+ */
+export const deleteFavoriteByProductId = (token, productId) => {
+  return deleteRequest(`/mini-app/users/favorites/product/${productId}`, {}, {
+    header: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+};
+
+/**
+ * 检查商品是否已收藏
+ * @param {string} token - 用户token
+ * @param {number} productId - 商品ID
+ * @returns Promise
+ */
+export const checkFavorite = (token, productId) => {
+  return get(`/mini-app/users/favorites/check`, { product_id: productId }, {
+    header: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+};

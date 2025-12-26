@@ -64,6 +64,14 @@ const routes = [
         }
       },
       {
+        path: 'suppliers/payments',
+        name: 'SupplierPayments',
+        component: () => import('../views/SupplierPayments.vue'),
+        meta: {
+          title: '供应商付款统计'
+        }
+      },
+      {
         path: 'hot-products',
         name: 'HotProducts',
         component: () => import('../views/HotProducts.vue'),

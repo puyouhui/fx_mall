@@ -252,6 +252,7 @@ export default {
 .form-container {
   padding: 0 30rpx;
   padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+  margin-top: -24rpx;
 }
 
 .form-section {

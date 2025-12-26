@@ -173,12 +173,26 @@
         </el-sub-menu>
 
         <!-- 供应商管理 -->
-        <el-menu-item index="/suppliers">
-          <el-icon>
-            <Shop />
-          </el-icon>
-          <span>供应商管理</span>
-        </el-menu-item>
+        <el-sub-menu index="supplier-management">
+          <template #title>
+            <el-icon>
+              <Shop />
+            </el-icon>
+            <span>供应商</span>
+          </template>
+          <el-menu-item index="/suppliers">
+            <el-icon>
+              <Shop />
+            </el-icon>
+            <span>供应商管理</span>
+          </el-menu-item>
+          <el-menu-item index="/suppliers/payments">
+            <el-icon>
+              <Money />
+            </el-icon>
+            <span>付款统计</span>
+          </el-menu-item>
+        </el-sub-menu>
 
         <!-- 系统设置 -->
         <el-sub-menu index="system-settings">

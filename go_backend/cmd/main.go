@@ -105,13 +105,20 @@ func main() {
 
 			// 供应商合作申请接口
 			miniAppProtectedGroup.GET("/supplier-applications", api.GetUserSupplierApplications) // 获取用户的申请列表
+
+			// 收藏接口
+			miniAppProtectedGroup.GET("/favorites", api.GetUserFavorites)                                // 获取用户收藏列表
+			miniAppProtectedGroup.POST("/favorites", api.AddFavorite)                                    // 添加收藏
+			miniAppProtectedGroup.DELETE("/favorites/:id", api.DeleteFavorite)                           // 删除收藏（通过收藏ID）
+			miniAppProtectedGroup.DELETE("/favorites/product/:productId", api.DeleteFavoriteByProductID) // 删除收藏（通过商品ID）
+			miniAppProtectedGroup.GET("/favorites/check", api.CheckFavorite)                             // 检查商品是否已收藏
 		}
 
-			// 供应商合作申请接口（不需要登录也可以提交）
-			apiGroup.POST("/supplier-applications", api.CreateSupplierApplication) // 创建供应商合作申请
+		// 供应商合作申请接口（不需要登录也可以提交）
+		apiGroup.POST("/supplier-applications", api.CreateSupplierApplication) // 创建供应商合作申请
 
-			// 价格反馈接口（需要登录）
-			miniAppProtectedGroup.POST("/price-feedback", api.CreatePriceFeedback) // 创建价格反馈
+		// 价格反馈接口（需要登录）
+		miniAppProtectedGroup.POST("/price-feedback", api.CreatePriceFeedback) // 创建价格反馈
 
 		// 分类相关接口
 		apiGroup.GET("/products/category", api.GetProductsByCategory) // 根据分类ID获取该分类下的商品列表
@@ -195,6 +202,13 @@ func main() {
 				protectedGroup.POST("/suppliers", api.CreateSupplier)       // 创建供应商
 				protectedGroup.PUT("/suppliers/:id", api.UpdateSupplier)    // 更新供应商
 				protectedGroup.DELETE("/suppliers/:id", api.DeleteSupplier) // 删除供应商
+
+				// 供应商付款统计接口
+				protectedGroup.GET("/suppliers/payments/stats", api.GetSupplierPaymentsStats)      // 获取供应商付款统计列表
+				protectedGroup.GET("/suppliers/:id/payments/detail", api.GetSupplierPaymentDetail) // 获取供应商详细付款清单
+				protectedGroup.POST("/suppliers/payments", api.CreateSupplierPayment)              // 创建供应商付款记录
+				protectedGroup.GET("/suppliers/payments", api.GetSupplierPayments)                 // 获取供应商付款记录列表
+				protectedGroup.DELETE("/suppliers/payments/:id", api.CancelSupplierPayment)        // 撤销供应商付款
 
 				// 小程序用户
 				protectedGroup.GET("/mini-app/users", api.GetMiniAppUsers)                            // 查看小程序用户列表
@@ -321,6 +335,11 @@ func main() {
 				// 历史记录接口
 				supplierProtectedGroup.GET("/history", api.GetHistoryByDate)       // 获取历史记录列表（按天）
 				supplierProtectedGroup.GET("/history/:date", api.GetHistoryDetail) // 获取某天的历史详情
+
+				// 供应商对账功能
+				supplierProtectedGroup.GET("/payments/paid", api.GetSupplierPaidItems)       // 获取已付款清单
+				supplierProtectedGroup.GET("/payments/pending", api.GetSupplierPendingItems) // 获取待付款清单
+				supplierProtectedGroup.GET("/payments/stats", api.GetSupplierPaymentStats)   // 获取对账统计
 			}
 		}
 

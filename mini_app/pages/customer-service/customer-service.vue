@@ -79,7 +79,7 @@
           </view>
         </view>
         <view class="call-button">
-          <uni-icons type="phone" size="32" color="#fff"></uni-icons>
+          <uni-icons type="phone" size="26" color="#fff"></uni-icons>
         </view>
       </view>
     </view>

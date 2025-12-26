@@ -110,39 +110,39 @@ func GetDashboardStats(c *gin.Context) {
 				"end":   end.Format("2006-01-02 15:04:05"),
 			},
 			"order_stats": gin.H{
-				"total_orders":        orderStats["total_orders"],
-				"pending_delivery":    orderStats["pending_delivery"],
-				"delivering":          orderStats["delivering"],
-				"delivered":           orderStats["delivered"],
-				"paid":                orderStats["paid"],
-				"cancelled":           orderStats["cancelled"],
-				"total_amount":        orderStats["total_amount"],
-				"total_profit":        orderStats["total_profit"],
-				"net_profit":          orderStats["net_profit"],
-				"growth":              orderGrowth,
+				"total_orders":     orderStats["total_orders"],
+				"pending_delivery": orderStats["pending_delivery"],
+				"delivering":       orderStats["delivering"],
+				"delivered":        orderStats["delivered"],
+				"paid":             orderStats["paid"],
+				"cancelled":        orderStats["cancelled"],
+				"total_amount":     orderStats["total_amount"],
+				"total_profit":     orderStats["total_profit"],
+				"net_profit":       orderStats["net_profit"],
+				"growth":           orderGrowth,
 			},
 			"revenue_stats": gin.H{
-				"total_revenue":       revenueStats["total_revenue"],
-				"goods_revenue":       revenueStats["goods_revenue"],
+				"total_revenue":        revenueStats["total_revenue"],
+				"goods_revenue":        revenueStats["goods_revenue"],
 				"delivery_fee_revenue": revenueStats["delivery_fee_revenue"],
-				"urgent_fee_revenue":  revenueStats["urgent_fee_revenue"],
-				"total_cost":          revenueStats["total_cost"],
-				"goods_cost":          revenueStats["goods_cost"],
-				"delivery_cost":       revenueStats["delivery_cost"],
-				"sales_commission":    revenueStats["sales_commission"],
-				"net_profit":          revenueStats["net_profit"],
-				"growth":              revenueGrowth,
+				"urgent_fee_revenue":   revenueStats["urgent_fee_revenue"],
+				"total_cost":           revenueStats["total_cost"],
+				"goods_cost":           revenueStats["goods_cost"],
+				"delivery_cost":        revenueStats["delivery_cost"],
+				"sales_commission":     revenueStats["sales_commission"],
+				"net_profit":           revenueStats["net_profit"],
+				"growth":               revenueGrowth,
 			},
-			"user_stats": userStats,
-			"product_stats": productStats,
-			"delivery_stats": deliveryStats,
-			"sales_stats": salesStats,
-			"order_trend": orderTrend,
-			"revenue_trend": revenueTrend,
+			"user_stats":                userStats,
+			"product_stats":             productStats,
+			"delivery_stats":            deliveryStats,
+			"sales_stats":               salesStats,
+			"order_trend":               orderTrend,
+			"revenue_trend":             revenueTrend,
 			"order_status_distribution": orderStatusDistribution,
-			"hot_products": hotProducts,
-			"delivery_ranking": deliveryRanking,
-			"sales_ranking": salesRanking,
+			"hot_products":              hotProducts,
+			"delivery_ranking":          deliveryRanking,
+			"sales_ranking":             salesRanking,
 		},
 		"message": "获取成功",
 	})
@@ -153,12 +153,12 @@ func getOrderStats(start, end time.Time) map[string]interface{} {
 	query := `
 		SELECT 
 			COUNT(*) as total_orders,
-			SUM(CASE WHEN status = 'pending_delivery' THEN 1 ELSE 0 END) as pending_delivery,
-			SUM(CASE WHEN status = 'pending_pickup' THEN 1 ELSE 0 END) as pending_pickup,
-			SUM(CASE WHEN status = 'delivering' THEN 1 ELSE 0 END) as delivering,
-			SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered,
-			SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as paid,
-			SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
+			COALESCE(SUM(CASE WHEN status = 'pending_delivery' THEN 1 ELSE 0 END), 0) as pending_delivery,
+			COALESCE(SUM(CASE WHEN status = 'pending_pickup' THEN 1 ELSE 0 END), 0) as pending_pickup,
+			COALESCE(SUM(CASE WHEN status = 'delivering' THEN 1 ELSE 0 END), 0) as delivering,
+			COALESCE(SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END), 0) as delivered,
+			COALESCE(SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END), 0) as paid,
+			COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0) as cancelled,
 			COALESCE(SUM(total_amount), 0) as total_amount,
 			COALESCE(SUM(order_profit), 0) as total_profit,
 			COALESCE(SUM(net_profit), 0) as net_profit
@@ -184,15 +184,15 @@ func getOrderStats(start, end time.Time) map[string]interface{} {
 	}
 
 	stats = map[string]interface{}{
-		"total_orders": totalOrders,
+		"total_orders":     totalOrders,
 		"pending_delivery": pendingDelivery + pendingPickup, // 合并待配送和待取货
-		"delivering": delivering,
-		"delivered": delivered,
-		"paid": paid,
-		"cancelled": cancelled,
-		"total_amount": 0.0,
-		"total_profit": 0.0,
-		"net_profit": 0.0,
+		"delivering":       delivering,
+		"delivered":        delivered,
+		"paid":             paid,
+		"cancelled":        cancelled,
+		"total_amount":     0.0,
+		"total_profit":     0.0,
+		"net_profit":       0.0,
 	}
 
 	if totalAmount.Valid {
@@ -262,15 +262,15 @@ func getRevenueStats(start, end time.Time) map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"total_revenue":       getFloatValue(totalRevenue),
-		"goods_revenue":       getFloatValue(goodsRevenue),
+		"total_revenue":        getFloatValue(totalRevenue),
+		"goods_revenue":        getFloatValue(goodsRevenue),
 		"delivery_fee_revenue": getFloatValue(deliveryFeeRevenue),
-		"urgent_fee_revenue":  getFloatValue(urgentFeeRevenue),
-		"total_cost":          totalCost,
-		"goods_cost":          getFloatValue(goodsCost),
-		"delivery_cost":       getFloatValue(deliveryCost),
-		"sales_commission":    getFloatValue(salesCommission),
-		"net_profit":          netProfit,
+		"urgent_fee_revenue":   getFloatValue(urgentFeeRevenue),
+		"total_cost":           totalCost,
+		"goods_cost":           getFloatValue(goodsCost),
+		"delivery_cost":        getFloatValue(deliveryCost),
+		"sales_commission":     getFloatValue(salesCommission),
+		"net_profit":           netProfit,
 	}
 }
 
@@ -310,13 +310,13 @@ func getUserStats(start, end time.Time) map[string]interface{} {
 	_ = database.DB.QueryRow("SELECT COUNT(*) FROM mini_app_users WHERE sales_code IS NOT NULL AND sales_code != ''").Scan(&usersWithSales)
 
 	return map[string]interface{}{
-		"total_users":      totalUsers,
-		"new_users":        newUsers,
-		"active_users":     activeUsers,
-		"retail_users":     retailUsers,
-		"wholesale_users":  wholesaleUsers,
-		"unknown_users":    unknownUsers,
-		"users_with_sales": usersWithSales,
+		"total_users":         totalUsers,
+		"new_users":           newUsers,
+		"active_users":        activeUsers,
+		"retail_users":        retailUsers,
+		"wholesale_users":     wholesaleUsers,
+		"unknown_users":       unknownUsers,
+		"users_with_sales":    usersWithSales,
 		"users_without_sales": totalUsers - usersWithSales,
 	}
 }
@@ -332,7 +332,7 @@ func getProductStats(_ time.Time, _ time.Time) map[string]interface{} {
 	_ = database.DB.QueryRow("SELECT COUNT(*) FROM categories").Scan(&totalCategories)
 
 	return map[string]interface{}{
-		"total_products":  totalProducts,
+		"total_products":   totalProducts,
 		"total_categories": totalCategories,
 	}
 }
@@ -399,12 +399,12 @@ func getDeliveryStats(start, end time.Time) map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"delivery_orders":          deliveryOrders,
+		"delivery_orders":           deliveryOrders,
 		"completed_delivery":        completedDelivery,
-		"completion_rate":          completionRate,
+		"completion_rate":           completionRate,
 		"active_delivery_employees": activeDeliveryEmployees,
-		"isolated_orders":          isolatedOrders,
-		"urgent_orders":            urgentOrders,
+		"isolated_orders":           isolatedOrders,
+		"urgent_orders":             urgentOrders,
 	}
 }
 
@@ -443,7 +443,7 @@ func getSalesStats(start, end time.Time) map[string]interface{} {
 	return map[string]interface{}{
 		"active_sales_employees": activeSalesEmployees,
 		"total_commission":       getFloatValue(totalCommission),
-		"new_customers":         newCustomers,
+		"new_customers":          newCustomers,
 	}
 }
 
@@ -478,8 +478,8 @@ func getOrderTrend(start, end time.Time) []map[string]interface{} {
 		}
 
 		trend = append(trend, map[string]interface{}{
-			"date":        date.Format("2006-01-02"),
-			"order_count": orderCount,
+			"date":         date.Format("2006-01-02"),
+			"order_count":  orderCount,
 			"total_amount": getFloatValue(totalAmount),
 		})
 	}
@@ -518,9 +518,9 @@ func getRevenueTrend(start, end time.Time) []map[string]interface{} {
 		}
 
 		trend = append(trend, map[string]interface{}{
-			"date":      date.Format("2006-01-02"),
-			"revenue":   getFloatValue(revenue),
-			"profit":    getFloatValue(profit),
+			"date":       date.Format("2006-01-02"),
+			"revenue":    getFloatValue(revenue),
+			"profit":     getFloatValue(profit),
 			"net_profit": getFloatValue(netProfit),
 		})
 	}
@@ -599,11 +599,11 @@ func getHotProducts(start, end time.Time, limit int) []map[string]interface{} {
 		}
 
 		products = append(products, map[string]interface{}{
-			"product_id":    productID,
-			"product_name":  getStringValue(productName),
-			"image":         getStringValue(image),
+			"product_id":     productID,
+			"product_name":   getStringValue(productName),
+			"image":          getStringValue(image),
 			"total_quantity": totalQuantity,
-			"total_amount":  getFloatValue(totalAmount),
+			"total_amount":   getFloatValue(totalAmount),
 		})
 	}
 
@@ -696,11 +696,11 @@ func getSalesRanking(start, end time.Time, limit int) []map[string]interface{} {
 		}
 
 		ranking = append(ranking, map[string]interface{}{
-			"employee_code":    employeeCode,
-			"employee_name":    getStringValue(employeeName),
-			"order_count":      orderCount,
-			"total_sales":      getFloatValue(totalSales),
-			"total_commission": getFloatValue(totalCommission),
+			"employee_code":      employeeCode,
+			"employee_name":      getStringValue(employeeName),
+			"order_count":        orderCount,
+			"total_sales":        getFloatValue(totalSales),
+			"total_commission":   getFloatValue(totalCommission),
 			"new_customer_count": newCustomerCount,
 		})
 	}
@@ -753,4 +753,3 @@ func getStringValue(v sql.NullString) string {
 	}
 	return ""
 }
-
