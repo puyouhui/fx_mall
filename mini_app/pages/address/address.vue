@@ -2,20 +2,20 @@
   <view class="address-page">
     <!-- 自定义导航栏 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #FFFFFF;">
+      <view class="navbar-fixed" style="background-color: #20CB6B;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#333"></uni-icons>
+            <uni-icons type="left" size="20" color="#fff"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">{{ selectMode ? '选择收货地址' : '我的收货地址' }}</text>
           </view>
           <view class="navbar-right">
-            <uni-icons type="more-filled" size="20" color="#333" style="margin-right: 20rpx;"></uni-icons>
-            <uni-icons type="gear" size="20" color="#333"></uni-icons>
+            <uni-icons type="more-filled" size="20" color="#fff" style="margin-right: 20rpx;"></uni-icons>
+            <uni-icons type="gear" size="20" color="#fff"></uni-icons>
           </view>
         </view>
       </view>
@@ -220,8 +220,6 @@ export default {
   left: 0;
   right: 0;
   z-index: 1000;
-  background-color: #FFFFFF;
-  border-bottom: 1rpx solid #f0f0f0;
 }
 
 .navbar-content {
@@ -249,7 +247,7 @@ export default {
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 600;
-  color: #333;
+  color: #fff;
 }
 
 .navbar-right {

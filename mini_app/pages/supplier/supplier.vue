@@ -358,7 +358,7 @@ export default {
 .tip-banner {
   background: linear-gradient(135deg, #E8F8F0 0%, #F0FDF4 100%);
   padding: 24rpx 30rpx;
-  margin: 0 30rpx 24rpx 30rpx;
+  margin: 24rpx 30rpx 24rpx 30rpx;
   border-radius: 16rpx;
   border-left: 6rpx solid #20CB6B;
 }
@@ -379,7 +379,7 @@ export default {
 /* 表单容器 */
 .form-container {
   padding: 0 30rpx;
-  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(144rpx + env(safe-area-inset-bottom));
 }
 
 .form-section {
