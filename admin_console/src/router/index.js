@@ -198,6 +198,14 @@ const routes = [
         meta: {
           title: '富文本内容管理'
         }
+      },
+      {
+        path: 'referral-reward',
+        name: 'ReferralReward',
+        component: () => import('../views/ReferralReward.vue'),
+        meta: {
+          title: '推荐奖励活动管理'
+        }
       }
     ]
   },

@@ -24,6 +24,8 @@ type MiniAppUser struct {
 	ProfileCompleted bool      `json:"profile_completed"`
 	IsSalesEmployee  bool      `json:"is_sales_employee"`  // 是否是销售员
 	SalesEmployeeID  *int      `json:"sales_employee_id,omitempty"` // 绑定的销售员ID（员工表ID）
+	ReferrerID       *int      `json:"referrer_id,omitempty"` // 分享者用户ID（谁分享给我的）
+	Points           int       `json:"points"`             // 用户积分
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
@@ -31,7 +33,7 @@ type MiniAppUser struct {
 // GetMiniAppUserByUniqueID 根据唯一ID获取用户
 func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 	query := `
-		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, referrer_id, COALESCE(points, 0) as points, created_at, updated_at
 		FROM mini_app_users
 		WHERE unique_id = ?
 		LIMIT 1`
@@ -43,6 +45,7 @@ func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 		profileCompleted              sql.NullInt64
 		isSalesEmployee               sql.NullInt64
 		salesEmployeeID               sql.NullInt64
+		referrerID                    sql.NullInt64
 	)
 
 	err := database.DB.QueryRow(query, uniqueID).Scan(
@@ -58,6 +61,8 @@ func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 		&profileCompleted,
 		&isSalesEmployee,
 		&salesEmployeeID,
+		&referrerID,
+		&user.Points,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -81,6 +86,10 @@ func GetMiniAppUserByUniqueID(uniqueID string) (*MiniAppUser, error) {
 		id := int(salesEmployeeID.Int64)
 		user.SalesEmployeeID = &id
 	}
+	if referrerID.Valid {
+		id := int(referrerID.Int64)
+		user.ReferrerID = &id
+	}
 
 	return &user, nil
 }
@@ -90,7 +99,7 @@ func GetMiniAppUserByUserCode(userCode string) (*MiniAppUser, error) {
 	var user MiniAppUser
 
 	query := `
-		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, referrer_id, COALESCE(points, 0) as points, created_at, updated_at
 		FROM mini_app_users
 		WHERE user_code = ?
 		LIMIT 1
@@ -102,6 +111,7 @@ func GetMiniAppUserByUserCode(userCode string) (*MiniAppUser, error) {
 		profileCompleted          sql.NullInt64
 		isSalesEmployee           sql.NullInt64
 		salesEmployeeID           sql.NullInt64
+		referrerID                sql.NullInt64
 	)
 
 	err := database.DB.QueryRow(query, userCode).Scan(
@@ -117,6 +127,8 @@ func GetMiniAppUserByUserCode(userCode string) (*MiniAppUser, error) {
 		&profileCompleted,
 		&isSalesEmployee,
 		&salesEmployeeID,
+		&referrerID,
+		&user.Points,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -139,6 +151,10 @@ func GetMiniAppUserByUserCode(userCode string) (*MiniAppUser, error) {
 		id := int(salesEmployeeID.Int64)
 		user.SalesEmployeeID = &id
 	}
+	if referrerID.Valid {
+		id := int(referrerID.Int64)
+		user.ReferrerID = &id
+	}
 
 	return &user, nil
 }
@@ -146,7 +162,7 @@ func GetMiniAppUserByUserCode(userCode string) (*MiniAppUser, error) {
 // GetMiniAppUserByID 根据ID获取用户详情（后台管理使用）
 func GetMiniAppUserByID(id int) (*MiniAppUser, error) {
 	query := `
-		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, referrer_id, COALESCE(points, 0) as points, created_at, updated_at
 		FROM mini_app_users
 		WHERE id = ?
 		LIMIT 1`
@@ -158,6 +174,7 @@ func GetMiniAppUserByID(id int) (*MiniAppUser, error) {
 		profileCompleted              sql.NullInt64
 		isSalesEmployee               sql.NullInt64
 		salesEmployeeID               sql.NullInt64
+		referrerID                    sql.NullInt64
 	)
 
 	err := database.DB.QueryRow(query, id).Scan(
@@ -173,6 +190,8 @@ func GetMiniAppUserByID(id int) (*MiniAppUser, error) {
 		&profileCompleted,
 		&isSalesEmployee,
 		&salesEmployeeID,
+		&referrerID,
+		&user.Points,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -195,6 +214,10 @@ func GetMiniAppUserByID(id int) (*MiniAppUser, error) {
 	if salesEmployeeID.Valid {
 		id := int(salesEmployeeID.Int64)
 		user.SalesEmployeeID = &id
+	}
+	if referrerID.Valid {
+		id := int(referrerID.Int64)
+		user.ReferrerID = &id
 	}
 
 	return &user, nil
@@ -239,7 +262,8 @@ func GenerateUserCode() (string, error) {
 }
 
 // CreateMiniAppUser 创建用户（仅记录唯一ID，其他信息后续完善）
-func CreateMiniAppUser(uniqueID string) (*MiniAppUser, error) {
+// referrerID: 分享者用户ID（可选）
+func CreateMiniAppUser(uniqueID string, referrerID *int) (*MiniAppUser, error) {
 	// 检查用户是否已存在
 	existingUser, err := GetMiniAppUserByUniqueID(uniqueID)
 	if err != nil {
@@ -269,10 +293,72 @@ func CreateMiniAppUser(uniqueID string) (*MiniAppUser, error) {
 		return nil, err
 	}
 
-	_, err = database.DB.Exec(`
-		INSERT INTO mini_app_users (unique_id, user_code, user_type, profile_completed, created_at, updated_at)
-		VALUES (?, ?, 'unknown', 0, NOW(), NOW())
-	`, uniqueID, userCode)
+	// 处理分享者绑定
+	var referrerIDValue interface{}
+	var salesCodeValue string
+	var salesEmployeeIDValue interface{}
+	
+	if referrerID != nil && *referrerID > 0 {
+		// 检查分享者是否存在且不是自己
+		referrer, err := GetMiniAppUserByID(*referrerID)
+		if err == nil && referrer != nil && referrer.UniqueID != uniqueID {
+			referrerIDValue = *referrerID
+			
+			// 如果分享者是销售员，自动绑定销售员
+			if referrer.IsSalesEmployee && referrer.SalesEmployeeID != nil {
+				salesEmployeeIDValue = *referrer.SalesEmployeeID
+				// 获取销售员信息以获取销售员代码
+				employee, err := GetEmployeeByID(*referrer.SalesEmployeeID)
+				if err == nil && employee != nil && employee.IsSales {
+					salesCodeValue = employee.EmployeeCode
+				}
+			} else if referrer.SalesCode != "" {
+				// 如果分享者绑定了销售员，也绑定相同的销售员
+				salesCodeValue = referrer.SalesCode
+			}
+		}
+	}
+
+	// 构建插入SQL
+	var insertSQL string
+	var args []interface{}
+	
+	if referrerIDValue != nil {
+		if salesEmployeeIDValue != nil && salesCodeValue != "" {
+			// 同时设置 sales_employee_id 和 sales_code
+			insertSQL = `
+				INSERT INTO mini_app_users (unique_id, user_code, user_type, profile_completed, referrer_id, sales_employee_id, sales_code, created_at, updated_at)
+				VALUES (?, ?, 'unknown', 0, ?, ?, ?, NOW(), NOW())
+			`
+			args = []interface{}{uniqueID, userCode, referrerIDValue, salesEmployeeIDValue, salesCodeValue}
+		} else if salesEmployeeIDValue != nil {
+			insertSQL = `
+				INSERT INTO mini_app_users (unique_id, user_code, user_type, profile_completed, referrer_id, sales_employee_id, created_at, updated_at)
+				VALUES (?, ?, 'unknown', 0, ?, ?, NOW(), NOW())
+			`
+			args = []interface{}{uniqueID, userCode, referrerIDValue, salesEmployeeIDValue}
+		} else if salesCodeValue != "" {
+			insertSQL = `
+				INSERT INTO mini_app_users (unique_id, user_code, user_type, profile_completed, referrer_id, sales_code, created_at, updated_at)
+				VALUES (?, ?, 'unknown', 0, ?, ?, NOW(), NOW())
+			`
+			args = []interface{}{uniqueID, userCode, referrerIDValue, salesCodeValue}
+		} else {
+			insertSQL = `
+				INSERT INTO mini_app_users (unique_id, user_code, user_type, profile_completed, referrer_id, created_at, updated_at)
+				VALUES (?, ?, 'unknown', 0, ?, NOW(), NOW())
+			`
+			args = []interface{}{uniqueID, userCode, referrerIDValue}
+		}
+	} else {
+		insertSQL = `
+			INSERT INTO mini_app_users (unique_id, user_code, user_type, profile_completed, created_at, updated_at)
+			VALUES (?, ?, 'unknown', 0, NOW(), NOW())
+		`
+		args = []interface{}{uniqueID, userCode}
+	}
+
+	_, err = database.DB.Exec(insertSQL, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +412,7 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 	}
 
 	query := `
-		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, referrer_id, COALESCE(points, 0) as points, created_at, updated_at
 		FROM mini_app_users
 	`
 	if where != "" {
@@ -350,6 +436,7 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 			profileCompleted              sql.NullInt64
 			isSalesEmployee               sql.NullInt64
 			salesEmployeeID               sql.NullInt64
+			referrerID                    sql.NullInt64
 		)
 
 		if err := rows.Scan(
@@ -365,6 +452,8 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 			&profileCompleted,
 			&isSalesEmployee,
 			&salesEmployeeID,
+			&referrerID,
+			&user.Points,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		); err != nil {
@@ -382,6 +471,10 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 		if salesEmployeeID.Valid {
 			id := int(salesEmployeeID.Int64)
 			user.SalesEmployeeID = &id
+		}
+		if referrerID.Valid {
+			id := int(referrerID.Int64)
+			user.ReferrerID = &id
 		}
 
 		users = append(users, user)
@@ -528,6 +621,76 @@ func nullString(ns sql.NullString) string {
 	return ""
 }
 
+// GetMiniAppUsersByReferrerID 根据分享者ID获取被拉取的新用户列表
+func GetMiniAppUsersByReferrerID(referrerID int) ([]MiniAppUser, error) {
+	query := `
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, referrer_id, created_at, updated_at
+		FROM mini_app_users
+		WHERE referrer_id = ?
+		ORDER BY created_at DESC
+	`
+
+	rows, err := database.DB.Query(query, referrerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]MiniAppUser, 0)
+	for rows.Next() {
+		var (
+			user                          MiniAppUser
+			userCode, name, avatar, phone sql.NullString
+			salesCode, storeType          sql.NullString
+			profileCompleted              sql.NullInt64
+			isSalesEmployee               sql.NullInt64
+			salesEmployeeID               sql.NullInt64
+			referrerID                    sql.NullInt64
+		)
+
+		if err := rows.Scan(
+			&user.ID,
+			&user.UniqueID,
+			&userCode,
+			&name,
+			&avatar,
+			&phone,
+			&salesCode,
+			&storeType,
+			&user.UserType,
+			&profileCompleted,
+			&isSalesEmployee,
+			&salesEmployeeID,
+			&referrerID,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		); err != nil {
+			continue
+		}
+
+		user.UserCode = nullString(userCode)
+		user.Name = nullString(name)
+		user.Avatar = nullString(avatar)
+		user.Phone = nullString(phone)
+		user.SalesCode = nullString(salesCode)
+		user.StoreType = nullString(storeType)
+		user.ProfileCompleted = profileCompleted.Valid && profileCompleted.Int64 == 1
+		user.IsSalesEmployee = isSalesEmployee.Valid && isSalesEmployee.Int64 == 1
+		if salesEmployeeID.Valid {
+			id := int(salesEmployeeID.Int64)
+			user.SalesEmployeeID = &id
+		}
+		if referrerID.Valid {
+			id := int(referrerID.Int64)
+			user.ReferrerID = &id
+		}
+
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
 // GetMiniAppUsersByIDs 批量获取用户信息
 func GetMiniAppUsersByIDs(ids []int) (map[int]*MiniAppUser, error) {
 	if len(ids) == 0 {
@@ -543,7 +706,7 @@ func GetMiniAppUsersByIDs(ids []int) (map[int]*MiniAppUser, error) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, created_at, updated_at
+		SELECT id, unique_id, user_code, name, avatar, phone, sales_code, store_type, user_type, profile_completed, is_sales_employee, sales_employee_id, referrer_id, created_at, updated_at
 		FROM mini_app_users
 		WHERE id IN (%s)`, strings.Join(placeholders, ","))
 
@@ -562,6 +725,7 @@ func GetMiniAppUsersByIDs(ids []int) (map[int]*MiniAppUser, error) {
 			profileCompleted              sql.NullInt64
 			isSalesEmployee               sql.NullInt64
 			salesEmployeeID               sql.NullInt64
+			referrerID                    sql.NullInt64
 		)
 
 		err := rows.Scan(
@@ -577,6 +741,7 @@ func GetMiniAppUsersByIDs(ids []int) (map[int]*MiniAppUser, error) {
 			&profileCompleted,
 			&isSalesEmployee,
 			&salesEmployeeID,
+			&referrerID,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		)
@@ -595,6 +760,10 @@ func GetMiniAppUsersByIDs(ids []int) (map[int]*MiniAppUser, error) {
 		if salesEmployeeID.Valid {
 			id := int(salesEmployeeID.Int64)
 			user.SalesEmployeeID = &id
+		}
+		if referrerID.Valid {
+			id := int(referrerID.Int64)
+			user.ReferrerID = &id
 		}
 
 		users[user.ID] = &user

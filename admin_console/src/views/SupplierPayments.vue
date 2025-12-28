@@ -154,6 +154,16 @@
           </el-table-column>
         </el-table>
 
+        <!-- 选中清单小计 -->
+        <div class="selected-summary" v-if="selectedOrders.length > 0">
+          <div class="summary-content">
+            <span class="summary-label">已选中 <strong>{{ selectedOrders.length }}</strong> 个订单</span>
+            <span class="summary-amount">
+              小计：<strong class="total">¥{{ formatMoney(selectedTotalAmount) }}</strong>
+            </span>
+          </div>
+        </div>
+
         <!-- 分页 -->
         <div class="pagination-container">
           <el-pagination
@@ -320,6 +330,11 @@ const selectedItems = computed(() => {
 // 计算总金额
 const calculatedAmount = computed(() => {
   return selectedItems.value.reduce((sum, item) => sum + (item.subtotal || 0), 0)
+})
+
+// 选中订单的小计金额
+const selectedTotalAmount = computed(() => {
+  return selectedOrders.value.reduce((sum, order) => sum + (Number(order.total_cost) || 0), 0)
 })
 
 // 格式化金额
@@ -608,11 +623,27 @@ const submitPayment = async () => {
       // 重新加载数据
       await loadData()
     } else {
+      // 业务逻辑错误，显示后端返回的错误信息
       ElMessage.error(response.message || '创建付款记录失败')
     }
   } catch (error) {
     console.error('提交付款失败:', error)
-    ElMessage.error('提交付款失败')
+    // 提取后端返回的错误信息，优先显示后端返回的具体错误
+    let errorMessage = '提交付款失败'
+    if (error?.response?.data?.message) {
+      // HTTP 错误响应中的错误信息
+      errorMessage = error.response.data.message
+    } else if (error?.response?.data?.error) {
+      errorMessage = error.response.data.error
+    } else if (error?.response?.data) {
+      // 如果 data 是字符串，直接使用
+      errorMessage = typeof error.response.data === 'string' ? error.response.data : (error.response.data.message || '提交付款失败')
+    } else if (error?.message) {
+      errorMessage = error.message
+    } else if (typeof error === 'string') {
+      errorMessage = error
+    }
+    ElMessage.error(errorMessage)
   } finally {
     submitting.value = false
   }
@@ -728,36 +759,49 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  width: 100%;
+  gap: 20px;
 }
 
 .detail-header h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+  color: #303133;
+  flex-shrink: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-shrink: 0;
 }
 
 .header-stats {
   display: flex;
+  align-items: center;
   gap: 24px;
   font-size: 14px;
   color: #606266;
 }
 
+.header-stats span {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
 .header-stats strong {
   font-size: 16px;
   font-weight: 600;
+  margin-left: 4px;
 }
 
 .header-stats .total {
   color: #409eff;
   font-size: 20px;
-}
-
-.header-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
+  font-weight: 600;
 }
 
 .total-amount {
@@ -775,6 +819,60 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* 选中清单小计 */
+.selected-summary {
+  margin-top: 16px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+}
+
+.summary-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  color: #606266;
+}
+
+.summary-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.summary-label strong {
+  color: #409eff;
+  font-weight: 600;
+}
+
+.summary-amount {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  color: #303133;
+}
+
+.summary-amount .total {
+  color: #409eff;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* 待付款和已付款颜色 */
+.pending-amount {
+  color: #e6a23c;
+  font-weight: 600;
+}
+
+.paid-amount {
+  color: #67c23a;
+  font-weight: 600;
 }
 </style>
 

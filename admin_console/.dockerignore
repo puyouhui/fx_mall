@@ -1,0 +1,16 @@
+node_modules
+.git
+.gitignore
+*.md
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.vscode
+.idea
+*.log
+build.sh
+nginx配置示例.conf
+宝塔部署说明.md
+快速部署指南.md
+

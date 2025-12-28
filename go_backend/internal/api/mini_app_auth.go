@@ -17,7 +17,8 @@ import (
 )
 
 type miniAppLoginRequest struct {
-	Code string `json:"code" binding:"required"`
+	Code       string `json:"code" binding:"required"`
+	ReferrerID *int   `json:"referrer_id,omitempty"` // 分享者用户ID（可选）
 }
 
 type weChatSessionResponse struct {
@@ -54,7 +55,8 @@ func MiniAppLogin(c *gin.Context) {
 	}
 
 	if user == nil {
-		user, err = model.CreateMiniAppUser(sessionInfo.OpenID)
+		// 新用户，绑定分享者（如果提供）
+		user, err = model.CreateMiniAppUser(sessionInfo.OpenID, req.ReferrerID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建用户失败: " + err.Error()})
 			return
@@ -99,6 +101,47 @@ func MiniAppLogin(c *gin.Context) {
 	})
 }
 
+// GetUserReferralStats 获取用户拉新统计（后台管理使用）
+func GetUserReferralStats(c *gin.Context) {
+	userIDStr := c.Query("user_id")
+	if userIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供用户ID"})
+		return
+	}
+
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil || userID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "用户ID格式错误"})
+		return
+	}
+
+	// 统计该用户拉取的新用户数量
+	var count int
+	err = database.DB.QueryRow(`
+		SELECT COUNT(*) FROM mini_app_users WHERE referrer_id = ?
+	`, userID).Scan(&count)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "统计失败: " + err.Error()})
+		return
+	}
+
+	// 获取该用户拉取的新用户列表
+	referrals, err := model.GetMiniAppUsersByReferrerID(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取新用户列表失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "获取成功",
+		"data": gin.H{
+			"total":     count,
+			"referrals": referrals,
+		},
+	})
+}
+
 // GetMiniAppUsers 获取小程序用户（后台管理使用）
 func GetMiniAppUsers(c *gin.Context) {
 	pageNum := parseQueryInt(c, "pageNum", 1)
@@ -125,6 +168,7 @@ func GetMiniAppUsers(c *gin.Context) {
 			"store_type":        user.StoreType,
 			"user_type":         user.UserType,
 			"profile_completed": user.ProfileCompleted,
+			"is_sales_employee": user.IsSalesEmployee,
 			"created_at":        user.CreatedAt,
 			"updated_at":        user.UpdatedAt,
 		}
@@ -225,6 +269,7 @@ func GetMiniAppCurrentUser(c *gin.Context) {
 		"store_type":        user.StoreType,
 		"user_type":         user.UserType,
 		"profile_completed": user.ProfileCompleted,
+		"points":            user.Points,
 		"created_at":        user.CreatedAt,
 		"updated_at":        user.UpdatedAt,
 	}
@@ -300,6 +345,8 @@ func GetMiniAppUserDetail(c *gin.Context) {
 		"store_type":        user.StoreType,
 		"user_type":         user.UserType,
 		"profile_completed": user.ProfileCompleted,
+		"is_sales_employee": user.IsSalesEmployee,
+		"points":            user.Points,
 		"created_at":        user.CreatedAt,
 		"updated_at":        user.UpdatedAt,
 		"default_address":   defaultAddress, // 默认地址信息（保留兼容）
@@ -705,6 +752,9 @@ func UpdateMiniAppUserByAdmin(c *gin.Context) {
 	if req.ProfileCompleted != nil {
 		updateData["profileCompleted"] = *req.ProfileCompleted
 	}
+	if req.IsSalesEmployee != nil {
+		updateData["isSalesEmployee"] = *req.IsSalesEmployee
+	}
 
 	// 更新用户信息
 	if err := model.UpdateMiniAppUserByAdmin(id, updateData); err != nil {
@@ -724,10 +774,44 @@ func UpdateMiniAppUserByAdmin(c *gin.Context) {
 		return
 	}
 
+	// 构建返回数据，确保包含所有字段
+	responseData := map[string]interface{}{
+		"id":                user.ID,
+		"unique_id":         user.UniqueID,
+		"user_code":         user.UserCode,
+		"name":              user.Name,
+		"avatar":            user.Avatar,
+		"phone":             user.Phone,
+		"sales_code":        user.SalesCode,
+		"store_type":        user.StoreType,
+		"user_type":         user.UserType,
+		"profile_completed": user.ProfileCompleted,
+		"is_sales_employee": user.IsSalesEmployee,
+		"created_at":        user.CreatedAt,
+		"updated_at":        user.UpdatedAt,
+	}
+
+	// 如果用户绑定了销售员，获取销售员信息
+	if user.SalesCode != "" {
+		employee, err := model.GetEmployeeByEmployeeCode(user.SalesCode)
+		if err == nil && employee != nil {
+			responseData["sales_employee"] = map[string]interface{}{
+				"id":            employee.ID,
+				"employee_code": employee.EmployeeCode,
+				"name":          employee.Name,
+				"phone":         employee.Phone,
+			}
+		} else {
+			responseData["sales_employee"] = nil
+		}
+	} else {
+		responseData["sales_employee"] = nil
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "更新成功",
-		"data":    user,
+		"data":    responseData,
 	})
 }
 

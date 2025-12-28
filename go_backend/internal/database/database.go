@@ -608,6 +608,8 @@ func InitDB() error {
 		ensureColumn("name", "name VARCHAR(50) DEFAULT NULL COMMENT '用户姓名' AFTER user_code")
 		ensureColumn("is_sales_employee", "is_sales_employee TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否是销售员：0-否，1-是'")
 		ensureColumn("sales_employee_id", "sales_employee_id INT DEFAULT NULL COMMENT '绑定的销售员ID（员工表ID）'")
+		ensureColumn("referrer_id", "referrer_id INT DEFAULT NULL COMMENT '分享者用户ID（谁分享给我的）'")
+		ensureColumn("points", "points INT NOT NULL DEFAULT 0 COMMENT '用户积分'")
 
 		// 删除不需要的字段（如果存在）
 		dropColumn := func(columnName string) {
@@ -1429,6 +1431,93 @@ func InitDB() error {
 			log.Printf("创建sales_commission_monthly_stats表失败: %v", err)
 		} else {
 			log.Println("销售分成月统计表初始化成功")
+		}
+
+		// 创建推荐奖励活动配置表
+		createReferralRewardConfigTableSQL := `
+		CREATE TABLE IF NOT EXISTS referral_reward_config (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    is_enabled TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用：0-禁用，1-启用',
+		    reward_type ENUM('points','coupon','amount') NOT NULL DEFAULT 'points' COMMENT '奖励类型：points-积分，coupon-优惠券，amount-金额',
+		    reward_value DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '奖励值：积分数量/优惠券ID/金额',
+		    coupon_id INT DEFAULT NULL COMMENT '优惠券ID（当reward_type为coupon时使用）',
+		    description VARCHAR(500) DEFAULT '' COMMENT '活动说明',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    KEY idx_is_enabled (is_enabled)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='推荐奖励活动配置表';
+		`
+
+		if _, err = DB.Exec(createReferralRewardConfigTableSQL); err != nil {
+			log.Printf("创建referral_reward_config表失败: %v", err)
+		} else {
+			log.Println("推荐奖励活动配置表初始化成功")
+			// 初始化默认配置（如果不存在）
+			var count int
+			if err := DB.QueryRow("SELECT COUNT(*) FROM referral_reward_config").Scan(&count); err == nil && count == 0 {
+				if _, err = DB.Exec(`
+					INSERT INTO referral_reward_config (is_enabled, reward_type, reward_value, description)
+					VALUES (0, 'points', 0, '老用户推荐新用户首次下单奖励活动')
+				`); err != nil {
+					log.Printf("初始化推荐奖励活动配置失败: %v", err)
+				}
+			}
+		}
+
+		// 创建推荐奖励记录表
+		createReferralRewardsTableSQL := `
+		CREATE TABLE IF NOT EXISTS referral_rewards (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    referrer_id INT NOT NULL COMMENT '推荐人用户ID（老用户）',
+		    new_user_id INT NOT NULL COMMENT '新用户ID',
+		    order_id INT NOT NULL COMMENT '订单ID（新用户首次下单的订单）',
+		    order_number VARCHAR(32) NOT NULL COMMENT '订单编号',
+		    reward_type ENUM('points','coupon','amount') NOT NULL DEFAULT 'points' COMMENT '奖励类型',
+		    reward_value DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '奖励值',
+		    coupon_id INT DEFAULT NULL COMMENT '优惠券ID（当reward_type为coupon时使用）',
+		    status ENUM('pending','completed','failed') NOT NULL DEFAULT 'pending' COMMENT '状态：pending-待发放，completed-已发放，failed-发放失败',
+		    reward_at DATETIME DEFAULT NULL COMMENT '奖励发放时间',
+		    remark VARCHAR(500) DEFAULT '' COMMENT '备注',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    UNIQUE KEY uk_order_referrer (order_id, referrer_id) COMMENT '同一订单同一推荐人只能有一条记录',
+		    KEY idx_referrer_id (referrer_id),
+		    KEY idx_new_user_id (new_user_id),
+		    KEY idx_order_id (order_id),
+		    KEY idx_status (status),
+		    KEY idx_created_at (created_at)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='推荐奖励记录表';
+		`
+
+		if _, err = DB.Exec(createReferralRewardsTableSQL); err != nil {
+			log.Printf("创建referral_rewards表失败: %v", err)
+		} else {
+			log.Println("推荐奖励记录表初始化成功")
+		}
+
+		// 创建积分明细表
+		createPointsLogsTableSQL := `
+		CREATE TABLE IF NOT EXISTS points_logs (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    user_id INT NOT NULL COMMENT '用户ID',
+		    points INT NOT NULL COMMENT '积分变动数量（正数为增加，负数为减少）',
+		    balance_after INT NOT NULL COMMENT '变动后积分余额',
+		    type VARCHAR(50) NOT NULL COMMENT '积分类型：order_reward-订单奖励，referral_reward-推荐奖励，points_discount-积分抵扣，admin_adjust-管理员调整等',
+		    related_id INT DEFAULT NULL COMMENT '关联ID（如订单ID、推荐奖励ID等）',
+		    related_type VARCHAR(50) DEFAULT NULL COMMENT '关联类型（如order、referral_reward等）',
+		    description VARCHAR(500) DEFAULT '' COMMENT '积分变动说明',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    KEY idx_user_id (user_id),
+		    KEY idx_type (type),
+		    KEY idx_created_at (created_at),
+		    KEY idx_related (related_type, related_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='积分明细表';
+		`
+
+		if _, err = DB.Exec(createPointsLogsTableSQL); err != nil {
+			log.Printf("创建points_logs表失败: %v", err)
+		} else {
+			log.Println("积分明细表初始化成功")
 		}
 
 		// 创建收款审核申请表

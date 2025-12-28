@@ -16,10 +16,8 @@
           </view>
           <view class="user-meta">
             <view class="user-type" :class="userTypeClass">
-              <image v-if="userInfo.user_type === 'wholesale'" src="/static/icon/vip.png" class="user-type-icon"
-                mode="aspectFit" @error="handleIconError"></image>
-              <image v-else-if="userInfo.user_type === 'retail'" src="/static/icon/zx.png" class="user-type-icon"
-                mode="aspectFit" @error="handleIconError"></image>
+              <image v-if="userInfo.user_type === 'wholesale'" src="/static/icon/vip.png" class="user-type-icon" mode="aspectFit" @error="handleIconError"></image>
+              <image v-else-if="userInfo.user_type === 'retail'" src="/static/icon/zx.png" class="user-type-icon" mode="aspectFit" @error="handleIconError"></image>
               <text class="user-type-text">{{ userTypeText }}</text>
             </view>
           </view>
@@ -58,7 +56,7 @@
         <text class="account-label">锁价(货)单</text>
         <text class="account-value">{{ lockedOrdersCount }}</text>
       </view> -->
-      <view class="account-item">
+      <view class="account-item" @click="goToPointsLogs">
         <text class="account-label">积分</text>
         <text class="account-value">{{ userPoints }}</text>
       </view>
@@ -77,24 +75,21 @@
         <view class="order-tab" @click="goToOrderList('pending_delivery')">
           <view class="tab-icon-wrapper">
             <image src="/static/icon/1.png" class="tab-icon" mode="aspectFit"></image>
-            <view class="badge" v-if="orderCounts.pending_delivery > 0">{{ orderCounts.pending_delivery > 99 ? '99+' :
-              orderCounts.pending_delivery }}</view>
+            <view class="badge" v-if="orderCounts.pending_delivery > 0">{{ orderCounts.pending_delivery > 99 ? '99+' : orderCounts.pending_delivery }}</view>
           </view>
           <text class="tab-text">待配送</text>
         </view>
         <view class="order-tab" @click="goToOrderList('delivering')">
           <view class="tab-icon-wrapper">
             <image src="/static/icon/2.png" class="tab-icon" mode="aspectFit"></image>
-            <view class="badge" v-if="orderCounts.delivering > 0">{{ orderCounts.delivering > 99 ? '99+' :
-              orderCounts.delivering }}</view>
+            <view class="badge" v-if="orderCounts.delivering > 0">{{ orderCounts.delivering > 99 ? '99+' : orderCounts.delivering }}</view>
           </view>
           <text class="tab-text">配送中</text>
         </view>
         <view class="order-tab" @click="goToOrderList('delivered')">
           <view class="tab-icon-wrapper">
             <image src="/static/icon/3.png" class="tab-icon" mode="aspectFit"></image>
-            <view class="badge" v-if="orderCounts.delivered > 0">{{ orderCounts.delivered > 99 ? '99+' :
-              orderCounts.delivered }}</view>
+            <view class="badge" v-if="orderCounts.delivered > 0">{{ orderCounts.delivered > 99 ? '99+' : orderCounts.delivered }}</view>
           </view>
           <text class="tab-text">已送达</text>
         </view>
@@ -125,7 +120,7 @@
     </view>
 
 
-
+    
     <!-- 轮播图 -->
     <!-- <view class="carousel-section" v-if="carousels.length > 0">
       <swiper class="carousel-swiper" :indicator-dots="true" :autoplay="true" :interval="3000" :duration="500" circular>
@@ -134,10 +129,14 @@
         </swiper-item>
       </swiper>
     </view> -->
-
+    
     <!-- 登录弹框组件 -->
-    <LoginModal :visible="showLoginModal" @update:visible="showLoginModal = $event" @login-success="handleLoginSuccess"
-      @close="handleLoginModalClose" />
+    <LoginModal 
+      :visible="showLoginModal"
+      @update:visible="showLoginModal = $event"
+      @login-success="handleLoginSuccess"
+      @close="handleLoginModalClose"
+    />
   </view>
 </template>
 
@@ -168,13 +167,12 @@ export default {
       showLoginModal: false,
       functions: [
         { name: '地址管理', icon: 'location', iconPath: '/static/icon/address.png', path: '/pages/address/address', color: '#20CB6B' },
-        { name: '收藏商品', icon: 'star-filled', iconPath: '/static/icon/favorite.png', path: '/pages/favorites/favorites', color: '#20CB6B' },
         // { name: '我的账单', icon: 'wallet', iconPath: '/static/icon/bills.png', path: '/pages/bill/bill', color: '#20CB6B' },
-        { name: '客服与帮助', icon: 'chatbubble', iconPath: '/static/icon/customer_service.png', path: '/pages/customer-service/customer-service', color: '#20CB6B' },
-        { name: '供应商合作', icon: 'shop', iconPath: '/static/icon/suppliers.png', path: '/pages/supplier/supplier', color: '#20CB6B' },
-        { name: '新品需求', icon: 'star', iconPath: '/static/icon/new.png', path: '/pages/product-request/product-request', color: '#20CB6B' },
-        { name: '系统设置', icon: 'gear', iconPath: '/static/icon/set.png', path: '/pages/settings/settings', color: '#20CB6B' },
         { name: '发票抬头', icon: 'paperplane', iconPath: '/static/icon/invoice.png', path: '/pages/invoice/invoice', color: '#20CB6B' },
+        { name: '新品需求', icon: 'star', iconPath: '/static/icon/new.png', path: '/pages/product-request/product-request', color: '#20CB6B' },
+        { name: '客服与帮助', icon: 'chatbubble', iconPath: '/static/icon/customer_service.png', path: '/pages/customer-service/customer-service', color: '#20CB6B' },
+        { name: '系统设置', icon: 'gear', iconPath: '/static/icon/set.png', path: '/pages/settings/settings', color: '#20CB6B' },
+        { name: '供应商合作', icon: 'shop', iconPath: '/static/icon/suppliers.png', path: '/pages/supplier/supplier', color: '#20CB6B' },
         { name: '关于我们', icon: 'information', iconPath: '/static/icon/About.png', path: '/pages/about-us/about-us', color: '#20CB6B' }
       ]
     };
@@ -214,7 +212,7 @@ export default {
     const info = uni.getSystemInfoSync();
     // 设置状态栏高度
     this.statusBarHeight = info.statusBarHeight || 20;
-
+    
     this.checkLoginStatus();
     this.loadUserInfo();
     this.loadOrderCounts();
@@ -242,7 +240,7 @@ export default {
         this.userInfo = {};
       }
     },
-
+    
     // 更新用户信息
     async updateUserInfo() {
       try {
@@ -266,7 +264,7 @@ export default {
         console.error('获取用户信息失败:', error);
       }
     },
-
+    
     // 加载用户信息
     loadUserInfo() {
       const storedUserInfo = uni.getStorageSync('miniUserInfo');
@@ -277,7 +275,7 @@ export default {
         this.userPoints = parseInt(storedUserInfo.points || 0);
       }
     },
-
+    
     // 加载用户余额
     async loadUserBalance() {
       if (!this.isLoggedIn) {
@@ -292,20 +290,20 @@ export default {
         this.userPoints = parseInt(storedUserInfo.points || 0);
       }
     },
-
+    
     // 加载默认地址
     async loadDefaultAddress() {
       if (!this.isLoggedIn) {
         this.defaultAddress = null;
         return;
       }
-
+      
       try {
         const token = uni.getStorageSync('miniUserToken');
         if (!token) {
           return;
         }
-
+        
         const res = await getMiniUserDefaultAddress(token);
         if (res && res.code === 200 && res.data) {
           this.defaultAddress = res.data;
@@ -317,7 +315,7 @@ export default {
         this.defaultAddress = null;
       }
     },
-
+    
     // 加载订单数量
     async loadOrderCounts() {
       if (!this.isLoggedIn) {
@@ -328,16 +326,16 @@ export default {
         };
         return;
       }
-
+      
       try {
         const token = uni.getStorageSync('miniUserToken');
         if (!token) {
           return;
         }
-
+        
         const statuses = ['pending_delivery', 'delivering', 'delivered'];
         const counts = {};
-
+        
         for (const status of statuses) {
           try {
             const res = await getUserOrders(token, { pageNum: 1, pageSize: 1, status });
@@ -351,7 +349,7 @@ export default {
             counts[status] = 0;
           }
         }
-
+        
         this.orderCounts = counts;
       } catch (error) {
         console.error('加载订单数量失败:', error);
@@ -362,20 +360,20 @@ export default {
         };
       }
     },
-
+    
     // 加载优惠券数量
     async loadCouponCount() {
       if (!this.isLoggedIn) {
         this.couponCount = 0;
         return;
       }
-
+      
       try {
         const token = uni.getStorageSync('miniUserToken');
         if (!token) {
           return;
         }
-
+        
         const res = await getUserCoupons(token);
         if (res && res.code === 200 && Array.isArray(res.data)) {
           this.couponCount = res.data.filter(coupon => coupon.status === 'unused').length;
@@ -387,7 +385,7 @@ export default {
         this.couponCount = 0;
       }
     },
-
+    
     // 加载轮播图
     async loadCarousels() {
       try {
@@ -400,12 +398,12 @@ export default {
         this.carousels = [];
       }
     },
-
+    
     // 显示登录弹框
     goToLogin() {
       this.showLoginModal = true;
     },
-
+    
     // 处理登录成功
     async handleLoginSuccess({ user, token, uniqueId }) {
       // 更新用户信息
@@ -413,19 +411,19 @@ export default {
         this.userInfo = user;
       }
       this.isLoggedIn = true;
-
+      
       // 刷新用户信息
       await this.updateUserInfo();
       await this.loadOrderCounts();
       await this.loadCouponCount();
       await this.loadUserBalance();
     },
-
+    
     // 处理登录弹框关闭
     handleLoginModalClose() {
       this.showLoginModal = false;
     },
-
+    
     // 跳转到个人资料页面
     goToProfile() {
       if (!this.isLoggedIn) {
@@ -436,7 +434,7 @@ export default {
         url: '/pages/profile/profile'
       });
     },
-
+    
     // 跳转到订单列表
     goToOrderList(status) {
       if (!this.isLoggedIn) {
@@ -448,7 +446,7 @@ export default {
         url: `/pages/order/list${statusParam}`
       });
     },
-
+    
     // 跳转到客服页面
     goToCustomerService() {
       if (!this.isLoggedIn) {
@@ -459,13 +457,13 @@ export default {
         url: '/pages/customer-service/customer-service'
       });
     },
-
+    
     // 跳转到优惠券页面
     goToCoupons() {
       console.log(
         11
       );
-
+      
       if (!this.isLoggedIn) {
         this.goToLogin();
         return;
@@ -474,15 +472,26 @@ export default {
         url: '/pages/coupons/coupons'
       });
     },
-
+    
+    // 跳转到积分明细页面
+    goToPointsLogs() {
+      if (!this.isLoggedIn) {
+        this.goToLogin();
+        return;
+      }
+      uni.navigateTo({
+        url: '/pages/points/logs'
+      });
+    },
+    
     // 处理轮播图点击
     handleCarouselClick(item) {
       if (!item.link || item.link.trim() === '') {
         return;
       }
-
+      
       const link = item.link;
-
+      
       // 处理外部链接（http:// 或 https://）
       if (link.startsWith('http://') || link.startsWith('https://')) {
         // #ifdef H5
@@ -496,7 +505,7 @@ export default {
         // #endif
         return;
       }
-
+      
       // 处理完整的小程序路径（以 /pages/ 开头）
       if (link.startsWith('/pages/')) {
         // 判断是否是 tabBar 页面
@@ -512,7 +521,7 @@ export default {
         }
         return;
       }
-
+      
       // 处理商品详情页：product/xxx 或 product?id=xxx
       if (link.startsWith('product/')) {
         const productId = link.split('/')[1];
@@ -521,7 +530,7 @@ export default {
         });
         return;
       }
-
+      
       // 处理分类页面：category/xxx 或 category?id=xxx
       if (link.startsWith('category/')) {
         const categoryId = link.split('/')[1];
@@ -532,7 +541,7 @@ export default {
         });
         return;
       }
-
+      
       // 处理富文本页面：rich-content/xxx 或 rich-content?id=xxx
       if (link.startsWith('rich-content/')) {
         const contentId = link.split('/')[1];
@@ -541,7 +550,7 @@ export default {
         });
         return;
       }
-
+      
       // 处理带查询参数的格式：page?key=value
       if (link.includes('?')) {
         const [page, params] = link.split('?');
@@ -573,7 +582,7 @@ export default {
           }
         }
       }
-
+      
       // 如果都不匹配，尝试作为完整路径处理
       if (link.startsWith('/')) {
         uni.navigateTo({
@@ -600,7 +609,7 @@ export default {
         }
       }
     },
-
+    
     // 处理功能点击
     handleFunctionClick(func) {
       // 关于我们不需要登录
@@ -610,13 +619,13 @@ export default {
         });
         return;
       }
-
+      
       // 其他功能都需要登录
       if (!this.isLoggedIn) {
         this.goToLogin();
         return;
       }
-
+      
       if (func.path) {
         uni.navigateTo({
           url: func.path
@@ -625,7 +634,7 @@ export default {
         func.handler();
       }
     },
-
+    
     // 处理图标加载错误
     handleIconError() {
       // 图标加载失败时静默处理，不显示图标
@@ -815,7 +824,7 @@ export default {
 .account-value {
   font-size: 32rpx;
   font-weight: 600;
-  color: #FFF3DA;
+  color: #FFF3DA ;
 }
 
 /* 订单信息 */
@@ -980,4 +989,5 @@ export default {
   color: #555;
   text-align: center;
 }
+
 </style>

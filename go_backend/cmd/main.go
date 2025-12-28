@@ -112,6 +112,9 @@ func main() {
 			miniAppProtectedGroup.DELETE("/favorites/:id", api.DeleteFavorite)                           // 删除收藏（通过收藏ID）
 			miniAppProtectedGroup.DELETE("/favorites/product/:productId", api.DeleteFavoriteByProductID) // 删除收藏（通过商品ID）
 			miniAppProtectedGroup.GET("/favorites/check", api.CheckFavorite)                             // 检查商品是否已收藏
+
+			// 积分接口
+			miniAppProtectedGroup.GET("/points/logs", api.GetPointsLogs) // 获取用户积分明细列表
 		}
 
 		// 供应商合作申请接口（不需要登录也可以提交）
@@ -212,6 +215,7 @@ func main() {
 
 				// 小程序用户
 				protectedGroup.GET("/mini-app/users", api.GetMiniAppUsers)                            // 查看小程序用户列表
+				protectedGroup.GET("/mini-app/users/referral-stats", api.GetUserReferralStats)        // 获取用户拉新统计
 				protectedGroup.GET("/mini-app/users/:id/coupons", api.GetAdminUserCoupons)            // 管理员获取用户优惠券列表（必须在 /:id 之前）
 				protectedGroup.GET("/mini-app/users/:id", api.GetMiniAppUserDetail)                   // 查看小程序用户详情
 				protectedGroup.POST("/mini-app/users/:id/invoice", api.SaveAdminInvoice)              // 保存发票抬头
@@ -296,6 +300,11 @@ func main() {
 				protectedGroup.POST("/rich-contents", api.CreateRichContent)             // 创建富文本内容
 				protectedGroup.PUT("/rich-contents/:id", api.UpdateRichContent)          // 更新富文本内容
 				protectedGroup.PUT("/rich-contents/:id/publish", api.PublishRichContent) // 发布富文本内容
+
+				// 推荐奖励活动管理
+				protectedGroup.GET("/referral-reward/config", api.GetReferralRewardConfig)     // 获取推荐奖励活动配置
+				protectedGroup.PUT("/referral-reward/config", api.UpdateReferralRewardConfig) // 更新推荐奖励活动配置
+				protectedGroup.GET("/referral-reward/rewards", api.GetReferralRewards)         // 获取推荐奖励记录列表
 				protectedGroup.PUT("/rich-contents/:id/archive", api.ArchiveRichContent) // 归档富文本内容
 				protectedGroup.DELETE("/rich-contents/:id", api.DeleteRichContent)       // 删除富文本内容
 			}

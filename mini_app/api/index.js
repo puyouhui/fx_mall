@@ -129,9 +129,14 @@ export const getHotProducts = () => {
 /**
  * 小程序登录，获取并保存唯一ID
  * @param {string} code - wx.login 返回的code
+ * @param {number} referrerId - 分享者用户ID（可选）
  */
-export const miniLogin = (code) => {
-  return post('/auth/login', { code });
+export const miniLogin = (code, referrerId = null) => {
+  const data = { code };
+  if (referrerId) {
+    data.referrer_id = referrerId;
+  }
+  return post('/auth/login', data);
 };
 
 /**
@@ -555,6 +560,21 @@ export const uploadAddressAvatar = (filePath, token) => {
  * @param {string} token - 用户token
  * @returns Promise
  */
+/**
+ * 获取用户积分明细列表
+ * @param {string} token - 用户token
+ * @param {Object} params - 查询参数
+ * @param {number} params.page_num - 页码
+ * @param {number} params.page_size - 每页数量
+ */
+export const getPointsLogs = (token, params = {}) => {
+  return get('/mini-app/users/points/logs', params, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
 export const getUserCoupons = (token) => {
   return get('/mini-app/users/coupons', {}, {
     header: {

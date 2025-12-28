@@ -3,11 +3,29 @@
 		globalData: {
 			targetCategoryId: null
 		},
-		onLaunch: function() {
-			console.log('App Launch')
+		onLaunch: function(options) {
+			console.log('App Launch', options)
+			// 检查分享参数
+			if (options && options.query) {
+				const referrerId = options.query.referrer_id
+				if (referrerId) {
+					// 保存分享者ID到本地存储
+					uni.setStorageSync('shareReferrerId', referrerId)
+					console.log('保存分享者ID:', referrerId)
+				}
+			}
 		},
-		onShow: function() {
-			console.log('App Show')
+		onShow: function(options) {
+			console.log('App Show', options)
+			// 检查分享参数（从其他小程序或分享卡片打开）
+			if (options && options.query) {
+				const referrerId = options.query.referrer_id
+				if (referrerId) {
+					// 保存分享者ID到本地存储
+					uni.setStorageSync('shareReferrerId', referrerId)
+					console.log('保存分享者ID:', referrerId)
+				}
+			}
 		},
 		onHide: function() {
 			console.log('App Hide')

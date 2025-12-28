@@ -645,9 +645,9 @@ func UpdateOrderStatus(c *gin.Context) {
 		return
 	}
 
-	// 如果订单状态变为 paid（已收款），需要计算销售分成
+	// 如果订单状态变为 paid（已收款），需要计算销售分成和处理推荐奖励
 	if req.Status == "paid" {
-		// 异步处理销售分成计算（避免阻塞）
+		// 异步处理销售分成计算和推荐奖励（避免阻塞）
 		go func(orderID int) {
 			// 等待一下，确保订单状态和结算日期已更新
 			time.Sleep(100 * time.Millisecond)
@@ -681,6 +681,21 @@ func UpdateOrderStatus(c *gin.Context) {
 				log.Printf("处理订单 %d 的销售分成失败: %v", orderID, err)
 			} else {
 				log.Printf("订单 %d 的销售分成计算成功", orderID)
+			}
+
+			// 处理推荐奖励（订单完成付款后发放奖励给老用户）
+			if err := model.ProcessReferralReward(orderID); err != nil {
+				log.Printf("处理订单 %d 的推荐奖励失败: %v", orderID, err)
+			} else {
+				log.Printf("订单 %d 的推荐奖励处理完成", orderID)
+			}
+
+			// 处理订单积分奖励（订单完成付款后发放积分）
+			// 积分规则：每消费1元奖励1积分，四舍五入
+			if err := model.AddPointsForOrder(order.UserID, orderID, order.OrderNumber, order.TotalAmount); err != nil {
+				log.Printf("处理订单 %d 的积分奖励失败: %v", orderID, err)
+			} else {
+				log.Printf("订单 %d 的积分奖励处理完成", orderID)
 			}
 		}(id)
 	}

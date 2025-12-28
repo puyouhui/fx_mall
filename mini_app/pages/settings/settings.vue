@@ -11,7 +11,7 @@
             <uni-icons type="left" size="20" color="#fff"></uni-icons>
           </view>
           <view class="navbar-title">
-            <text class="navbar-title-text">设置</text>
+            <text class="navbar-title-text">系统设置</text>
           </view>
           <view class="navbar-right"></view>
         </view>
@@ -32,7 +32,7 @@
             </view>
             <text class="item-text">个人资料</text>
           </view>
-          <uni-icons type="right" size="16" color="#ddd"></uni-icons>
+          <uni-icons type="right" size="18" color="#C0C4CC"></uni-icons>
         </view>
       </view>
 
@@ -45,7 +45,7 @@
             </view>
             <text class="item-text">关于我们</text>
           </view>
-          <uni-icons type="right" size="16" color="#ddd"></uni-icons>
+          <uni-icons type="right" size="18" color="#C0C4CC"></uni-icons>
         </view>
       </view>
 
@@ -58,7 +58,7 @@
             </view>
             <text class="item-text">隐私政策</text>
           </view>
-          <uni-icons type="right" size="16" color="#ddd"></uni-icons>
+          <uni-icons type="right" size="18" color="#C0C4CC"></uni-icons>
         </view>
         <view class="settings-item" @click="handleTerms">
           <view class="item-left">
@@ -67,7 +67,7 @@
             </view>
             <text class="item-text">用户协议</text>
           </view>
-          <uni-icons type="right" size="16" color="#ddd"></uni-icons>
+          <uni-icons type="right" size="18" color="#C0C4CC"></uni-icons>
         </view>
       </view>
 
@@ -234,6 +234,7 @@ export default {
   left: 0;
   right: 0;
   z-index: 1000;
+  background-color: #20CB6B;
 }
 
 .navbar-content {
@@ -271,24 +272,25 @@ export default {
 
 /* 设置内容 */
 .settings-content {
-  padding: 20rpx;
+  padding: 24rpx;
 }
 
 .settings-group {
   background-color: #fff;
-  border-radius: 20rpx;
-  margin-bottom: 20rpx;
+  border-radius: 24rpx;
+  margin-bottom: 24rpx;
   overflow: hidden;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.06);
 }
 
 .settings-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 30rpx;
-  border-bottom: 1rpx solid #f5f5f5;
-  transition: background-color 0.2s;
+  padding: 36rpx 32rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+  transition: all 0.3s ease;
+  position: relative;
 }
 
 .settings-item:last-child {
@@ -296,8 +298,10 @@ export default {
 }
 
 .settings-item:active {
-  background-color: #f8f8f8;
+  background-color: #f8f9fa;
+  transform: scale(0.99);
 }
+
 
 .item-left {
   display: flex;
@@ -306,61 +310,69 @@ export default {
 }
 
 .item-icon {
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 16rpx;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 18rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 24rpx;
+  margin-right: 28rpx;
+  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
+  box-shadow: 0 2rpx 8rpx rgba(32, 203, 107, 0.15);
 }
 
 .profile-icon {
-  background-color: #E8F8F0;
+  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
 }
 
 .about-icon {
-  background-color: #E8F8F0;
+  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
 }
 
 .privacy-icon {
-  background-color: #E8F8F0;
+  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
 }
 
 .terms-icon {
-  background-color: #E8F8F0;
+  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
 }
 
 .item-text {
-  font-size: 28rpx;
+  font-size: 30rpx;
   color: #333;
+  font-weight: 500;
 }
 
 /* 退出登录 */
 .logout-section {
-  margin-top: 40rpx;
+  margin-top: 48rpx;
+  padding: 0 4rpx;
 }
 
 .logout-btn {
   width: 100%;
-  height: 88rpx;
-  background-color: #20CB6B;
-  border-radius: 44rpx;
+  height: 96rpx;
+  background-color: #fff;
+  border-radius: 48rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);
+  border: 2rpx solid #ffebee;
+  transition: all 0.3s ease;
 }
 
 .logout-btn:active {
-  opacity: 0.8;
+  background-color: #fff5f5;
   transform: scale(0.98);
+  box-shadow: 0 2rpx 8rpx rgba(255, 77, 79, 0.2);
 }
 
 .logout-text {
-  font-size: 30rpx;
-  color: #fff;
-  font-weight: 500;
+  font-size: 32rpx;
+  color: #ff4d4f;
+  font-weight: 600;
+  letter-spacing: 1rpx;
 }
 </style>
 

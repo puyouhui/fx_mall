@@ -118,7 +118,7 @@ func UploadFile(fileName string, reader *http.Request) (string, error) {
 
 	// 生成可访问的URL
 	// 注意：这里使用的是公共访问方式，如果需要私有访问，需要生成带有签名的URL
-	fileURL := fmt.Sprintf("https://www.sscchh.com/minio/%s/%s", cfg.Bucket, objectName)
+	fileURL := fmt.Sprintf("%s/%s/%s", cfg.BaseURL, cfg.Bucket, objectName)
 
 	log.Printf("成功上传文件: %s, 大小: %d 字节\n", uploadInfo.Key, uploadInfo.Size)
 	return fileURL, nil
@@ -194,7 +194,7 @@ func UploadFileByFieldName(fieldName string, fileName string, reader *http.Reque
 	}
 
 	// 生成可访问的URL
-	fileURL := fmt.Sprintf("https://www.sscchh.com/minio/%s/%s", cfg.Bucket, objectName)
+	fileURL := fmt.Sprintf("%s/%s/%s", cfg.BaseURL, cfg.Bucket, objectName)
 
 	log.Printf("成功上传文件: %s, 大小: %d 字节 (%.2f KB)\n", uploadInfo.Key, uploadInfo.Size, float64(uploadInfo.Size)/1024)
 	return fileURL, nil

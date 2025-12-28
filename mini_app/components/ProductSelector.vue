@@ -174,7 +174,17 @@ const performMiniLogin = async () => {
       throw new Error('未获取到登录凭证')
     }
 
-    const resp = await miniLogin(loginRes.code)
+    // 获取本地存储的分享者ID
+    const shareReferrerId = uni.getStorageSync('shareReferrerId')
+    let referrerId = null
+    if (shareReferrerId) {
+      const id = parseInt(shareReferrerId)
+      if (!isNaN(id) && id > 0) {
+        referrerId = id
+      }
+    }
+
+    const resp = await miniLogin(loginRes.code, referrerId)
     const data = resp?.data || {}
     const user = data.user || {}
     const token = data.token || ''
@@ -182,6 +192,11 @@ const performMiniLogin = async () => {
 
     if (!uniqueId) {
       throw new Error('未返回用户唯一ID')
+    }
+
+    // 登录成功后，清除分享者ID（只绑定一次）
+    if (referrerId) {
+      uni.removeStorageSync('shareReferrerId')
     }
 
     persistUserState(user, token)

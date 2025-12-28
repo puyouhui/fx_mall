@@ -371,6 +371,24 @@ export default {
     
     this.loadOrderDetail()
   },
+  // 分享小程序（订单详情页）
+  onShareAppMessage(options) {
+    // 获取当前用户ID
+    const userInfo = uni.getStorageSync('miniUserInfo');
+    const userId = userInfo?.id || userInfo?.ID;
+    
+    // 构建分享路径，添加订单ID和分享者ID
+    let path = `/pages/order/detail?id=${this.orderId}`;
+    if (userId) {
+      path += `&referrer_id=${userId}`;
+    }
+    
+    return {
+      title: `订单详情 - 订单号：${this.orderDetail?.order?.order_number || ''}`,
+      path: path,
+      imageUrl: '' // 可以设置分享图片
+    };
+  },
   methods: {
     goBack() {
       uni.navigateBack()

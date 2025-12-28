@@ -646,6 +646,25 @@ export default {
 			});
 		},
 
+		// 分享小程序
+		onShareAppMessage(options) {
+			// 获取当前用户ID
+			const userInfo = uni.getStorageSync('miniUserInfo');
+			const userId = userInfo?.id || userInfo?.ID;
+			
+			// 构建分享路径，添加分享者ID
+			let path = '/pages/index/index';
+			if (userId) {
+				path += `?referrer_id=${userId}`;
+			}
+			
+			return {
+				title: '发现好商品，快来选购吧！',
+				path: path,
+				imageUrl: '' // 可以设置分享图片
+			};
+		},
+
 		// 显示商品选择弹窗
 		onAddBtnClick(product) {
 			this.$refs.productSelector?.open(product);

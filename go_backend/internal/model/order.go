@@ -276,6 +276,25 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	}
 	_ = CreateDeliveryLog(deliveryLog) // 记录日志失败不影响主流程
 
+	// 检查是否是首次下单，如果是且有referrer_id，记录推荐奖励
+	go func() {
+		// 检查是否是首次下单（排除当前订单）
+		var count int
+		checkQuery := `
+			SELECT COUNT(*) FROM orders
+			WHERE user_id = ? AND id != ? AND status != 'cancelled'
+		`
+		err := database.DB.QueryRow(checkQuery, userID, orderID).Scan(&count)
+		if err == nil && count == 0 {
+			// 这是首次下单，获取用户信息，检查是否有referrer_id
+			user, err := GetMiniAppUserByID(userID)
+			if err == nil && user != nil && user.ReferrerID != nil {
+				// 创建推荐奖励记录（待发放状态）
+				_ = CreateReferralReward(*user.ReferrerID, userID, orderID, orderNumber)
+			}
+		}
+	}()
+
 	// 计算并存储配送费计算结果和利润信息
 	// 注意：这里在事务外执行，避免阻塞订单创建
 	go func() {

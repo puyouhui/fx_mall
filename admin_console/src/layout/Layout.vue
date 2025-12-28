@@ -170,6 +170,10 @@
             <el-icon><Document /></el-icon>
             <span>价格反馈管理</span>
           </el-menu-item>
+          <el-menu-item index="/referral-reward" @click="handleMenuClick('/referral-reward')">
+            <el-icon><Ticket /></el-icon>
+            <span>推荐奖励活动</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <!-- 供应商管理 -->

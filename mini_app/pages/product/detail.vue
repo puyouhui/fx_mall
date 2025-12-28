@@ -853,6 +853,25 @@ export default {
 			});
 		},
 
+		// 分享小程序（商品详情页）
+		onShareAppMessage(options) {
+			// 获取当前用户ID
+			const userInfo = uni.getStorageSync('miniUserInfo');
+			const userId = userInfo?.id || userInfo?.ID;
+			
+			// 构建分享路径，添加商品ID和分享者ID
+			let path = `/pages/product/detail?id=${this.product.id}`;
+			if (userId) {
+				path += `&referrer_id=${userId}`;
+			}
+			
+			return {
+				title: `${this.product.name || '商品详情'} - 快来选购吧！`,
+				path: path,
+				imageUrl: this.product.images && this.product.images.length > 0 ? this.product.images[0] : ''
+			};
+		},
+
 		// 检查收藏状态
 		async checkFavoriteStatus() {
 			const token = uni.getStorageSync('miniUserToken');

@@ -67,6 +67,13 @@
             </el-tag>
           </template>
         </el-table-column>
+        <!-- <el-table-column prop="is_sales_employee" label="是否为内部销售员" min-width="140" align="center">
+          <template #default="scope">
+            <el-tag :type="scope.row.is_sales_employee ? 'success' : 'info'">
+              {{ scope.row.is_sales_employee ? '是' : '否' }}
+            </el-tag>
+          </template>
+        </el-table-column> -->
         <el-table-column prop="sales_employee" label="绑定销售员" min-width="180">
           <template #default="scope">
             <div v-if="scope.row.sales_employee" class="sales-employee-info">
@@ -166,6 +173,17 @@
                           >
                             {{ userDetail.profile_completed ? '已完善' : '未完善' }}
                           </el-tag>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="是否为内部销售员" label-class-name="desc-label">
+                          <el-tag 
+                            :type="userDetail.is_sales_employee ? 'success' : 'info'"
+                            class="sales-employee-tag"
+                          >
+                            {{ userDetail.is_sales_employee ? '是' : '否' }}
+                          </el-tag>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="积分" label-class-name="desc-label">
+                          <span class="desc-value points-value">{{ userDetail.points !== undefined ? userDetail.points : 0 }}</span>
                         </el-descriptions-item>
                         <el-descriptions-item label="店铺类型" label-class-name="desc-label">
                           <span class="desc-value">{{ userDetail.store_type || '-' }}</span>
@@ -799,7 +817,10 @@ const editForm = reactive({
 const uploadAvatarUrl = computed(() => {
   if (!userDetail.value) return ''
   // 使用完整的 API 路径（与 request.js 中的 baseURL 保持一致）
-  const baseURL = 'http://localhost:8082/api/mini'
+  // 根据环境选择 API 地址
+  const baseURL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:8082/api/mini'
+    : '/api_mall/mini'
   return `${baseURL}/admin/mini-app/users/${userDetail.value.id}/avatar`
 })
 
@@ -812,7 +833,10 @@ const uploadHeaders = computed(() => {
 
 // 地址头像上传URL（管理员接口）
 const uploadAddressAvatarUrl = computed(() => {
-  const baseURL = 'http://localhost:8082/api/mini'
+  // 根据环境选择 API 地址
+  const baseURL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:8082/api/mini'
+    : '/api_mall/mini'
   return `${baseURL}/admin/mini-app/addresses/avatar`
 })
 const salesEmployees = ref([])
@@ -1746,36 +1770,34 @@ onMounted(() => {
 }
 
 /* 用户详情对话框样式 */
-:deep(.user-detail-dialog) {
-  .el-dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    margin: 0;
-  }
-  
-  .el-dialog__body {
-    padding: 24px;
-    max-height: 70vh;
-    overflow-y: auto;
-  }
-  
-  .el-dialog__header {
-    padding: 20px 24px 16px;
-    border-bottom: 1px solid #f0f0f0;
-  }
-  
-  .el-dialog__title {
-    font-size: 18px;
-    font-weight: 600;
-    color: #303133;
-  }
-  
-  .el-dialog__footer {
-    padding: 16px 24px;
-    border-top: 1px solid #f0f0f0;
-  }
+:deep(.user-detail-dialog .el-dialog) {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+}
+
+:deep(.user-detail-dialog .el-dialog__body) {
+  padding: 24px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+:deep(.user-detail-dialog .el-dialog__header) {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+:deep(.user-detail-dialog .el-dialog__title) {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+:deep(.user-detail-dialog .el-dialog__footer) {
+  padding: 16px 24px;
+  border-top: 1px solid #f0f0f0;
 }
 
 .user-detail {
@@ -1787,10 +1809,8 @@ onMounted(() => {
 }
 
 /* 优化整体间距 */
-:deep(.user-detail-dialog) {
-  .el-dialog__body {
-    padding: 20px 24px;
-  }
+:deep(.user-detail-dialog .el-dialog__body) {
+  padding: 20px 24px;
 }
 
 .detail-section {
@@ -1907,40 +1927,38 @@ onMounted(() => {
 }
 
 /* 描述列表样式 */
-:deep(.custom-descriptions) {
-  .el-descriptions__table {
-    border-collapse: separate;
-    border-spacing: 0;
-  }
-  
-  .el-descriptions__label {
-    background: #f8f9fa;
-    font-weight: 500;
-    color: #606266;
-    width: 120px;
-    padding: 10px 14px;
-    border-right: 1px solid #ebeef5;
-    font-size: 13px;
-  }
-  
-  .el-descriptions__content {
-    padding: 10px 14px;
-    color: #303133;
-    background: #fff;
-    font-size: 13px;
-  }
-  
-  .el-descriptions__cell {
-    border-bottom: 1px solid #ebeef5;
-  }
-  
-  .el-descriptions__cell:last-child {
-    border-bottom: none;
-  }
-  
-  .desc-label {
-    background: #f8f9fa !important;
-  }
+:deep(.custom-descriptions .el-descriptions__table) {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+:deep(.custom-descriptions .el-descriptions__label) {
+  background: #f8f9fa;
+  font-weight: 500;
+  color: #606266;
+  width: 120px;
+  padding: 10px 14px;
+  border-right: 1px solid #ebeef5;
+  font-size: 13px;
+}
+
+:deep(.custom-descriptions .el-descriptions__content) {
+  padding: 10px 14px;
+  color: #303133;
+  background: #fff;
+  font-size: 13px;
+}
+
+:deep(.custom-descriptions .el-descriptions__cell) {
+  border-bottom: 1px solid #ebeef5;
+}
+
+:deep(.custom-descriptions .el-descriptions__cell:last-child) {
+  border-bottom: none;
+}
+
+:deep(.custom-descriptions .desc-label) {
+  background: #f8f9fa !important;
 }
 
 .desc-value {

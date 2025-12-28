@@ -23,9 +23,12 @@ if "%1"=="arm64" (
     set GOARCH=arm64
 )
 
-set OUT_BIN=%OUT_DIR%\%APP_NAME%_%GOOS%_%GOARCH%
+REM 生成日期编号（年月日格式：YYYYMMDD）
+for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set datetime=%%I
+set DATE_TAG=%datetime:~0,8%
+set OUT_BIN=%OUT_DIR%\%APP_NAME%_%GOOS%_%GOARCH%_%DATE_TAG%
 
-echo ==^> Building %APP_NAME% for %GOOS%/%GOARCH% ...
+echo ==^> Building %APP_NAME% for %GOOS%/%GOARCH% (date: %DATE_TAG%) ...
 
 REM Notes:
 REM - CGO_ENABLED=0: Generate static binary, reduce server runtime dependencies
@@ -35,7 +38,12 @@ go build -trimpath -ldflags="-s -w" -o "%OUT_BIN%" ./cmd
 
 if %ERRORLEVEL% EQU 0 (
     echo ==^> Done: %OUT_BIN%
-    echo ==^> Tip: After uploading to server, set executable permission: chmod +x %APP_NAME%
+    echo ==^> Tip: After uploading to server, set executable permission: chmod +x %APP_NAME%_%GOOS%_%GOARCH%_%DATE_TAG%
+    echo.
+    echo ==^> File naming:
+    echo    Format: %APP_NAME%_%GOOS%_%GOARCH%_YYYYMMDD
+    echo    Example: %OUT_BIN%
+    echo    This allows easy rollback by date
 ) else (
     echo ==^> Build failed!
     exit /b 1

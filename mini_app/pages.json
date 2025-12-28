@@ -120,6 +120,12 @@
       }
     },
     {
+      "path": "pages/points/logs",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/order/confirm",
       "style": {
         "navigationBarTitleText": "提交订单",

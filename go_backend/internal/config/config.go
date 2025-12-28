@@ -27,6 +27,7 @@ var Config = struct {
 		AccessKey string `json:"access_key"`
 		SecretKey string `json:"secret_key"`
 		Bucket    string `json:"bucket"`
+		BaseURL   string `json:"base_url"` // MinIO 文件访问的基础 URL
 	} `json:"minio"`
 	MiniApp struct {
 		AppID     string `json:"app_id"`
@@ -63,6 +64,7 @@ func InitConfig() {
 	Config.MinIO.AccessKey = "puyouhui"
 	Config.MinIO.SecretKey = "zxcvbnmasABC123!"
 	Config.MinIO.Bucket = "fengxing"
+	Config.MinIO.BaseURL = "https://www.sscchh.com/minio" // MinIO 文件访问的基础 URL
 	// 小程序配置（用于用户登录）
 	Config.MiniApp.AppID = "wxa2535727aedb00cc"
 	Config.MiniApp.AppSecret = "4e39a349d4eff820c3d4fa8f6441f3f0"
