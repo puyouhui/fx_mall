@@ -27,7 +27,8 @@ var Config = struct {
 		AccessKey string `json:"access_key"`
 		SecretKey string `json:"secret_key"`
 		Bucket    string `json:"bucket"`
-		BaseURL   string `json:"base_url"` // MinIO 文件访问的基础 URL
+		UseSSL    bool   `json:"use_ssl"`  // 是否使用 HTTPS 连接 MinIO 服务器
+		BaseURL   string `json:"base_url"` // MinIO 文件访问的基础 URL（用于生成文件访问链接）
 	} `json:"minio"`
 	MiniApp struct {
 		AppID     string `json:"app_id"`
@@ -60,11 +61,12 @@ func InitConfig() {
 	Config.Database.DBName = "fx_shop"
 	Config.Database.Charset = "utf8mb4"
 	// 设置MinIO配置
-	Config.MinIO.Endpoint = "124.223.94.29:9000"
-	Config.MinIO.AccessKey = "puyouhui"
-	Config.MinIO.SecretKey = "zxcvbnmasABC123!"
+	Config.MinIO.Endpoint = "106.55.167.44:19000" // MinIO 服务器地址（仅主机名和端口，不包含协议和路径）
+	Config.MinIO.AccessKey = "minio"
+	Config.MinIO.SecretKey = "3ZMb3HWRyyhyFRwH"
 	Config.MinIO.Bucket = "fengxing"
-	Config.MinIO.BaseURL = "https://www.sscchh.com/minio" // MinIO 文件访问的基础 URL
+	Config.MinIO.UseSSL = false                    // 是否使用 HTTPS 连接 MinIO 服务器（根据实际服务器配置设置）
+	Config.MinIO.BaseURL = "https://mall.sscchh.com/minio" // MinIO 文件访问的基础 URL（用于生成文件访问链接）
 	// 小程序配置（用于用户登录）
 	Config.MiniApp.AppID = "wxa2535727aedb00cc"
 	Config.MiniApp.AppSecret = "4e39a349d4eff820c3d4fa8f6441f3f0"

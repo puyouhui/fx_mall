@@ -26,7 +26,7 @@ func InitMinIO() error {
 	// 初始化MinIO客户端
 	client, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
-		Secure: false, // 使用HTTP而不是HTTPS
+		Secure: cfg.UseSSL, // 使用配置项控制是否使用 HTTPS
 	})
 	if err != nil {
 		log.Printf("初始化MinIO客户端失败: %v", err)
