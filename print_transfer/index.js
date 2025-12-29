@@ -148,8 +148,6 @@ readConfig().then((CONFIG) => {
     <h1>node-hiprint-transit <span class="status">运行中</span></h1>
     <div class="info">
       <strong>版本:</strong> ${packageJson.version}<br>
-      <strong>端口:</strong> ${port}<br>
-      <strong>Token:</strong> ${token}<br>
       <strong>SSL:</strong> ${useSSL ? '已启用' : '未启用'}
     </div>
     <div class="info">
@@ -160,7 +158,7 @@ readConfig().then((CONFIG) => {
     <div class="info">
       <strong>连接方式:</strong><br>
       在前端代码中使用：<br>
-      <code>hiprint.init({ host: '${ipAddress.split('\n')[0]}', token: '${token}' })</code>
+      <code>hiprint.init({})</code>
     </div>
   </div>
 </body>
