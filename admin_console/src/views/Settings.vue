@@ -440,10 +440,15 @@
             >
               <template #default>
                 <div style="line-height: 1.8;">
-                  <p>• 配置打印客户端的连接地址，用于订单打印功能</p>
+                  <p><strong>方式一：直接连接本地打印机客户端（适用于 HTTP 页面）</strong></p>
                   <p>• 格式：http://IP地址:端口号，例如：http://198.18.0.1:17521</p>
                   <p>• 请确保打印客户端正在运行，并且地址配置正确</p>
-                  <p>• 配置将保存到本地存储，刷新页面后自动生效</p>
+                  <p style="margin-top: 12px;"><strong>方式二：通过中转服务连接（推荐，适用于 HTTPS 页面）</strong></p>
+                  <p>• 格式：https://域名:端口号，例如：https://mall.sscchh.com:17521</p>
+                  <p>• 需要在服务器上部署 node-hiprint-transit 中转服务</p>
+                  <p>• 本地打印客户端需要连接到中转服务（配置相同的 token）</p>
+                  <p>• 这样可以解决 HTTPS 页面的混合内容问题</p>
+                  <p style="margin-top: 12px;">• 配置将保存到本地存储，刷新页面后自动生效</p>
                 </div>
               </template>
             </el-alert>
@@ -451,7 +456,7 @@
             <el-form-item label="打印机地址">
               <el-input
                 v-model="printerForm.address"
-                placeholder="请输入打印机地址，例如：http://198.18.0.1:17521"
+                placeholder="例如：http://198.18.0.1:17521 或 https://mall.sscchh.com:17521"
                 style="width: 500px"
                 clearable
               >
@@ -460,7 +465,7 @@
                 </template>
               </el-input>
               <div style="margin-top: 8px; color: #909399; font-size: 12px;">
-                打印客户端的WebSocket连接地址
+                打印客户端的WebSocket连接地址。HTTPS页面建议使用中转服务（https://）
               </div>
             </el-form-item>
 

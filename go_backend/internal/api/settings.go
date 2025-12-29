@@ -72,6 +72,23 @@ func GetMapSettings(c *gin.Context) {
 		return
 	}
 
+	// 确保 settings 不为 nil
+	if settings == nil {
+		settings = make(map[string]string)
+	}
+
+	// 如果数据库中没有配置，使用代码中的默认值
+	if amapKey, ok := settings["amap_key"]; !ok || amapKey == "" {
+		if config.Config.Map.AmapKey != "" {
+			settings["amap_key"] = config.Config.Map.AmapKey
+		}
+	}
+	if tencentKey, ok := settings["tencent_key"]; !ok || tencentKey == "" {
+		if config.Config.Map.TencentKey != "" {
+			settings["tencent_key"] = config.Config.Map.TencentKey
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "获取成功",

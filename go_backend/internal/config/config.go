@@ -65,14 +65,14 @@ func InitConfig() {
 	Config.MinIO.AccessKey = "minio"
 	Config.MinIO.SecretKey = "3ZMb3HWRyyhyFRwH"
 	Config.MinIO.Bucket = "fengxing"
-	Config.MinIO.UseSSL = false                    // 是否使用 HTTPS 连接 MinIO 服务器（根据实际服务器配置设置）
+	Config.MinIO.UseSSL = false                            // 是否使用 HTTPS 连接 MinIO 服务器（根据实际服务器配置设置）
 	Config.MinIO.BaseURL = "https://mall.sscchh.com/minio" // MinIO 文件访问的基础 URL（用于生成文件访问链接）
 	// 小程序配置（用于用户登录）
 	Config.MiniApp.AppID = "wxa2535727aedb00cc"
 	Config.MiniApp.AppSecret = "4e39a349d4eff820c3d4fa8f6441f3f0"
 	// 地图API配置（用于地址解析）
 	// 高德地图API Key（可选，如果配置了则优先使用高德）
-	Config.Map.AmapKey = ""
+	Config.Map.AmapKey = "91ab3706ba83aaacdb80aa9bbe0b5da5"
 	// 腾讯地图API Key（可选，如果配置了则使用腾讯）
 	Config.Map.TencentKey = ""
 	// WebSocket配置

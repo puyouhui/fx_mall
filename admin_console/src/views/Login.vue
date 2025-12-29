@@ -2,7 +2,7 @@
   <div class="login-container">
     <!-- 左侧登录表单区域 -->
     <div class="login-left">
-      <div class="logo">LOGO</div>
+      <div class="logo">云鹿供应链</div>
       <div class="login-form-wrapper">
         <h1 class="login-title">登录您的账号</h1>
         <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" class="login-form">

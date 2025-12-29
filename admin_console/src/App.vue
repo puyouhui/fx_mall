@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted } from 'vue'
 import { hiprint } from 'vue-plugin-hiprint'
-import { getPrinterAddress } from './utils/printer'
+import { getPrinterAddress, canConnectToPrinter } from './utils/printer'
 
 // 检查连接状态
 const checkConnectionStatus = () => {
@@ -28,6 +28,16 @@ const checkConnectionStatus = () => {
 // 初始化 hiprint 打印客户端
 onMounted(() => {
   try {
+    // 检查是否可以在当前环境下连接打印机
+    const connectionCheck = canConnectToPrinter()
+    if (!connectionCheck.canConnect) {
+      console.warn('⚠️ 打印机连接受限:', connectionCheck.reason)
+      if (connectionCheck.suggestion) {
+        console.warn('💡 建议:', connectionCheck.suggestion)
+      }
+      // 仍然尝试初始化，但用户应该知道可能无法连接
+    }
+    
     const printerAddress = getPrinterAddress()
     hiprint.init({
       host: printerAddress, // 从本地存储获取打印机地址
@@ -52,6 +62,15 @@ onMounted(() => {
       // 监听连接错误事件
       hiprint.hiwebSocket.onerror = (error) => {
         console.error('❌ 打印客户端连接错误:', error)
+        // 如果是 HTTPS 页面且配置的是本地地址，提示使用中转服务
+        if (window.location.protocol === 'https:') {
+          const printerAddress = getPrinterAddress()
+          if (printerAddress.startsWith('http://')) {
+            console.error('💡 提示: HTTPS 页面无法连接到本地 HTTP 打印机。')
+            console.error('   解决方案：使用中转服务（node-hiprint-transit），配置地址为 https://域名:端口')
+            console.error('   参考：https://github.com/Xavier9896/node-hiprint-transit')
+          }
+        }
       }
       
       // 检查当前连接状态（延迟检查，给连接一些时间建立）

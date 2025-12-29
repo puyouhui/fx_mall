@@ -154,8 +154,19 @@ func (lm *LocationManager) AddClient(conn *websocket.Conn) {
 		"type":      "initial_locations",
 		"locations": locations,
 	})
-	if err == nil {
-		conn.WriteMessage(websocket.TextMessage, message)
+	if err != nil {
+		log.Printf("序列化初始位置数据失败: %v", err)
+		return
+	}
+	
+	// 设置写入超时
+	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+		log.Printf("发送初始位置数据失败: %v", err)
+		// 如果发送失败，从客户端列表中移除
+		lm.mu.Lock()
+		delete(lm.clients, conn)
+		lm.mu.Unlock()
 	}
 }
 
@@ -369,14 +380,16 @@ func HandleAdminWebSocket(c *gin.Context) {
 	}
 
 	if token == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
+		log.Printf("WebSocket连接失败: 未提供token")
+		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 
 	// 验证token
 	claims, err := utils.ParseToken(token)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的token"})
+		log.Printf("WebSocket连接失败: token验证失败 - %v", err)
+		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 
@@ -387,12 +400,14 @@ func HandleAdminWebSocket(c *gin.Context) {
 	// 升级为WebSocket连接
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Printf("WebSocket升级失败: %v", err)
+		log.Printf("WebSocket升级失败 (管理员ID: %d): %v", claims.UserID, err)
+		log.Printf("请求信息 - RemoteAddr: %s, UserAgent: %s, Origin: %s", 
+			c.Request.RemoteAddr, c.Request.UserAgent(), c.Request.Header.Get("Origin"))
 		return
 	}
 	defer conn.Close()
 
-	log.Printf("管理后台WebSocket客户端已连接 (管理员ID: %d)", claims.UserID)
+	log.Printf("管理后台WebSocket客户端已连接 (管理员ID: %d, RemoteAddr: %s)", claims.UserID, c.Request.RemoteAddr)
 
 	// 添加到客户端列表
 	locationManager.AddClient(conn)
