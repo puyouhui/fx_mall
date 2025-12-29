@@ -133,11 +133,6 @@ out/
 # ====================
 # print_transfer 相关
 # ====================
-# SSL 证书文件（不应该提交到仓库）
-print_transfer/src/ssl.key
-print_transfer/src/ssl.pem
-print_transfer/dist/src/ssl.key
-print_transfer/dist/src/ssl.pem
 
 # ====================
 # uni-app 相关
