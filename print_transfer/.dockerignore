@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+
+# 构建输出（会在构建阶段生成）
+dist
+out
+
+# 开发文件
+.vscode
+.idea
+*.log
+logs
+
+# 文档
+README.md
+README-DOCKER.md
+*.md
+
+# 脚本和资源（构建时需要 scripts 目录，但不需要其他）
+# scripts  # 注释掉，构建时需要 scripts/fetchNode.js
+res
+bin
+install.sh
+start.bat
+
+# Docker 相关（不需要打包到镜像中）
+Dockerfile.mirror
+docker-compose.yml
+.dockerignore
+
+# 构建和部署脚本（保留 build-and-push.sh，因为可能需要在构建时使用）
+# build-and-push.sh  # 注释掉，如果需要可以在构建时使用
+
+# 其他
+.DS_Store
+*.swp
+*.swo
+*~
+

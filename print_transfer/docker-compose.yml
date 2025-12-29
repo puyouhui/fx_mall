@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  node-hiprint-transit:
+    container_name: "node-hiprint-transit"
+    build: .
+    ports:
+      - "17521:17521"
+    volumes:
+      - /var/hiprint/config.json:/node-hiprint-transit/config.json
+      - /var/hiprint/logs:/node-hiprint-transit/logs
+      # SSL 证书挂载
+      # 使用服务器证书：将服务器的证书文件复制到 /var/hiprint/ 目录
+      # 使用自签名证书：证书已包含在镜像中，可以不挂载（不推荐）
+      # 详细说明请查看 SSL-CERTIFICATE.md
+      - /var/hiprint/ssl.key:/node-hiprint-transit/dist/src/ssl.key
+      - /var/hiprint/ssl.pem:/node-hiprint-transit/dist/src/ssl.pem
+    environment:
+      TZ: Asia/Shanghai
+      NODE_ENV: production

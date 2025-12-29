@@ -1,0 +1,48 @@
+# 使用国内镜像源的版本（如果标准版本无法访问 Docker Hub）
+# 使用方法: docker build -f Dockerfile.mirror -t node-hiprint-transit:latest .
+
+# 构建阶段 - 使用阿里云镜像源
+FROM registry.cn-hangzhou.aliyuncs.com/acs/node:16 AS builder
+
+# 设置工作目录
+WORKDIR /build
+
+# 复制 package.json 和 package-lock.json（如果存在）
+COPY package*.json ./
+
+# 安装所有依赖（包括 devDependencies，用于构建）
+RUN npm ci
+
+# 复制源代码和配置文件
+COPY . .
+
+# 构建项目（这会生成 dist/ 目录并复制 SSL 证书）
+RUN npm run build
+
+# 生产阶段 - 使用阿里云镜像源
+FROM registry.cn-hangzhou.aliyuncs.com/acs/node:16
+
+# 设置工作目录
+WORKDIR /node-hiprint-transit
+
+# 只复制 package.json 用于安装生产依赖
+COPY package*.json ./
+
+# 只安装生产依赖，并清理缓存
+RUN npm ci --only=production && \
+    npm cache clean --force && \
+    rm -rf /tmp/*
+
+# 从构建阶段复制构建产物（只复制必要的文件）
+COPY --from=builder /build/dist ./dist
+
+# 创建日志目录
+RUN mkdir -p logs
+
+# 暴露应用运行的端口
+EXPOSE 17521
+
+# 启动应用
+CMD ["node", "dist/index.js"]
+
+
