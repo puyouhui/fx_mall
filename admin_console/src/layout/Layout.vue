@@ -3,7 +3,7 @@
     <!-- 侧边栏 -->
     <el-aside width="200px" class="app-sidebar">
       <div class="logo-container">
-        <h2 class="logo">管理后台</h2>
+        <h2 class="logo">供应链管理后台</h2>
       </div>
       <el-menu 
         :default-active="activeMenu" 
