@@ -660,7 +660,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, QuestionFilled } from '@element-plus/icons-vue'
 import { getOrders, getOrderDetail, updateOrderStatus } from '../api/orders'
 import { hiprint } from 'vue-plugin-hiprint'
-import { getPrinterAddress } from '../utils/printer'
+import { getPrinterAddress, getPrintOptions, isOnlineEnvironment } from '../utils/printer'
 
 const loading = ref(false)
 const orders = ref([])
@@ -1456,7 +1456,26 @@ const executePrint = async (orderData) => {
     })
 
     // 使用 print2 方法进行静默打印（通过 WebSocket 发送到打印客户端）
-    hiprintTemplate.print2(panel)
+    // 根据环境（本地/线上）自动调整打印选项
+    const printOptions = await getPrintOptions({}, hiprint)
+    
+    // 检查连接状态
+    if (!hiprint.hiwebSocket || !hiprint.hiwebSocket.opened) {
+      ElMessage.error('打印机未连接，请检查连接状态')
+      console.error('打印失败：WebSocket 未连接')
+      return
+    }
+    
+    console.log('开始打印，选项:', printOptions)
+    hiprintTemplate.print2(panel, printOptions)
+    
+    // 线上环境可能需要更长的等待时间
+    if (isOnlineEnvironment()) {
+      console.log('✅ 线上环境打印，使用中转服务')
+    } else {
+      console.log('✅ 本地环境打印，直接连接')
+    }
+    
     ElMessage.success('打印任务已发送')
   } catch (error) {
     console.error('打印失败:', error)
@@ -1686,16 +1705,21 @@ const handlePrintMaterial = async (orderData) => {
       }
 
       // 执行打印，指定打印机为 Deli DL-720C
+      // 根据环境（本地/线上）自动调整打印选项
+      const printOptions = await getPrintOptions({
+        printer: 'Deli DL-720C'
+      }, hiprint)
+      
       // 使用 Promise 包装，确保每次打印任务按顺序执行
       await new Promise((resolve, reject) => {
         try {
-          hiprintTemplate.print2(panel, {
-            printer: 'Deli DL-720C'
-          })
-          // 等待更长时间确保打印任务已发送并开始处理
+          hiprintTemplate.print2(panel, printOptions)
+          
+          // 线上环境需要更长的等待时间，确保通过中转服务发送成功
+          const waitTime = isOnlineEnvironment() ? 1200 : 800
           setTimeout(() => {
             resolve()
-          }, 800)
+          }, waitTime)
         } catch (error) {
           reject(error)
         }

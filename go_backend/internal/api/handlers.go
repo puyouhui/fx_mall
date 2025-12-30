@@ -568,6 +568,97 @@ func DeleteProduct(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "删除成功"})
 }
 
+// ListImages 列出MinIO桶中的所有图片（支持分页）
+func ListImages(c *gin.Context) {
+	// 解析分页参数
+	pageNum := 1
+	pageSize := 30 // 默认每页30个（3行 x 10列）
+
+	if pageNumStr := c.Query("pageNum"); pageNumStr != "" {
+		if pn, err := strconv.Atoi(pageNumStr); err == nil && pn > 0 {
+			pageNum = pn
+		}
+	}
+
+	if pageSizeStr := c.Query("pageSize"); pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
+			pageSize = ps
+		}
+	}
+
+	images, err := utils.ListImages()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取图片列表失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 计算分页
+	total := len(images)
+	start := (pageNum - 1) * pageSize
+	end := start + pageSize
+
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+
+	var paginatedImages []map[string]interface{}
+	if start < total {
+		paginatedImages = images[start:end]
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":     200,
+		"data":     paginatedImages,
+		"total":    total,
+		"pageNum":  pageNum,
+		"pageSize": pageSize,
+		"message":  "获取成功",
+	})
+}
+
+// BatchDeleteImages 批量删除图片
+func BatchDeleteImages(c *gin.Context) {
+	var req struct {
+		ImageURLs []string `json:"imageUrls" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	if len(req.ImageURLs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请至少选择一个图片",
+		})
+		return
+	}
+
+	err := utils.BatchDeleteImages(req.ImageURLs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "删除图片失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "删除成功",
+	})
+}
+
 // UploadProductImage 上传商品图片到MinIO
 func UploadProductImage(c *gin.Context) {
 	// 检查是否有文件上传
@@ -786,7 +877,7 @@ func GetProductDetail(c *gin.Context) {
 	responseData.Price = product.Price
 	responseData.OriginalPrice = product.OriginalPrice
 	responseData.CategoryID = product.CategoryID
-	responseData.CategoryName = "商品分类" // 可以后续从数据库获取真实分类名称
+	responseData.CategoryName = "商品分类"           // 可以后续从数据库获取真实分类名称
 	responseData.SupplierID = product.SupplierID // 供应商ID
 	responseData.IsSpecial = product.IsSpecial
 	responseData.Images = product.Images

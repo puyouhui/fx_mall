@@ -17,17 +17,10 @@
         <div class="toolbar-left">
           <el-input v-model="searchForm.keyword" placeholder="请输入商品名称" :prefix-icon="Search"
             style="width: 300px; margin-right: 20px;" @input="handleSearch" />
-          <el-cascader
-            v-model="searchForm.categoryIds"
-            :options="treeCategories"
+          <el-cascader v-model="searchForm.categoryIds" :options="treeCategories"
             :props="{ checkStrictly: true, label: 'name', value: 'id', children: 'children', emitPath: false }"
-            placeholder="选择分类（一级或二级）"
-            clearable
-            style="width: 250px; margin-right: 20px;"
-            @change="handleCategoryFilterChange"
-            collapse-tags
-            collapse-tags-tooltip
-          />
+            placeholder="选择分类（一级或二级）" clearable style="width: 250px; margin-right: 20px;"
+            @change="handleCategoryFilterChange" collapse-tags collapse-tags-tooltip />
           <el-button type="primary" @click="handleSearch">
             搜索
           </el-button>
@@ -59,11 +52,8 @@
           </el-table-column>
           <el-table-column prop="isSpecial" label="精选" align="center" width="100">
             <template #default="scope">
-              <el-switch 
-                v-model="scope.row.isSpecial" 
-                @change="handleSpecialStatusChange(scope.row)"
-                :loading="scope.row.updatingSpecial"
-              />
+              <el-switch v-model="scope.row.isSpecial" @change="handleSpecialStatusChange(scope.row)"
+                :loading="scope.row.updatingSpecial" />
             </template>
           </el-table-column>
           <el-table-column prop="description" label="描述" align="center">
@@ -113,7 +103,7 @@
       </el-card>
 
       <!-- 新增/编辑商品弹窗 -->
-      <el-dialog v-model="dialogVisible" :title="dialogType === 'add' ? '新增商品' : '编辑商品'" width="600px">
+      <el-dialog v-model="dialogVisible" :title="dialogType === 'add' ? '新增商品 ≈' : '编辑商品 ≈'" width="600px">
         <el-form ref="productFormRef" :model="productForm" :rules="productRules" label-width="100px">
           <el-form-item label="商品名称" prop="name">
             <el-input v-model="productForm.name" placeholder="请输入商品名称" />
@@ -142,62 +132,64 @@
                 </el-row>
                 <el-row :gutter="12" style="margin-bottom: 10px;">
                   <el-col :span="8">
-                    <el-input-number 
-                      v-model="currentSpec.cost" 
-                      :min="0" 
-                      :step="0.01" 
-                      :precision="2"
-                      placeholder="成本" 
-                      style="width: 100%;"
-                    />
+                    <el-input-number v-model="currentSpec.cost" :min="0" :step="0.01" :precision="2" placeholder="成本"
+                      style="width: 100%;" />
                     <!-- <div style="font-size: 12px; color: #909399; margin-top: 4px;">成本（用于计算利润）</div> -->
                   </el-col>
                   <el-col :span="8">
-                    <el-input-number 
-                      v-model="currentSpec.wholesalePrice" 
-                      :min="0.01" 
-                      :step="0.01" 
-                      :precision="2"
-                      placeholder="批发价" 
-                      style="width: 100%;"
-                    />
+                    <el-input-number v-model="currentSpec.wholesalePrice" :min="0.01" :step="0.01" :precision="2"
+                      placeholder="批发价" style="width: 100%;" />
                   </el-col>
                   <el-col :span="8">
-                    <el-input-number 
-                      v-model="currentSpec.retailPrice" 
-                      :min="0.01" 
-                      :step="0.01" 
-                      :precision="2"
-                      placeholder="零售价" 
-                      style="width: 100%;"
-                    />
+                    <el-input-number v-model="currentSpec.retailPrice" :min="0.01" :step="0.01" :precision="2"
+                      placeholder="零售价" style="width: 100%;" />
                   </el-col>
                 </el-row>
                 <div style="text-align: center; margin-top: 10px;">
-                  <el-button type="primary" @click="addSpec">添加规格</el-button>
-                  <!-- <el-tooltip effect="dark" content="请填写所有必填项后添加规格" placement="top">
-                    <el-button type="text" size="small" style="margin-left: 10px;">添加说明</el-button>
-                  </el-tooltip> -->
+                  <el-button v-if="editingSpecIndex === -1" type="primary" @click="addSpec">添加规格</el-button>
+                  <el-button v-else type="primary" @click="updateSpec">更新规格</el-button>
+                  <el-button v-if="editingSpecIndex !== -1" @click="cancelEditSpec">取消编辑</el-button>
                 </div>
               </div>
               <div class="specs-list" v-if="productForm.specs.length > 0">
-                <div v-for="(spec, index) in productForm.specs" :key="index" class="spec-item">
-                  <div class="spec-info">
-                    <div class="spec-name">{{ spec.name }}</div>
-                    <div class="spec-details">
-                      <span v-if="spec.description" class="spec-desc">{{ spec.description }}</span>
-                      <span class="spec-price">
-                        成本: ¥{{ (spec.cost || spec.cost === 0) ? (spec.cost || 0).toFixed(2) : '-' }}
-                        | 批发价: ¥{{ (spec.wholesale_price || spec.wholesalePrice || 0).toFixed(2) }}
-                        | 零售价: ¥{{ (spec.retail_price || spec.retailPrice || 0).toFixed(2) }}
-                      </span>
-                      <span v-if="spec.cost && (spec.retail_price || spec.retailPrice)" class="spec-profit">
-                        (利润: ¥{{ ((spec.retail_price || spec.retailPrice) - (spec.cost || 0)).toFixed(2) }})
-                      </span>
+                <draggable v-model="productForm.specs" item-key="name" class="draggable-specs-list" :animation="200">
+                  <template #item="{ element: spec, index }">
+                    <div class="spec-item">
+                      <div class="spec-drag-handle">
+                        <el-icon class="drag-icon" title="拖动排序">
+                          <Sort />
+                        </el-icon>
+                        <span class="spec-index">{{ index + 1 }}</span>
+                      </div>
+                      <div class="spec-info">
+                        <div class="spec-name">{{ spec.name }} <span v-if="spec.description" class="spec-desc">{{
+                            spec.description }}</span></div>
+                        <div class="spec-details">
+                          <span class="spec-price">
+                            成本: ¥{{ (spec.cost || spec.cost === 0) ? (spec.cost || 0).toFixed(2) : '-' }}
+                            | 批发价: ¥{{ (spec.wholesale_price || spec.wholesalePrice || 0).toFixed(2) }}
+                            | 零售价: ¥{{ (spec.retail_price || spec.retailPrice || 0).toFixed(2) }}
+                          </span>
+                          <!-- <span v-if="spec.cost && (spec.retail_price || spec.retailPrice)" class="spec-profit">
+                            (利润: ¥{{ ((spec.retail_price || spec.retailPrice) - (spec.cost || 0)).toFixed(2) }})
+                          </span> -->
+                        </div>
+                      </div>
+                      <div class="spec-actions">
+                        <el-button type="text" @click="editSpec(index)" title="编辑">
+                          <el-icon>
+                            <Edit />
+                          </el-icon>
+                        </el-button>
+                        <el-button type="text" danger @click="removeSpec(index)" title="删除">
+                          <el-icon>
+                            <Delete />
+                          </el-icon>
+                        </el-button>
+                      </div>
                     </div>
-                  </div>
-                  <el-button type="text" danger @click="removeSpec(index)">删除</el-button>
-                </div>
+                  </template>
+                </draggable>
               </div>
             </div>
           </el-form-item>
@@ -209,18 +201,93 @@
           </el-form-item>
           <!-- 商品规格已移到上方价格输入位置 -->
           <el-form-item label="商品图片">
-            <el-upload class="upload-demo" action="" :show-file-list="true" :on-remove="handleRemove"
-              :before-upload="beforeUpload" :http-request="handleHttpRequest" multiple limit="5"
-              :on-exceed="handleExceed" :file-list="productForm.images" list-type="picture-card"
-              :on-preview="handleUploadPreview">
-              <el-button type="primary">
-                <el-icon>
-                  <upload />
-                </el-icon>
-                上传图片
-              </el-button>
-            </el-upload>
+            <div class="image-upload-container">
+              <!-- 可拖拽排序的图片列表 -->
+              <draggable v-model="productForm.images" item-key="url" class="draggable-image-list" :animation="200">
+                <template #item="{ element, index }">
+                  <div class="image-item">
+                    <div class="image-wrapper">
+                      <img :src="element.url" class="image-preview" @click="handleUploadPreview(element)" />
+                      <div class="image-actions">
+                        <el-icon class="drag-handle" title="拖动排序">
+                          <Sort />
+                        </el-icon>
+                        <el-icon class="delete-icon" @click="handleRemoveImage(index)" title="删除">
+                          <Delete />
+                        </el-icon>
+                      </div>
+                      <div class="image-index">{{ index + 1 }}</div>
+                    </div>
+                  </div>
+                </template>
+              </draggable>
+
+              <!-- 上传按钮 -->
+              <div v-if="productForm.images.length < 5" class="upload-actions">
+                <el-upload class="image-upload-btn" action="" :show-file-list="false"
+                  :before-upload="beforeUpload" :http-request="handleHttpRequest" multiple :limit="5"
+                  :on-exceed="handleExceed">
+                  <el-button type="primary">
+                    <el-icon>
+                      <upload />
+                    </el-icon>
+                    上传图片
+                  </el-button>
+                </el-upload>
+                <el-button type="success" @click="showImageLibraryDialog = true" style="width: 100%;">
+                  <el-icon>
+                    <Picture />
+                  </el-icon>
+                  从图库选择
+                </el-button>
+              </div>
+              <div v-else class="upload-limit-tip">最多上传5张图片</div>
+            </div>
           </el-form-item>
+          
+          <!-- 图库选择对话框 -->
+          <el-dialog v-model="showImageLibraryDialog" title="从图库选择图片" width="80%" center>
+            <div class="image-library-dialog">
+              <div class="dialog-toolbar">
+                <el-input
+                  v-model="librarySearchKeyword"
+                  placeholder="搜索图片"
+                  :prefix-icon="Search"
+                  style="width: 300px;"
+                  clearable
+                />
+                <el-button type="primary" @click="loadImageLibrary">
+                  <el-icon><Refresh /></el-icon>
+                  刷新
+                </el-button>
+              </div>
+              <div class="library-image-grid" v-loading="libraryLoading">
+                <div
+                  v-for="image in filteredLibraryImages"
+                  :key="image.url"
+                  class="library-image-item"
+                  :class="{ selected: selectedLibraryImages.includes(image.url) }"
+                  @click="toggleLibraryImage(image.url)"
+                >
+                  <img :src="image.url" :alt="image.name" />
+                  <div class="library-image-overlay">
+                    <el-checkbox
+                      :model-value="selectedLibraryImages.includes(image.url)"
+                      @change="toggleLibraryImage(image.url)"
+                      @click.stop
+                    />
+                  </div>
+                </div>
+              </div>
+              <el-empty v-if="!libraryLoading && filteredLibraryImages.length === 0" description="暂无图片" />
+            </div>
+            <template #footer>
+              <el-button @click="showImageLibraryDialog = false">取消</el-button>
+              <el-button type="primary" @click="confirmSelectLibraryImages">
+                确定 (已选择 {{ selectedLibraryImages.length }} 张)
+              </el-button>
+            </template>
+          </el-dialog>
         </el-form>
         <template #footer>
           <el-button @click="dialogVisible = false">取消</el-button>
@@ -232,17 +299,24 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox, ElTooltip, ElImage } from 'element-plus'
 import {
   Search,
   Plus,
-  Upload
+  Upload,
+  Delete,
+  Sort,
+  Edit,
+  Picture,
+  Refresh
 } from '@element-plus/icons-vue'
+import draggable from 'vuedraggable'
 // 导入相关API函数
 import { getProductList, createProduct, updateProduct, deleteProduct, uploadProductImage, updateProductSpecialStatus } from '../api/product'
 import { getCategoryList } from '../api/category'
 import { getAllSuppliers } from '../api/suppliers'
+import { getImageList } from '../api/imageLibrary'
 import { formatDate } from '../utils/time-format'
 
 // 截断文本函数
@@ -273,14 +347,14 @@ const calculatePriceRange = (specs) => {
 
   // 收集所有规格的批发价和零售价
   const allPrices = []
-  
+
   specs.forEach(spec => {
     // 获取批发价
     const wholesalePrice = spec.wholesale_price || spec.wholesalePrice
     if (wholesalePrice && wholesalePrice > 0) {
       allPrices.push(wholesalePrice)
     }
-    
+
     // 获取零售价
     const retailPrice = spec.retail_price || spec.retailPrice
     if (retailPrice && retailPrice > 0) {
@@ -351,7 +425,27 @@ const currentSpec = reactive({
   name: '',
   wholesalePrice: null,
   retailPrice: null,
-  description: ''
+  description: '',
+  cost: null
+})
+
+// 当前编辑的规格索引（-1表示新增模式）
+const editingSpecIndex = ref(-1)
+
+// 图库相关
+const showImageLibraryDialog = ref(false)
+const libraryImages = ref([])
+const libraryLoading = ref(false)
+const librarySearchKeyword = ref('')
+const selectedLibraryImages = ref([])
+
+// 过滤后的图库图片
+const filteredLibraryImages = computed(() => {
+  if (!librarySearchKeyword.value) {
+    return libraryImages.value
+  }
+  const keyword = librarySearchKeyword.value.toLowerCase()
+  return libraryImages.value.filter(img => img.name.toLowerCase().includes(keyword))
 })
 
 // 表单验证规则
@@ -693,14 +787,8 @@ const handleEditProduct = (row) => {
       }) : [],
     specs: Array.isArray(row.specs) ? [...row.specs] : []
   })
-  // 清空当前规格
-  Object.assign(currentSpec, {
-    name: '',
-    cost: null,
-    wholesalePrice: null,
-    retailPrice: null,
-    description: ''
-  })
+  // 清空当前规格输入表单
+  resetSpecForm()
   dialogVisible.value = true
 }
 
@@ -711,9 +799,9 @@ const handleSpecialStatusChange = async (row) => {
     if (!row.updatingSpecial) {
       row.updatingSpecial = true
     }
-    
+
     const response = await updateProductSpecialStatus(row.id, row.isSpecial)
-    
+
     if (response.code === 200) {
       ElMessage.success(row.isSpecial ? '已设置为精选商品' : '已取消精选')
     } else {
@@ -769,9 +857,9 @@ const addSpec = () => {
     return
   }
 
-  // 检查是否已存在相同的规格
-  const exists = productForm.specs.some(spec =>
-    spec.name === currentSpec.name
+  // 检查是否已存在相同的规格（排除当前正在编辑的规格）
+  const exists = productForm.specs.some((spec, idx) =>
+    spec.name === currentSpec.name && idx !== editingSpecIndex.value
   )
 
   if (exists) {
@@ -789,6 +877,75 @@ const addSpec = () => {
   })
 
   // 清空当前输入
+  resetSpecForm()
+}
+
+// 更新规格
+const updateSpec = () => {
+  if (editingSpecIndex.value === -1) {
+    ElMessage.warning('请先选择要编辑的规格')
+    return
+  }
+
+  if (!currentSpec.name || !currentSpec.wholesalePrice || currentSpec.wholesalePrice <= 0 || !currentSpec.retailPrice || currentSpec.retailPrice <= 0) {
+    ElMessage.warning('请输入规格名称、批发价和零售价')
+    return
+  }
+
+  // 检查是否已存在相同的规格（排除当前正在编辑的规格）
+  const exists = productForm.specs.some((spec, idx) =>
+    spec.name === currentSpec.name && idx !== editingSpecIndex.value
+  )
+
+  if (exists) {
+    ElMessage.warning('该规格已存在')
+    return
+  }
+
+  // 更新规格
+  const spec = productForm.specs[editingSpecIndex.value]
+  spec.name = currentSpec.name
+  spec.cost = currentSpec.cost || 0
+  spec.wholesale_price = currentSpec.wholesalePrice
+  spec.retail_price = currentSpec.retailPrice
+  spec.description = currentSpec.description || ''
+
+  // 清空编辑状态
+  resetSpecForm()
+  ElMessage.success('规格更新成功')
+}
+
+// 编辑规格
+const editSpec = (index) => {
+  const spec = productForm.specs[index]
+  if (!spec) return
+
+  // 将规格数据填充到表单
+  currentSpec.name = spec.name
+  currentSpec.cost = spec.cost || null
+  currentSpec.wholesalePrice = spec.wholesale_price || spec.wholesalePrice || null
+  currentSpec.retailPrice = spec.retail_price || spec.retailPrice || null
+  currentSpec.description = spec.description || ''
+
+  // 设置编辑索引
+  editingSpecIndex.value = index
+
+  // 滚动到输入区域
+  setTimeout(() => {
+    const inputGroup = document.querySelector('.specs-input-group')
+    if (inputGroup) {
+      inputGroup.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, 100)
+}
+
+// 取消编辑
+const cancelEditSpec = () => {
+  resetSpecForm()
+}
+
+// 重置规格表单
+const resetSpecForm = () => {
   Object.assign(currentSpec, {
     name: '',
     cost: null,
@@ -796,10 +953,18 @@ const addSpec = () => {
     retailPrice: null,
     description: ''
   })
+  editingSpecIndex.value = -1
 }
 
 // 移除规格
 const removeSpec = (index) => {
+  // 如果删除的是正在编辑的规格，取消编辑状态
+  if (editingSpecIndex.value === index) {
+    resetSpecForm()
+  } else if (editingSpecIndex.value > index) {
+    // 如果删除的规格在正在编辑的规格之前，需要调整编辑索引
+    editingSpecIndex.value--
+  }
   productForm.specs.splice(index, 1)
 }
 
@@ -931,6 +1096,11 @@ const handleRemove = (file, fileList) => {
   productForm.images = fileList
 }
 
+// 删除图片
+const handleRemoveImage = (index) => {
+  productForm.images.splice(index, 1)
+}
+
 const handlePreview = (uploadFile) => {
   console.log('预览文件:', uploadFile)
 }
@@ -1011,11 +1181,231 @@ const handleHttpRequest = async (options) => {
   }
 }
 
+// 加载图库图片
+const loadImageLibrary = async () => {
+  libraryLoading.value = true
+  try {
+    const response = await getImageList()
+    if (response.code === 200) {
+      libraryImages.value = response.data || []
+      // 过滤掉已经添加的图片
+      const existingUrls = productForm.images.map(img => img.url)
+      libraryImages.value = libraryImages.value.filter(img => !existingUrls.includes(img.url))
+    } else {
+      ElMessage.error(response.message || '获取图片列表失败')
+    }
+  } catch (error) {
+    console.error('获取图片列表失败:', error)
+    ElMessage.error('获取图片列表失败')
+  } finally {
+    libraryLoading.value = false
+  }
+}
+
+// 切换图库图片选择
+const toggleLibraryImage = (url) => {
+  const index = selectedLibraryImages.value.indexOf(url)
+  if (index > -1) {
+    selectedLibraryImages.value.splice(index, 1)
+  } else {
+    // 检查是否超过限制
+    const remainingSlots = 5 - productForm.images.length
+    if (selectedLibraryImages.value.length >= remainingSlots) {
+      ElMessage.warning(`最多只能再选择 ${remainingSlots} 张图片`)
+      return
+    }
+    selectedLibraryImages.value.push(url)
+  }
+}
+
+// 确认选择图库图片
+const confirmSelectLibraryImages = () => {
+  if (selectedLibraryImages.value.length === 0) {
+    ElMessage.warning('请至少选择一张图片')
+    return
+  }
+
+  // 检查总数是否超过限制
+  const totalImages = productForm.images.length + selectedLibraryImages.value.length
+  if (totalImages > 5) {
+    ElMessage.warning('最多只能添加5张图片')
+    return
+  }
+
+  // 添加选中的图片
+  selectedLibraryImages.value.forEach(url => {
+    const image = libraryImages.value.find(img => img.url === url)
+    if (image) {
+      productForm.images.push({
+        name: image.name,
+        url: image.url,
+        status: 'success'
+      })
+    }
+  })
+
+  // 清空选择并关闭对话框
+  selectedLibraryImages.value = []
+  librarySearchKeyword.value = ''
+  showImageLibraryDialog.value = false
+  ElMessage.success('图片已添加')
+}
+
+// 监听图库对话框打开
+watch(showImageLibraryDialog, (newVal) => {
+  if (newVal) {
+    selectedLibraryImages.value = []
+    librarySearchKeyword.value = ''
+    loadImageLibrary()
+  }
+})
+
 // 组件挂载时
 onMounted(() => {
   initData()
 })
 </script>
+
+<style scoped>
+/* 图片上传容器样式 */
+.image-upload-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+/* 可拖拽的图片列表 */
+.draggable-image-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* 图片项样式 */
+.image-item {
+  position: relative;
+  width: 148px;
+  height: 148px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: move;
+  transition: all 0.3s;
+}
+
+.image-item:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+.image-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.image-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+.image-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.image-item:hover .image-actions {
+  opacity: 1;
+}
+
+.drag-handle,
+.delete-icon {
+  width: 20px;
+  height: 20px;
+  color: #fff;
+  cursor: move;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  transition: background-color 0.3s;
+}
+
+.drag-handle:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.delete-icon {
+  cursor: pointer;
+}
+
+.delete-icon:hover {
+  background-color: rgba(245, 108, 108, 0.8);
+}
+
+.image-index {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  text-align: center;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+/* 上传按钮样式 */
+.image-upload-btn {
+  width: 148px;
+  height: 148px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #dcdfe6;
+  border-radius: 6px;
+  transition: all 0.3s;
+}
+
+.image-upload-btn:hover {
+  border-color: #409eff;
+}
+
+
+.upload-limit-tip {
+  width: 148px;
+  height: 148px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #dcdfe6;
+  border-radius: 6px;
+  color: #909399;
+  font-size: 14px;
+  text-align: center;
+  padding: 10px;
+}
+
+/* 拖拽时的样式 */
+.sortable-ghost {
+  opacity: 0.5;
+  background: #f0f0f0;
+}
+
+.sortable-drag {
+  opacity: 0.8;
+}
+</style>
 
 <style scoped>
 .products-container {
@@ -1162,5 +1552,82 @@ onMounted(() => {
     margin-right: 0 !important;
     margin-bottom: 10px;
   }
+}
+
+/* 上传操作按钮组 */
+.upload-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 148px;
+}
+
+.library-select-btn {
+  width: 148px;
+}
+
+/* 图库选择对话框样式 */
+.image-library-dialog {
+  min-height: 400px;
+}
+
+.dialog-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.library-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 15px;
+  max-height: 500px;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.library-image-item {
+  position: relative;
+  border: 2px solid #e4e7ed;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s;
+  aspect-ratio: 1;
+}
+
+.library-image-item:hover {
+  border-color: #409eff;
+}
+
+.library-image-item.selected {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+
+.library-image-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.library-image-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 8px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.library-image-item:hover .library-image-overlay {
+  opacity: 1;
 }
 </style>

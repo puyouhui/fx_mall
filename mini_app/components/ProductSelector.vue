@@ -2,7 +2,7 @@
   <view>
     <view class="ps-modal" v-if="isVisible" @click="closeModal" @touchmove.stop.prevent>
       <view class="ps-overlay" @touchmove.stop.prevent></view>
-      <view class="ps-content" @click.stop @touchmove.stop>
+      <view class="ps-content" @click.stop>
         <view class="ps-header">
           <text class="ps-title">选择规格</text>
           <view class="ps-close" @click.stop="closeModal">
@@ -27,51 +27,53 @@
 
       <view class="ps-specs" v-if="selectedProduct?.specs?.length">
         <text class="ps-section-title">选择规格</text>
-        <view class="ps-specs-list">
-          <view
-            class="ps-spec"
-            v-for="(spec, index) in selectedProduct.specs"
-            :key="index"
-            :class="{ active: getSpecQuantity(spec) > 0 }"
-          >
-            <view class="ps-spec-info">
-              <view class="ps-spec-header">
-                <text class="ps-spec-name">{{ spec.name }}</text>
-                <text class="ps-spec-desc" v-if="spec.description">{{ spec.description }}</text>
-              </view>
-              <view class="ps-spec-price-container" :class="{ 'wholesale-layout': isWholesaleUser }">
-                <text v-if="isWholesaleUser" class="ps-spec-price">
-                  ¥{{ formatSpecPrice(spec, 'wholesale') }}
-                </text>
-                <text v-else class="ps-spec-price">
-                  ¥{{ formatSpecPrice(spec, 'retail') }}
-                </text>
-                <!-- 批发用户显示零售价（灰色） -->
-                <text v-if="isWholesaleUser" class="ps-spec-retail-price">
-                  零售价：¥{{ formatSpecPrice(spec, 'retail') }}
-                </text>
-              </view>
-            </view>
-            <view class="ps-spec-actions">
-              <view
-                class="ps-spec-add"
-                v-if="getSpecQuantity(spec) === 0"
-                @click.stop="increaseSpecQuantity(spec)"
-              >
-                <uni-icons type="plusempty" size="22" color="#fff"></uni-icons>
-              </view>
-              <view v-else class="ps-spec-qty">
-                <view class="ps-spec-btn" @click.stop="decreaseSpecQuantity(spec)">
-                  <image src="/static/icon/minus.png" class="ps-minus-icon" />
+        <scroll-view class="ps-specs-list" scroll-y>
+          <view class="ps-specs-container">
+            <view
+              class="ps-spec"
+              v-for="(spec, index) in selectedProduct.specs"
+              :key="index"
+              :class="{ active: getSpecQuantity(spec) > 0 }"
+            >
+              <view class="ps-spec-info">
+                <view class="ps-spec-header">
+                  <text class="ps-spec-name">{{ spec.name }}</text>
+                  <text class="ps-spec-desc" v-if="spec.description">{{ spec.description }}</text>
                 </view>
-                <text class="ps-spec-qty-text">{{ getSpecQuantity(spec) }}</text>
-                <view class="ps-spec-btn plus" @click.stop="increaseSpecQuantity(spec)">
-                  <uni-icons type="plusempty" size="18" color="#fff"></uni-icons>
+                <view class="ps-spec-price-container" :class="{ 'wholesale-layout': isWholesaleUser }">
+                  <text v-if="isWholesaleUser" class="ps-spec-price">
+                    ¥{{ formatSpecPrice(spec, 'wholesale') }}
+                  </text>
+                  <text v-else class="ps-spec-price">
+                    ¥{{ formatSpecPrice(spec, 'retail') }}
+                  </text>
+                  <!-- 批发用户显示零售价（灰色） -->
+                  <text v-if="isWholesaleUser" class="ps-spec-retail-price">
+                    零售价：¥{{ formatSpecPrice(spec, 'retail') }}
+                  </text>
+                </view>
+              </view>
+              <view class="ps-spec-actions">
+                <view
+                  class="ps-spec-add"
+                  v-if="getSpecQuantity(spec) === 0"
+                  @click.stop="increaseSpecQuantity(spec)"
+                >
+                  <uni-icons type="plusempty" size="22" color="#fff"></uni-icons>
+                </view>
+                <view v-else class="ps-spec-qty">
+                  <view class="ps-spec-btn" @click.stop="decreaseSpecQuantity(spec)">
+                    <image src="/static/icon/minus.png" class="ps-minus-icon" />
+                  </view>
+                  <text class="ps-spec-qty-text">{{ getSpecQuantity(spec) }}</text>
+                  <view class="ps-spec-btn plus" @click.stop="increaseSpecQuantity(spec)">
+                    <uni-icons type="plusempty" size="18" color="#fff"></uni-icons>
+                  </view>
                 </view>
               </view>
             </view>
           </view>
-        </view>
+        </scroll-view>
       </view>
       <view class="ps-empty-specs" v-else>
         暂无规格信息
@@ -567,20 +569,23 @@ defineExpose({
 
 .ps-content {
   width: 100%;
-  max-height: 70vh;
+  max-height: 85vh;
   background-color: #fff;
   border-radius: 30rpx 30rpx 0 0;
   position: relative;
   z-index: 1;
   padding: 30rpx;
   box-sizing: border-box;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .ps-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .ps-title {
@@ -599,6 +604,7 @@ defineExpose({
 .ps-info {
   display: flex;
   margin: 24rpx 0;
+  flex-shrink: 0;
 }
 
 .ps-image {
@@ -639,6 +645,11 @@ defineExpose({
 }
 .ps-specs{
   padding: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 20rpx;
 }
 .ps-quantity {
   padding: 24rpx 0;
@@ -650,12 +661,22 @@ defineExpose({
   margin-bottom: 16rpx;
   color: #333;
   display: block;
+  flex-shrink: 0;
 }
 
 .ps-specs-list {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+  /* 增加最大高度，可以显示更多规格 */
+  max-height: 550rpx;
+}
+
+.ps-specs-container {
   display: flex;
   flex-direction: column;
-  gap: 20rpx;
+  padding: 4rpx 0;
 }
 
 .ps-spec {
@@ -669,6 +690,11 @@ defineExpose({
   box-shadow: 0 6rpx 12rpx rgba(0, 0, 0, 0.02);
   box-sizing: border-box;
   min-height: 140rpx;
+  margin-bottom: 20rpx;
+}
+
+.ps-spec:last-child {
+  margin-bottom: 0;
 }
 
 .ps-spec.active {
@@ -728,6 +754,10 @@ defineExpose({
   text-align: center;
   color: #999;
   font-size: 26rpx;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ps-spec-actions {
@@ -778,6 +808,7 @@ defineExpose({
 
 .ps-quantity-single {
   margin-top: 10rpx;
+  flex-shrink: 0;
 }
 
 .ps-qty-selector {
@@ -818,7 +849,7 @@ defineExpose({
 }
 
 .ps-footer {
-  margin-top: 30rpx;
+  flex-shrink: 0;
 }
 
 .ps-confirm {

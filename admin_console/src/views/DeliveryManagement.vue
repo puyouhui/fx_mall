@@ -339,6 +339,7 @@ import { getOrders, getOrderDetail } from '../api/orders'
 import { getProductDetail } from '../api/product'
 import { getAllSuppliers } from '../api/suppliers'
 import { hiprint } from 'vue-plugin-hiprint'
+import { getPrintOptions } from '../utils/printer'
 
 const loading = ref(false)
 const deliveryEmployees = ref([])
@@ -1084,8 +1085,9 @@ const printOrderTicket = async (orderData) => {
       },
     })
 
-    // 执行打印
-    hiprintTemplate.print2(panel)
+    // 执行打印（根据环境自动调整打印选项）
+    const printOptions = await getPrintOptions({}, hiprint)
+    hiprintTemplate.print2(panel, printOptions)
   } catch (error) {
     console.error('打印订单小票失败:', error)
     throw error
@@ -1469,8 +1471,9 @@ const printPickupListForSupplier = async (supplierData, employee) => {
       }
     })
 
-    // 执行打印
-    hiprintTemplate.print2(panel)
+    // 执行打印（根据环境自动调整打印选项）
+    const printOptions = await getPrintOptions({}, hiprint)
+    hiprintTemplate.print2(panel, printOptions)
   } catch (error) {
     console.error('打印失败:', error)
     throw error

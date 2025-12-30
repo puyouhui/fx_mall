@@ -120,117 +120,79 @@ class LocationReportService {
 
     _isConnecting = true;
 
-    try {
-      // 先关闭旧连接（如果存在）
-      if (_channel != null) {
-        try {
-          await _messageSubscription?.cancel();
-          _messageSubscription = null;
-          await _channel!.sink.close();
-          print('[LocationReportService] 已关闭旧WebSocket连接');
-        } catch (e) {
-          print('[LocationReportService] 关闭旧连接时出错: $e');
-          print('[LocationReportService] 堆栈: ${StackTrace.current}');
-        }
-        _channel = null;
+    // 先关闭旧连接（如果存在）
+    if (_channel != null) {
+      try {
+        await _messageSubscription?.cancel();
+        _messageSubscription = null;
+        await _channel!.sink.close();
+        print('[LocationReportService] 已关闭旧WebSocket连接');
+      } catch (e) {
+        print('[LocationReportService] 关闭旧连接时出错: $e');
       }
+      _channel = null;
+    }
 
+    try {
       // 获取token
       if (_token == null || _token!.isEmpty) {
         _token = await Storage.getToken();
       }
       if (_token == null || _token!.isEmpty) {
         print('[LocationReportService] Token不存在，无法建立WebSocket连接');
-        _isConnecting = false;
         return;
       }
 
       // 获取WebSocket URL（从API获取或使用缓存的）
       if (_websocketUrl == null || _websocketUrl!.isEmpty) {
-        print('[LocationReportService] WebSocket URL缓存为空，从API获取...');
         await _fetchWebSocketUrl();
       }
 
       if (_websocketUrl == null || _websocketUrl!.isEmpty) {
-        print('[LocationReportService] 错误: 无法获取WebSocket URL');
-        print('[LocationReportService] 将使用默认URL构建连接');
-        // 不直接返回，使用默认URL构建
+        print('[LocationReportService] 无法获取WebSocket URL');
+        return;
       }
 
       // 构建完整的WebSocket URL（通过URL参数传递token）
       final wsUrl = _getWebSocketUrl();
-      print('[LocationReportService] ========== WebSocket连接信息 ==========');
-      print('[LocationReportService] URL: $wsUrl');
-      print(
-        '[LocationReportService] Token存在: ${_token != null && _token!.isNotEmpty}',
-      );
-      print('[LocationReportService] Token长度: ${_token?.length ?? 0}');
-      print('[LocationReportService] ========================================');
+      print('[LocationReportService] 连接WebSocket: $wsUrl');
 
-      // 连接WebSocket（WebSocketChannel.connect是同步的，真正的连接是异步的）
-      try {
-        print('[LocationReportService] 正在创建WebSocket通道...');
-        _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
-        print('[LocationReportService] WebSocket通道已创建');
-      } on Exception catch (e, stackTrace) {
-        print('[LocationReportService] WebSocket连接异常: $e');
-        print('[LocationReportService] 异常类型: ${e.runtimeType}');
-        print('[LocationReportService] 堆栈: $stackTrace');
-        _isConnecting = false;
-        if (_isRunning) {
-          _reconnect();
-        }
-        return;
-      }
-
-      print('[LocationReportService] WebSocket通道已创建，开始监听消息...');
+      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
       // 监听连接状态
       _messageSubscription = _channel!.stream.listen(
         (message) {
           try {
             _lastMessageTime = DateTime.now(); // 更新最后收到消息的时间
-            print('[LocationReportService] 收到WebSocket消息: $message');
             final data = jsonDecode(message as String) as Map<String, dynamic>;
             final type = data['type'] as String?;
-            print('[LocationReportService] 消息类型: $type');
             if (type == 'location_received') {
-              print('[LocationReportService] ✓ 位置上报成功（服务器确认）');
+              print('[LocationReportService] 位置上报成功');
               // 收到消息说明连接正常，重置重连计数器
               _reconnectAttempts = 0;
             } else if (type == 'pong') {
-              print('[LocationReportService] ✓ 收到心跳响应（pong）');
+              print('[LocationReportService] 收到心跳响应');
               // 收到pong说明连接正常，重置重连计数器
               _reconnectAttempts = 0;
-            } else {
-              print('[LocationReportService] 收到未知类型消息: $type');
             }
-          } catch (e, stackTrace) {
-            print('[LocationReportService] ✗ 解析WebSocket消息失败: $e');
-            print('[LocationReportService] 消息内容: $message');
-            print('[LocationReportService] 堆栈: $stackTrace');
+          } catch (e) {
+            print('[LocationReportService] 解析WebSocket消息失败: $e');
           }
         },
-        onError: (error, stackTrace) {
-          print('[LocationReportService] ✗ WebSocket流错误: $error');
-          print('[LocationReportService] 错误类型: ${error.runtimeType}');
-          print('[LocationReportService] 堆栈: $stackTrace');
+        onError: (error) {
+          print('[LocationReportService] WebSocket错误: $error');
           _isConnecting = false;
-          _channel = null;
           // 尝试重连
           if (_isRunning) {
-            print('[LocationReportService] 将在重连延迟后尝试重新连接...');
             _reconnect();
           }
         },
         onDone: () {
-          print('[LocationReportService] WebSocket连接已关闭（onDone）');
+          print('[LocationReportService] WebSocket连接已关闭');
           _isConnecting = false;
           _messageSubscription = null;
-          _channel = null;
           // 尝试重连
           if (_isRunning) {
-            print('[LocationReportService] 将在重连延迟后尝试重新连接...');
             _reconnect();
           }
         },
@@ -241,36 +203,27 @@ class LocationReportService {
       _reconnectAttempts = 0;
       _lastMessageTime = DateTime.now();
       _isConnecting = false;
-      print('[LocationReportService] ✓ WebSocket连接建立成功，开始监听消息');
-    } catch (e, stackTrace) {
-      print('[LocationReportService] ✗ 建立WebSocket连接失败: $e');
-      print('[LocationReportService] 错误类型: ${e.runtimeType}');
-      print('[LocationReportService] 堆栈: $stackTrace');
+      print('[LocationReportService] WebSocket连接成功');
+    } catch (e) {
+      print('[LocationReportService] 建立WebSocket连接失败: $e');
       _isConnecting = false;
-      _channel = null;
       // 延迟后重试
-      if (_isRunning) {
-        print('[LocationReportService] 5秒后尝试重新连接...');
-        Future.delayed(const Duration(seconds: 5), () {
-          if (_isRunning) {
-            _connectWebSocket();
-          }
-        });
-      }
+      Future.delayed(const Duration(seconds: 5), () {
+        if (_isRunning) {
+          _connectWebSocket();
+        }
+      });
     }
   }
 
   /// 从API获取WebSocket URL
   Future<void> _fetchWebSocketUrl() async {
     try {
-      print('[LocationReportService] ========== 获取WebSocket配置 ==========');
-      print(
-        '[LocationReportService] API地址: ${Config.apiBaseUrl}/employee/websocket-config',
-      );
+      print('[LocationReportService] 开始从API获取WebSocket URL...');
       final response = await AuthApi.getWebSocketConfig();
-      print('[LocationReportService] API响应状态码: ${response.code}');
-      print('[LocationReportService] API响应消息: ${response.message}');
-      print('[LocationReportService] 响应是否成功: ${response.isSuccess}');
+      print(
+        '[LocationReportService] API响应: code=${response.code}, message=${response.message}',
+      );
 
       if (response.isSuccess && response.data != null) {
         print('[LocationReportService] API返回数据: ${response.data}');
@@ -288,29 +241,16 @@ class LocationReportService {
                 .replaceFirst('https://', 'wss://');
             print('[LocationReportService] 转换后URL: $_websocketUrl');
           }
-          print('[LocationReportService] ✓ 获取WebSocket URL成功: $_websocketUrl');
-          print(
-            '[LocationReportService] ========================================',
-          );
+          print('[LocationReportService] 获取WebSocket URL成功: $_websocketUrl');
         } else {
-          print('[LocationReportService] ✗ WebSocket URL为空');
-          print(
-            '[LocationReportService] ========================================',
-          );
+          print('[LocationReportService] WebSocket URL为空');
         }
       } else {
-        print(
-          '[LocationReportService] ✗ 获取WebSocket URL失败: ${response.message}',
-        );
-        print(
-          '[LocationReportService] ========================================',
-        );
+        print('[LocationReportService] 获取WebSocket URL失败: ${response.message}');
       }
-    } catch (e, stackTrace) {
-      print('[LocationReportService] ✗ 获取WebSocket URL异常: $e');
-      print('[LocationReportService] 异常类型: ${e.runtimeType}');
-      print('[LocationReportService] 异常堆栈: $stackTrace');
-      print('[LocationReportService] ========================================');
+    } catch (e) {
+      print('[LocationReportService] 获取WebSocket URL异常: $e');
+      print('[LocationReportService] 异常堆栈: ${StackTrace.current}');
     }
   }
 
@@ -321,8 +261,7 @@ class LocationReportService {
     if (_websocketUrl == null || _websocketUrl!.isEmpty) {
       // 如果API获取失败，使用默认URL
       final baseUrl = Config.baseUrl;
-      print('[LocationReportService] ⚠ 使用默认URL构建WebSocket连接');
-      print('[LocationReportService] 当前baseUrl: $baseUrl');
+      print('[LocationReportService] 使用默认URL，baseUrl: $baseUrl');
 
       // 确保转换为ws://或wss://格式
       if (baseUrl.startsWith('http://')) {
@@ -338,19 +277,16 @@ class LocationReportService {
 
       finalUrl = '$finalUrl/api/mini/employee/location/ws';
       _websocketUrl = finalUrl;
-      print('[LocationReportService] 构建的默认WebSocket URL: $_websocketUrl');
+      print('[LocationReportService] 构建默认WebSocket URL: $_websocketUrl');
     } else {
       finalUrl = _websocketUrl!;
-      print('[LocationReportService] 使用API返回的WebSocket URL: $finalUrl');
       // 再次确保URL格式正确（防止API返回http://格式）
       if (finalUrl.startsWith('http://')) {
         finalUrl = finalUrl.replaceFirst('http://', 'ws://');
         _websocketUrl = finalUrl;
-        print('[LocationReportService] 已将http://转换为ws://: $finalUrl');
       } else if (finalUrl.startsWith('https://')) {
         finalUrl = finalUrl.replaceFirst('https://', 'wss://');
         _websocketUrl = finalUrl;
-        print('[LocationReportService] 已将https://转换为wss://: $finalUrl');
       }
     }
 
@@ -359,6 +295,7 @@ class LocationReportService {
         ? '?token=${Uri.encodeComponent(_token!)}'
         : '';
     final result = '$finalUrl$tokenParam';
+    print('[LocationReportService] 最终WebSocket URL: $result');
     return result;
   }
 

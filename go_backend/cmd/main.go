@@ -191,8 +191,12 @@ func main() {
 				protectedGroup.DELETE("/delivery-fee/exclusions/:id", api.DeleteDeliveryFeeExclusion)
 
 				// 商品管理接口
-				protectedGroup.GET("/products", api.GetAllProductsForAdmin)                 // 获取所有商品（管理后台）
-				protectedGroup.POST("/products/upload", api.UploadProductImage)             // 上传商品图片（必须在 /:id 之前）
+				protectedGroup.GET("/products", api.GetAllProductsForAdmin)     // 获取所有商品（管理后台）
+				protectedGroup.POST("/products/upload", api.UploadProductImage) // 上传商品图片（必须在 /:id 之前）
+
+				// 图库管理接口
+				protectedGroup.GET("/images", api.ListImages)                               // 获取所有图片列表
+				protectedGroup.DELETE("/images/batch", api.BatchDeleteImages)               // 批量删除图片
 				protectedGroup.GET("/products/:id", api.GetProductDetail)                   // 获取商品详情（管理后台）
 				protectedGroup.POST("/products", api.CreateProduct)                         // 创建商品
 				protectedGroup.PUT("/products/:id", api.UpdateProduct)                      // 更新商品
@@ -302,11 +306,11 @@ func main() {
 				protectedGroup.PUT("/rich-contents/:id/publish", api.PublishRichContent) // 发布富文本内容
 
 				// 推荐奖励活动管理
-				protectedGroup.GET("/referral-reward/config", api.GetReferralRewardConfig)     // 获取推荐奖励活动配置
+				protectedGroup.GET("/referral-reward/config", api.GetReferralRewardConfig)    // 获取推荐奖励活动配置
 				protectedGroup.PUT("/referral-reward/config", api.UpdateReferralRewardConfig) // 更新推荐奖励活动配置
-				protectedGroup.GET("/referral-reward/rewards", api.GetReferralRewards)         // 获取推荐奖励记录列表
-				protectedGroup.PUT("/rich-contents/:id/archive", api.ArchiveRichContent) // 归档富文本内容
-				protectedGroup.DELETE("/rich-contents/:id", api.DeleteRichContent)       // 删除富文本内容
+				protectedGroup.GET("/referral-reward/rewards", api.GetReferralRewards)        // 获取推荐奖励记录列表
+				protectedGroup.PUT("/rich-contents/:id/archive", api.ArchiveRichContent)      // 归档富文本内容
+				protectedGroup.DELETE("/rich-contents/:id", api.DeleteRichContent)            // 删除富文本内容
 			}
 		}
 

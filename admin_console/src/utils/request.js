@@ -5,7 +5,8 @@ import axios from 'axios'
 const getBaseURL = () => {
   // 如果是开发环境（localhost 或 127.0.0.1）
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return 'http://localhost:8082/api/mini'
+    // return 'http://localhost:8082/api/mini'
+    return 'https://mall.sscchh.com/api_mall/mini' // 生产环境
   }
   // 生产环境使用相对路径，通过 Nginx 代理到后端
   // 注意：后端 Nginx 配置为 /api_mall/，所以这里使用 /api_mall/mini

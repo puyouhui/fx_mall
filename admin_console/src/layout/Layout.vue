@@ -52,6 +52,12 @@
             </el-icon>
             <span>轮播图管理</span>
           </el-menu-item>
+          <el-menu-item index="/image-library">
+            <el-icon>
+              <Picture />
+            </el-icon>
+            <span>图库管理</span>
+          </el-menu-item>
           <el-menu-item index="/hot-search-keywords">
             <el-icon>
               <Search />

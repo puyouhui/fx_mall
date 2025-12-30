@@ -206,6 +206,14 @@ const routes = [
         meta: {
           title: '推荐奖励活动管理'
         }
+      },
+      {
+        path: 'image-library',
+        name: 'ImageLibrary',
+        component: () => import('../views/ImageLibrary.vue'),
+        meta: {
+          title: '图库管理'
+        }
       }
     ]
   },

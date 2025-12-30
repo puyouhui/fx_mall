@@ -1,7 +1,7 @@
 // request.js - 小程序请求工具类
 
-// 基础API地址
-export const BASE_URL = 'http://192.168.31.110:8082/api/mini';
+// 基础API地址（生产环境）
+export const BASE_URL = 'https://mall.sscchh.com/api/mini';
 
 
 // 封装请求方法

@@ -338,3 +338,104 @@ func extractObjectNameFromURL(url, endpoint, bucket string) string {
 	// 如果URL格式不符合预期，直接返回原始URL
 	return url
 }
+
+// ListImages 列出MinIO桶中的所有图片
+func ListImages() ([]map[string]interface{}, error) {
+	if minioClient == nil {
+		// 如果客户端未初始化，先初始化
+		if err := InitMinIO(); err != nil {
+			return nil, fmt.Errorf("初始化MinIO客户端失败: %v", err)
+		}
+	}
+
+	cfg := config.Config.MinIO
+	ctx := context.Background()
+
+	// 列出所有对象
+	objectCh := minioClient.ListObjects(ctx, cfg.Bucket, minio.ListObjectsOptions{
+		Recursive: true,
+	})
+
+	var images []map[string]interface{}
+	imageExtensions := map[string]bool{
+		".jpg":  true,
+		".jpeg": true,
+		".png":  true,
+		".gif":  true,
+		".webp": true,
+	}
+
+	for object := range objectCh {
+		if object.Err != nil {
+			log.Printf("列出对象时出错: %v", object.Err)
+			continue
+		}
+
+		// 检查是否为图片文件
+		isImage := false
+		objectName := object.Key
+		for ext := range imageExtensions {
+			if len(objectName) >= len(ext) && objectName[len(objectName)-len(ext):] == ext {
+				isImage = true
+				break
+			}
+		}
+
+		if isImage {
+			// 生成可访问的URL
+			imageURL := fmt.Sprintf("%s/%s/%s", cfg.BaseURL, cfg.Bucket, objectName)
+			
+			images = append(images, map[string]interface{}{
+				"name":      objectName,
+				"url":       imageURL,
+				"size":      object.Size,
+				"updatedAt": object.LastModified.Format("2006-01-02 15:04:05"),
+			})
+		}
+	}
+
+	return images, nil
+}
+
+// BatchDeleteImages 批量删除图片
+func BatchDeleteImages(imageURLs []string) error {
+	if minioClient == nil {
+		// 如果客户端未初始化，先初始化
+		if err := InitMinIO(); err != nil {
+			return fmt.Errorf("初始化MinIO客户端失败: %v", err)
+		}
+	}
+
+	cfg := config.Config.MinIO
+	ctx := context.Background()
+
+	errors := make([]string, 0)
+	for _, imageURL := range imageURLs {
+		// 从URL中提取对象名称
+		objectName := extractObjectNameFromURL(imageURL, cfg.Endpoint, cfg.Bucket)
+		
+		// 如果URL格式不符合预期，尝试从完整URL中提取
+		if objectName == imageURL {
+			// 尝试从BaseURL格式中提取
+			baseURLPrefix := fmt.Sprintf("%s/%s/", cfg.BaseURL, cfg.Bucket)
+			if len(imageURL) > len(baseURLPrefix) && imageURL[:len(baseURLPrefix)] == baseURLPrefix {
+				objectName = imageURL[len(baseURLPrefix):]
+			}
+		}
+
+		// 删除文件
+		err := minioClient.RemoveObject(ctx, cfg.Bucket, objectName, minio.RemoveObjectOptions{})
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("删除 %s 失败: %v", objectName, err))
+			log.Printf("删除文件失败: %s, 错误: %v", objectName, err)
+		} else {
+			log.Printf("成功删除文件: %s", objectName)
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("部分文件删除失败: %v", errors)
+	}
+
+	return nil
+}

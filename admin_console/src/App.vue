@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted } from 'vue'
 import { hiprint } from 'vue-plugin-hiprint'
-import { getPrinterAddress, canConnectToPrinter } from './utils/printer'
+import { getPrinterAddress, canConnectToPrinter, clearClientCache, isOnlineEnvironment } from './utils/printer'
 
 // 检查连接状态
 const checkConnectionStatus = () => {
@@ -52,11 +52,25 @@ onMounted(() => {
       // 监听连接打开事件
       hiprint.hiwebSocket.onopen = () => {
         console.log('✅ 打印客户端连接成功')
+        
+        // 如果是线上环境，连接成功后获取客户端列表
+        if (isOnlineEnvironment() && hiprint.hiwebSocket.socket) {
+          // 清除旧的缓存
+          clearClientCache()
+          
+          // 延迟一下，确保连接完全建立
+          setTimeout(() => {
+            // 触发获取客户端列表（会在打印时自动获取）
+            console.log('📡 准备获取客户端列表...')
+          }, 1000)
+        }
       }
       
       // 监听连接关闭事件
       hiprint.hiwebSocket.onclose = () => {
         console.warn('⚠️ 打印客户端连接已关闭')
+        // 清除客户端缓存
+        clearClientCache()
       }
       
       // 监听连接错误事件
