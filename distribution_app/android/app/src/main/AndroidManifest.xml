@@ -14,7 +14,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     
     <application
-        android:label="配送员端"
+        android:label="配送工作台"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

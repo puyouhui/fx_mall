@@ -17,7 +17,7 @@ class Config {
   static const String emulatorBaseUrl = 'http://10.0.2.2:8082';
 
   // 生产环境
-  static const String prodBaseUrl = 'https://your-production-server.com';
+  static const String prodBaseUrl = 'https://mall.sscchh.com';
 
   // 编译期环境变量：APP_ENV
   // 不传时默认当成 emulator
