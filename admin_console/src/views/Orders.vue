@@ -1081,14 +1081,14 @@ const executePrint = async (orderData) => {
       return hidePrice ? '**' : formatMoney(amount)
     }
 
-    // 格式化电话号码：只显示后四位，其他用*代替
+    // 格式化电话号码：显示前三位和后三位，中间用*代替
     const formatPhone = (phone) => {
       if (!phone) return '-'
       const phoneStr = String(phone)
-      if (phoneStr.length <= 4) return phoneStr
-      const lastFour = phoneStr.slice(-4)
-      const stars = '*'.repeat(phoneStr.length - 4)
-      return stars + lastFour
+      if (phoneStr.length <= 6) return phoneStr
+      const firstThree = phoneStr.slice(0, 3)
+      const lastThree = phoneStr.slice(-3)
+      return firstThree + '****' + lastThree
     }
 
     // 订单标题：根据是否环保小票显示不同标题
@@ -1146,32 +1146,31 @@ const executePrint = async (orderData) => {
     })
     currentTop += 15
 
-    // 用户信息
-    if (user) {
-      // 判断用户名，如果没有用户名使用用户编号
-      const customerName = user.name 
-        ? user.name 
-        : (user.user_code ? `用户${user.user_code}` : (user.user_id ? `用户${user.user_id}` : '-'))
+    // 地址信息
+    if (address) {
+      // 地址名称
+      const addressName = address.name || '-'
       
       panel.addPrintText({
         options: {
           width: 300, // 尝试更大的值以占满 80mm 宽度
           top: currentTop,
           left: 0,
-          title: `客户：${customerName}`,
+          title: `名称：${addressName}`,
           textAlign: "left",
           fontSize: 11
         },
       })
-      currentTop += 15
+      currentTop += 20
 
-      if (user.phone) {
+      // 地址电话
+      if (address.phone) {
         panel.addPrintText({
           options: {
             width: 300, // 尝试更大的值以占满 80mm 宽度
             top: currentTop,
             left: 0,
-            title: `电话：${formatPhone(user.phone)}`,
+            title: `电话：${formatPhone(address.phone)}`,
             textAlign: "left",
             fontSize: 11
           },
@@ -1299,8 +1298,8 @@ const executePrint = async (orderData) => {
 
         const productName = `${item.product_name || ''} ${item.spec_name || ''}`.trim()
         const productNameText = productName + ' ' + ' X ' + quantity
-        // 估算文本行数：每行约18个字符（根据宽度230和字体大小11估算）
-        const estimatedLines = Math.ceil(productNameText.length / 18)
+        // 估算文本行数：每行约24个字符（根据宽度230和字体大小11估算，80mm纸张实际可以容纳更多字符）
+        const estimatedLines = Math.ceil(productNameText.length / 24)
         const textHeight = Math.max(18, estimatedLines * 18) // 最小18px，每行18px
         
         panel.addPrintText({
@@ -1316,8 +1315,10 @@ const executePrint = async (orderData) => {
             lineHeight: 18 // 设置行高，确保换行时有足够间距
           },
         })
-        currentTop += textHeight + 3 // 根据实际文本高度调整间距
-
+        
+        // 商品名称到价格的间距：使用固定的紧凑间距
+        // 无论单行还是多行，都使用相同的间距（一行高度+小间距），让价格紧跟在名称下方
+        currentTop += 18 + 3 // 固定使用一行高度(18px) + 小间距(3px) = 21px
 
         panel.addPrintText({
           options: {
@@ -1329,7 +1330,9 @@ const executePrint = async (orderData) => {
             fontSize: 10
           },
         })
-        currentTop += 20
+        
+        // 价格行之后到下个商品的间距：固定间距
+        currentTop += 18 // 固定间距，让每个商品之间的间距一致
       })
     }
 

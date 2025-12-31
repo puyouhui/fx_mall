@@ -21,11 +21,13 @@
         </div>
         <div class="toolbar-right">
           <el-upload
+            ref="uploadRef"
             class="upload-btn"
             action=""
             :show-file-list="false"
             :before-upload="beforeUpload"
-            :http-request="handleUpload"
+            :on-change="handleFileChange"
+            :auto-upload="false"
             multiple
           >
             <el-button type="primary">
@@ -321,7 +323,10 @@ const handleBatchDelete = async () => {
   }
 }
 
-// 上传前验证
+// 上传状态管理
+const isUploading = ref(false)
+
+// 上传前验证（仅验证，不阻止上传）
 const beforeUpload = (file) => {
   const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)
   if (!isImage) {
@@ -338,26 +343,103 @@ const beforeUpload = (file) => {
   return true
 }
 
-// 上传图片
-const handleUpload = async (options) => {
+// 处理单个文件上传
+const uploadSingleFile = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file.raw || file) // 兼容 file 对象和 raw 属性
+
+  const response = await uploadImage(formData)
+  if (response.code === 200 && response.data && response.data.imageUrl) {
+    return { success: true, file: file.name }
+  } else {
+    throw new Error(response.message || '上传失败')
+  }
+}
+
+// 处理文件选择变化（批量上传）
+const handleFileChange = (file, fileList) => {
+  // 如果正在上传，忽略新的文件选择
+  if (isUploading.value) {
+    return
+  }
+
+  // 清除之前的定时器
+  if (fileChangeTimer.value) {
+    clearTimeout(fileChangeTimer.value)
+  }
+
+  // 设置新的定时器，等待所有文件都添加到 fileList
+  // Element Plus 会在选择文件时逐个触发 on-change
+  fileChangeTimer.value = setTimeout(() => {
+    // 获取所有有效的文件（通过验证的，并且有 raw 属性）
+    const validFiles = fileList.filter(f => f.status !== 'fail' && f.raw)
+    
+    // 如果没有有效文件，直接返回
+    if (validFiles.length === 0) {
+      return
+    }
+
+    // 开始上传
+    uploadFiles(validFiles)
+  }, 200) // 增加延迟，确保所有文件都已添加
+}
+
+// 批量上传文件
+const uploadFiles = async (files) => {
+  if (isUploading.value || files.length === 0) {
+    return
+  }
+
+  isUploading.value = true
+  let successCount = 0
+  let failCount = 0
+
   try {
-    const { file } = options
-    ElMessage({ message: '图片上传中...', type: 'info' })
+    // 显示上传进度消息
+    const message = ElMessage({
+      message: `正在上传图片 (0/${files.length})...`,
+      type: 'info',
+      duration: 0 // 不自动关闭
+    })
 
-    const formData = new FormData()
-    formData.append('file', file)
+    // 串行上传每个文件
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      try {
+        await uploadSingleFile(file)
+        successCount++
+        // 更新进度消息
+        message.message = `正在上传图片 (${i + 1}/${files.length})...`
+      } catch (error) {
+        console.error(`文件 ${file.name} 上传失败:`, error)
+        failCount++
+      }
+    }
 
-    const response = await uploadImage(formData)
-    if (response.code === 200 && response.data && response.data.imageUrl) {
-      ElMessage.success('图片上传成功')
+    // 关闭进度消息
+    message.close()
+
+    // 显示最终结果
+    if (successCount > 0 && failCount === 0) {
+      ElMessage.success(`成功上传 ${successCount} 张图片`)
+      // 刷新列表
+      await initData()
+    } else if (successCount > 0 && failCount > 0) {
+      ElMessage.warning(`成功上传 ${successCount} 张，失败 ${failCount} 张`)
       // 刷新列表
       await initData()
     } else {
-      ElMessage.error('图片上传失败: ' + (response.message || '未知错误'))
+      ElMessage.error(`上传失败，共 ${failCount} 张图片上传失败`)
     }
   } catch (error) {
-    console.error('图片上传失败:', error)
-    ElMessage.error('图片上传失败，请稍后再试')
+    console.error('批量上传失败:', error)
+    ElMessage.error('批量上传失败，请稍后再试')
+  } finally {
+    isUploading.value = false
+    // 清空上传组件的文件列表
+    if (uploadRef.value) {
+      uploadRef.value.clearFiles()
+    }
   }
 }
 

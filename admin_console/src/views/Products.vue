@@ -224,8 +224,8 @@
 
               <!-- 上传按钮 -->
               <div v-if="productForm.images.length < 5" class="upload-actions">
-                <el-upload class="image-upload-btn" action="" :show-file-list="false"
-                  :before-upload="beforeUpload" :http-request="handleHttpRequest" multiple :limit="5"
+                <el-upload ref="uploadRef" class="image-upload-btn" action="" :show-file-list="false"
+                  :before-upload="beforeUpload" :on-change="handleFileChange" :auto-upload="false" multiple :limit="5"
                   :on-exceed="handleExceed">
                   <el-button type="primary">
                     <el-icon>
@@ -1109,7 +1109,12 @@ const handleExceed = (files, fileList) => {
   ElMessage.warning(`最多只能上传 ${fileList.length} 个文件`)
 }
 
-// 文件类型和大小校验
+// 上传状态管理
+const uploadRef = ref(null)
+const isUploading = ref(false)
+const fileChangeTimer = ref(null)
+
+// 文件类型和大小校验（仅验证，不阻止上传）
 const beforeUpload = (file) => {
   // 文件类型校验
   const isImage = /\.(jpg|jpeg|png|gif)$/i.test(file.name)
@@ -1128,56 +1133,133 @@ const beforeUpload = (file) => {
   return true
 }
 
-// 自定义上传函数
-const handleHttpRequest = async (options) => {
+// 处理单个文件上传
+const uploadSingleFile = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file.raw || file) // 兼容 file 对象和 raw 属性
+
+  const response = await uploadProductImage(formData)
+  if (response.code === 200 && response.data && response.data.imageUrl) {
+    return { success: true, url: response.data.imageUrl, name: file.name }
+  } else {
+    throw new Error(response.message || '上传失败')
+  }
+}
+
+// 处理文件选择变化（批量上传）
+const handleFileChange = (file, fileList) => {
+  // 如果正在上传，忽略新的文件选择
+  if (isUploading.value) {
+    return
+  }
+
+  // 清除之前的定时器
+  if (fileChangeTimer.value) {
+    clearTimeout(fileChangeTimer.value)
+  }
+
+  // 设置新的定时器，等待所有文件都添加到 fileList
+  // Element Plus 会在选择文件时逐个触发 on-change
+  fileChangeTimer.value = setTimeout(() => {
+    // 检查是否已达到最大数量
+    const remainingSlots = 5 - productForm.images.length
+    if (remainingSlots <= 0) {
+      ElMessage.warning('最多只能上传5张图片')
+      return
+    }
+
+    // 获取所有有效的文件（通过验证的，并且有 raw 属性）
+    const validFiles = fileList.filter(f => f.status !== 'fail' && f.raw)
+    
+    // 如果没有有效文件，直接返回
+    if (validFiles.length === 0) {
+      return
+    }
+
+    // 只处理可以上传的文件数量
+    const filesToUpload = validFiles.slice(0, remainingSlots)
+    
+    // 开始上传
+    uploadFiles(filesToUpload)
+  }, 200) // 增加延迟，确保所有文件都已添加
+}
+
+// 批量上传文件
+const uploadFiles = async (files) => {
+  if (isUploading.value || files.length === 0) {
+    return
+  }
+
+  // 再次检查是否还有空位
+  const remainingSlots = 5 - productForm.images.length
+  if (remainingSlots <= 0) {
+    ElMessage.warning('已达到最大上传数量（5张）')
+    return
+  }
+
+  // 只处理可以上传的文件
+  const filesToUpload = files.slice(0, remainingSlots)
+
+  isUploading.value = true
+  let successCount = 0
+  let failCount = 0
+
   try {
-    const { file } = options
+    // 显示上传进度消息
+    const message = ElMessage({
+      message: `正在上传图片 (0/${filesToUpload.length})...`,
+      type: 'info',
+      duration: 0 // 不自动关闭
+    })
 
-    // 显示上传中状态
-    ElMessage({ message: '图片上传中...', type: 'info' })
+    // 串行上传每个文件
+    for (let i = 0; i < filesToUpload.length; i++) {
+      const file = filesToUpload[i]
+      try {
+        const result = await uploadSingleFile(file)
+        successCount++
+        
+        // 将图片添加到列表中
+        const uploadedFile = {
+          name: result.name,
+          url: result.url,
+          status: 'success'
+        }
 
-    // 创建FormData对象
-    const formData = new FormData()
-    formData.append('file', file)
-
-    // 调用上传API
-    const response = await uploadProductImage(formData)
-
-    // 处理上传结果
-    if (response.code === 200 && response.data && response.data.imageUrl) {
-      // 成功回调
-      if (options.onSuccess) {
-        options.onSuccess(response)
+        // 确保不会重复添加且未超过限制
+        const exists = productForm.images.some(img => img.url === uploadedFile.url)
+        if (!exists && productForm.images.length < 5) {
+          productForm.images.push(uploadedFile)
+        }
+        
+        // 更新进度消息
+        message.message = `正在上传图片 (${i + 1}/${filesToUpload.length})...`
+      } catch (error) {
+        console.error(`文件 ${file.name} 上传失败:`, error)
+        failCount++
       }
+    }
 
-      // 将图片添加到列表中
-      const uploadedFile = {
-        name: file.name,
-        url: response.data.imageUrl,
-        status: 'success' // 标记为成功状态
-      }
+    // 关闭进度消息
+    message.close()
 
-      // 确保不会重复添加
-      const exists = productForm.images.some(img => img.url === uploadedFile.url)
-      if (!exists) {
-        productForm.images.push(uploadedFile)
-      }
-
-      ElMessage.success('图片上传成功')
+    // 显示最终结果
+    if (successCount > 0 && failCount === 0) {
+      ElMessage.success(`成功上传 ${successCount} 张图片`)
+    } else if (successCount > 0 && failCount > 0) {
+      ElMessage.warning(`成功上传 ${successCount} 张，失败 ${failCount} 张`)
     } else {
-      // 失败回调
-      if (options.onError) {
-        options.onError(response)
-      }
-      ElMessage.error('图片上传失败: ' + (response.message || '未知错误'))
+      ElMessage.error(`上传失败，共 ${failCount} 张图片上传失败`)
     }
   } catch (error) {
-    // 错误回调
-    if (options.onError) {
-      options.onError(error)
+    console.error('批量上传失败:', error)
+    ElMessage.error('批量上传失败，请稍后再试')
+  } finally {
+    isUploading.value = false
+    // 清空上传组件的文件列表
+    if (uploadRef.value) {
+      uploadRef.value.clearFiles()
     }
-    console.error('图片上传失败:', error)
-    ElMessage.error('图片上传失败，请稍后再试')
   }
 }
 
