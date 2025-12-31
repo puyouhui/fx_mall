@@ -1,8 +1,20 @@
 import axios from 'axios'
 
+// 根据环境自动选择 API 地址
+// 开发环境使用 localhost，生产环境使用相对路径（通过 Nginx 代理）
+const getBaseURL = () => {
+  // 如果是开发环境（localhost 或 127.0.0.1）
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return 'http://localhost:8082/api/mini/supplier' // 开发环境
+  }
+  // 生产环境使用相对路径，通过 Nginx 代理到后端
+  // 注意：后端 Nginx 配置为 /api_mall/，所以这里使用 /api_mall/mini/supplier
+  return '/api_mall/mini/supplier'
+}
+
 // 创建axios实例
 const request = axios.create({
-  baseURL: 'http://localhost:8082/api/mini/supplier', // 供应商后台API基础URL
+  baseURL: getBaseURL(), // 供应商后台API基础URL
   timeout: 10000, // 请求超时时间
   headers: {
     'Content-Type': 'application/json'
