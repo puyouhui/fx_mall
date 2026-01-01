@@ -32,6 +32,11 @@ extension OrderHallViewKeyExtension on OrderHallViewKey {
   Future<void> refreshAll() async {
     await currentState?._refreshAll();
   }
+  
+  /// 设置页面可见性
+  void setPageVisible(bool visible) {
+    currentState?._setPageVisible(visible);
+  }
 }
 
 class _OrderHallViewState extends State<OrderHallView>
@@ -48,6 +53,28 @@ class _OrderHallViewState extends State<OrderHallView>
   List<int?> _orderCounts = [null, null, null];
   // 是否正在加载数量
   bool _isLoadingCounts = false;
+  // 防抖定时器：避免频繁调用 _loadAllTabCounts
+  DateTime? _lastLoadTime;
+  static const Duration _minLoadInterval = Duration(seconds: 5); // 最小间隔5秒，减少请求频率
+  // 标记页面是否可见（用于判断是否应该刷新）
+  bool _isPageVisible = true;
+  
+  /// 设置页面可见性（由外部调用，比如 main_shell）
+  void _setPageVisible(bool visible) {
+    if (_isPageVisible != visible) {
+      setState(() {
+        _isPageVisible = visible;
+      });
+      // 如果页面变为可见，且距离上次加载时间超过最小间隔，则刷新
+      if (visible) {
+        final now = DateTime.now();
+        if (_lastLoadTime == null ||
+            now.difference(_lastLoadTime!) >= _minLoadInterval) {
+          _loadAllTabCounts();
+        }
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -69,8 +96,8 @@ class _OrderHallViewState extends State<OrderHallView>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 当应用从后台返回前台时，刷新所有Tab的订单列表
-    if (state == AppLifecycleState.resumed) {
+    // 当应用从后台返回前台时，且页面可见时，才刷新所有Tab的订单列表
+    if (state == AppLifecycleState.resumed && _isPageVisible) {
       _refreshAll();
     }
   }
@@ -118,8 +145,9 @@ class _OrderHallViewState extends State<OrderHallView>
   }
 
   void _onOrderAccepted() async {
-    // 接单成功后，先刷新数量
-    await _loadAllTabCounts();
+    // 接单成功后，强制刷新（忽略防抖限制和页面可见性检查）
+    // 先刷新数量
+    await _loadAllTabCounts(force: true);
 
     // 然后刷新所有Tab（因为订单状态可能变化）
     final refreshFutures = <Future>[];
@@ -132,16 +160,29 @@ class _OrderHallViewState extends State<OrderHallView>
 
     // 刷新完成后，再次更新数量（确保数量准确）
     if (mounted) {
-      await _loadAllTabCounts();
+      await _loadAllTabCounts(force: true);
     }
   }
 
   /// 直接调用 API 获取所有 tab 的数量（不依赖 tab 构建）
   /// 这是角标数量的唯一数据源，确保不会闪烁
-  Future<void> _loadAllTabCounts() async {
+  Future<void> _loadAllTabCounts({bool force = false}) async {
+    // 如果页面不可见，不加载（避免在详情页面时后台刷新）
+    if (!_isPageVisible && !force) return;
+    
     // 如果正在加载，避免重复请求
     if (_isLoadingCounts) return;
 
+    // 防抖：如果距离上次加载时间太短，跳过本次请求（除非强制刷新）
+    if (!force) {
+      final now = DateTime.now();
+      if (_lastLoadTime != null &&
+          now.difference(_lastLoadTime!) < _minLoadInterval) {
+        return;
+      }
+    }
+
+    _lastLoadTime = DateTime.now();
     _isLoadingCounts = true;
     try {
       // 并行获取三个状态的订单数量
@@ -347,9 +388,10 @@ class _OrderHallViewState extends State<OrderHallView>
                   onOrderAccepted: _onOrderAccepted,
                   onOrderCountChanged: () async {
                     // 延迟一下，确保后端已处理状态变更
-                    await Future.delayed(const Duration(milliseconds: 300));
+                    await Future.delayed(const Duration(milliseconds: 500));
                     if (mounted) {
-                      await _loadAllTabCounts();
+                      // 强制刷新，确保角标能及时更新
+                      await _loadAllTabCounts(force: true);
                     }
                   },
                 ),
@@ -360,9 +402,10 @@ class _OrderHallViewState extends State<OrderHallView>
                   onOrderAccepted: _onOrderAccepted,
                   onOrderCountChanged: () async {
                     // 延迟一下，确保后端已处理状态变更
-                    await Future.delayed(const Duration(milliseconds: 300));
+                    await Future.delayed(const Duration(milliseconds: 500));
                     if (mounted) {
-                      await _loadAllTabCounts();
+                      // 强制刷新，确保角标能及时更新
+                      await _loadAllTabCounts(force: true);
                     }
                   },
                 ),
@@ -373,9 +416,10 @@ class _OrderHallViewState extends State<OrderHallView>
                   onOrderAccepted: _onOrderAccepted,
                   onOrderCountChanged: () async {
                     // 延迟一下，确保后端已处理状态变更
-                    await Future.delayed(const Duration(milliseconds: 300));
+                    await Future.delayed(const Duration(milliseconds: 500));
                     if (mounted) {
-                      await _loadAllTabCounts();
+                      // 强制刷新，确保角标能及时更新
+                      await _loadAllTabCounts(force: true);
                     }
                   },
                 ),

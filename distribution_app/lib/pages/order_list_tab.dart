@@ -136,9 +136,9 @@ class _OrderListTabState extends State<OrderListTab> {
         _isLoading = false;
         _isLoadingMore = false;
       });
-      // 每次加载完成后都通知订单数量变化（确保数量及时更新）
-      // 只在成功获取到数据时才触发回调，避免在加载过程中触发导致闪烁
-      if (widget.onOrderCountChanged != null) {
+      // 只在重置加载（首次加载或手动刷新）时才通知订单数量变化
+      // 避免滚动加载更多时频繁触发回调
+      if (reset && widget.onOrderCountChanged != null) {
         // 使用微任务确保 setState 完成后再触发回调
         Future.microtask(() {
           if (mounted && widget.onOrderCountChanged != null) {
@@ -268,32 +268,69 @@ class _OrderListTabState extends State<OrderListTab> {
             backgroundColor: Color(0xFF20CB6B),
           ),
         );
-        // 先通知父组件更新数量（接单后订单会从新任务移到待取货）
-        widget.onOrderAccepted();
-        // 然后刷新当前列表（因为接单后订单状态会变化，需要重新加载）
+        // 先刷新当前列表（因为接单后订单状态会变化，需要重新加载）
         await _loadOrders(reset: true);
+        // 然后通知父组件更新数量（接单后订单会从新任务移到待取货）
+        // 延迟一下，确保列表刷新完成后再更新角标
+        await Future.delayed(const Duration(milliseconds: 300));
+        widget.onOrderAccepted();
       } else {
+        // 检查是否是订单已被接走等错误，如果是则自动返回首页
+        final errorMessage = response.message.toLowerCase();
+        final shouldReturnHome = errorMessage.contains('已被') ||
+            errorMessage.contains('接走') ||
+            errorMessage.contains('已被接') ||
+            errorMessage.contains('其他配送员') ||
+            errorMessage.contains('已被其他');
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(response.message),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
           ),
         );
+        
         setState(() {
           _acceptingOrders.remove(orderId);
         });
+        
+        // 如果是订单已被接走等错误，自动返回首页
+        if (shouldReturnHome && mounted) {
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (mounted) {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          }
+        }
       }
     } catch (e) {
       if (!mounted) return;
+      final errorMessage = e.toString().toLowerCase();
+      final shouldReturnHome = errorMessage.contains('已被') ||
+          errorMessage.contains('接走') ||
+          errorMessage.contains('已被接') ||
+          errorMessage.contains('其他配送员') ||
+          errorMessage.contains('已被其他');
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('接单失败: ${e.toString()}'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2),
         ),
       );
+      
       setState(() {
         _acceptingOrders.remove(orderId);
       });
+      
+      // 如果是订单已被接走等错误，自动返回首页
+      if (shouldReturnHome && mounted) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
+      }
     }
   }
 
@@ -303,20 +340,30 @@ class _OrderListTabState extends State<OrderListTab> {
     if (orderId == null) return;
 
     // 跳转到订单详情页面，并等待返回结果
-    await Navigator.of(context).push(
+    final result = await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => OrderDetailView(orderId: orderId)),
     );
 
-    // 从详情页面返回后，无论是否返回true，都刷新列表和角标
-    // 因为订单状态可能在任何时候发生变化
+    // 返回首页时，如果订单状态发生了变化，刷新列表和角标
     if (mounted) {
-      // 先刷新列表
-      await _loadOrders(reset: true);
-      // 等待列表刷新完成后，再通知父组件更新角标数量
-      // 添加短暂延迟，确保后端已处理接单操作
-      await Future.delayed(const Duration(milliseconds: 300));
-      if (widget.onOrderCountChanged != null) {
-        await widget.onOrderCountChanged!();
+      if (result == true) {
+        // 如果订单状态发生了变化，先等待一下确保后端已处理
+        await Future.delayed(const Duration(milliseconds: 300));
+        // 然后刷新列表
+        await _loadOrders(reset: true);
+        // 等待列表刷新完成后再更新角标
+        await Future.delayed(const Duration(milliseconds: 300));
+        // 更新角标数量（强制刷新）
+        if (widget.onOrderCountChanged != null) {
+          await widget.onOrderCountChanged!();
+        }
+      } else {
+        // 即使没有变化，也更新一次角标数量（确保角标准确）
+        // 但延迟更短，避免不必要的等待
+        await Future.delayed(const Duration(milliseconds: 200));
+        if (widget.onOrderCountChanged != null) {
+          await widget.onOrderCountChanged!();
+        }
       }
     }
   }

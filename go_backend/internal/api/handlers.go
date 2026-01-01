@@ -568,7 +568,7 @@ func DeleteProduct(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "删除成功"})
 }
 
-// ListImages 列出MinIO桶中的所有图片（支持分页）
+// ListImages 列出MinIO桶中的所有图片（支持分页和目录过滤）
 func ListImages(c *gin.Context) {
 	// 解析分页参数
 	pageNum := 1
@@ -586,7 +586,17 @@ func ListImages(c *gin.Context) {
 		}
 	}
 
-	images, err := utils.ListImages()
+	// 解析目录分类参数
+	category := strings.TrimSpace(c.Query("category"))
+	
+	// 调用ListImages，如果指定了目录则只列出该目录的图片
+	var images []map[string]interface{}
+	var err error
+	if category != "" {
+		images, err = utils.ListImages(category)
+	} else {
+		images, err = utils.ListImages()
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
@@ -673,8 +683,61 @@ func UploadProductImage(c *gin.Context) {
 		return
 	}
 
+	// 上传图片到MinIO，商品图片存到products目录
+	fileURL, err := utils.UploadFile("product", c.Request, "products")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": map[string]string{"imageUrl": fileURL}, "message": "图片上传成功"})
+}
+
+// UploadImageWithCategory 上传图片到MinIO（支持指定目录分类，用于图库管理）
+func UploadImageWithCategory(c *gin.Context) {
+	// 检查是否有文件上传
+	if _, headers, err := c.Request.FormFile("file"); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请选择要上传的图片: " + err.Error()})
+		return
+	} else if headers.Size > 10*1024*1024 { // 限制文件大小为10MB
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过10MB"})
+		return
+	} else if !isImageFile(headers.Filename) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请上传JPG、PNG或GIF格式的图片"})
+		return
+	}
+
+	// 获取目录分类参数，默认为"others"（无关紧要的图片）
+	category := strings.TrimSpace(c.PostForm("category"))
+	if category == "" {
+		category = "others"
+	}
+
+	// 验证目录分类是否合法
+	// 分类说明：
+	// - products: 商品图片
+	// - carousels: 轮播图（商品展示）
+	// - categories: 分类图标（商品分类）
+	// - users: 用户相关（头像、地址头像等）
+	// - delivery: 配送相关（配送照片等）
+	// - others: 其他临时或无关紧要的图片
+	// - rich-content: 富文本内容图片
+	validCategories := map[string]bool{
+		"products":     true,
+		"carousels":    true,
+		"categories":   true,
+		"users":        true,
+		"delivery":     true,
+		"others":       true,
+		"rich-content": true,
+	}
+	if !validCategories[category] {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的目录分类"})
+		return
+	}
+
 	// 上传图片到MinIO
-	fileURL, err := utils.UploadFile("product", c.Request)
+	fileURL, err := utils.UploadFile("image", c.Request, category)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
 		return
@@ -1119,8 +1182,8 @@ func UploadCarouselImage(c *gin.Context) {
 		return
 	}
 
-	// 上传图片到MinIO
-	fileURL, err := utils.UploadFile("carousel", c.Request)
+	// 上传图片到MinIO，轮播图存到carousels目录
+	fileURL, err := utils.UploadFile("carousel", c.Request, "carousels")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
 		return
@@ -1165,8 +1228,8 @@ func UploadCategoryImage(c *gin.Context) {
 		return
 	}
 
-	// 上传图片到MinIO
-	fileURL, err := utils.UploadFile("category", c.Request)
+	// 上传图片到MinIO，分类图标存到categories目录
+	fileURL, err := utils.UploadFile("category", c.Request, "categories")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
 		return

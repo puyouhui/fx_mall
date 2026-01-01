@@ -6,6 +6,28 @@
       <!-- 工具栏 -->
       <div class="toolbar">
         <div class="toolbar-left">
+          <el-select
+            v-model="selectedCategory"
+            placeholder="选择目录"
+            style="width: 150px; margin-right: 20px;"
+            @change="handleCategoryChange"
+            clearable
+          >
+            <el-option label="全部" value="" />
+            <el-option-group label="商品相关">
+              <el-option label="商品图片" value="products" />
+              <el-option label="轮播图" value="carousels" />
+              <el-option label="分类图标" value="categories" />
+            </el-option-group>
+            <el-option-group label="用户和系统">
+              <el-option label="用户相关" value="users" />
+              <el-option label="配送相关" value="delivery" />
+            </el-option-group>
+            <el-option-group label="其他">
+              <el-option label="其他图片" value="others" />
+              <el-option label="富文本图片" value="rich-content" />
+            </el-option-group>
+          </el-select>
           <el-input
             v-model="searchKeyword"
             placeholder="搜索图片名称"
@@ -20,6 +42,25 @@
           </el-button>
         </div>
         <div class="toolbar-right">
+          <el-select
+            v-model="uploadCategory"
+            placeholder="选择上传目录"
+            style="width: 150px; margin-right: 10px;"
+          >
+            <el-option-group label="商品相关">
+              <el-option label="商品图片" value="products" />
+              <el-option label="轮播图" value="carousels" />
+              <el-option label="分类图标" value="categories" />
+            </el-option-group>
+            <el-option-group label="用户和系统">
+              <el-option label="用户相关" value="users" />
+              <el-option label="配送相关" value="delivery" />
+            </el-option-group>
+            <el-option-group label="其他">
+              <el-option label="其他图片" value="others" />
+              <el-option label="富文本图片" value="rich-content" />
+            </el-option-group>
+          </el-select>
           <el-upload
             ref="uploadRef"
             class="upload-btn"
@@ -148,6 +189,8 @@ const selectedImages = ref([])
 const previewVisible = ref(false)
 const previewImage = ref({})
 const total = ref(0)
+const selectedCategory = ref('') // 当前选择的目录
+const uploadCategory = ref('others') // 上传时选择的目录，默认为"其他图片"
 
 // 分页信息
 const pagination = reactive({
@@ -173,6 +216,11 @@ const initData = async () => {
         pageNum: pagination.pageNum,
         pageSize: pagination.pageSize
       }
+    }
+    
+    // 如果选择了目录，添加category参数
+    if (selectedCategory.value) {
+      params.category = selectedCategory.value
     }
     
     const response = await getImageList(params)
@@ -229,10 +277,19 @@ const handlePageChange = (val) => {
   initData()
 }
 
+// 目录改变
+const handleCategoryChange = () => {
+  selectedImages.value = []
+  searchKeyword.value = ''
+  pagination.pageNum = 1
+  initData()
+}
+
 // 刷新
 const handleRefresh = () => {
   selectedImages.value = []
   searchKeyword.value = ''
+  selectedCategory.value = ''
   pagination.pageNum = 1
   initData()
 }
@@ -325,6 +382,7 @@ const handleBatchDelete = async () => {
 
 // 上传状态管理
 const isUploading = ref(false)
+const fileChangeTimer = ref(null)
 
 // 上传前验证（仅验证，不阻止上传）
 const beforeUpload = (file) => {
@@ -348,7 +406,8 @@ const uploadSingleFile = async (file) => {
   const formData = new FormData()
   formData.append('file', file.raw || file) // 兼容 file 对象和 raw 属性
 
-  const response = await uploadImage(formData)
+  // 使用选择的目录进行上传
+  const response = await uploadImage(formData, uploadCategory.value)
   if (response.code === 200 && response.data && response.data.imageUrl) {
     return { success: true, file: file.name }
   } else {

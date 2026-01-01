@@ -145,6 +145,21 @@
                       placeholder="零售价" style="width: 100%;" />
                   </el-col>
                 </el-row>
+                <el-row :gutter="12" style="margin-bottom: 10px;">
+                  <el-col :span="8">
+                    <el-input-number 
+                      v-model="currentSpec.deliveryCount" 
+                      :min="0.01" 
+                      :step="0.01" 
+                      :precision="2"
+                      placeholder="配送计件数" 
+                      style="width: 100%;" 
+                    />
+                    <div style="font-size: 12px; color: #909399; margin-top: 4px;">
+                      配送时按多少件计算（如：1包装=0.1，10包=1件；1件装=1.0）
+                    </div>
+                  </el-col>
+                </el-row>
                 <div style="text-align: center; margin-top: 10px;">
                   <el-button v-if="editingSpecIndex === -1" type="primary" @click="addSpec">添加规格</el-button>
                   <el-button v-else type="primary" @click="updateSpec">更新规格</el-button>
@@ -169,6 +184,7 @@
                             成本: ¥{{ (spec.cost || spec.cost === 0) ? (spec.cost || 0).toFixed(2) : '-' }}
                             | 批发价: ¥{{ (spec.wholesale_price || spec.wholesalePrice || 0).toFixed(2) }}
                             | 零售价: ¥{{ (spec.retail_price || spec.retailPrice || 0).toFixed(2) }}
+                            | 配送计件数: {{ (spec.delivery_count || spec.deliveryCount || 1.0).toFixed(2) }}
                           </span>
                           <!-- <span v-if="spec.cost && (spec.retail_price || spec.retailPrice)" class="spec-profit">
                             (利润: ¥{{ ((spec.retail_price || spec.retailPrice) - (spec.cost || 0)).toFixed(2) }})
@@ -426,7 +442,8 @@ const currentSpec = reactive({
   wholesalePrice: null,
   retailPrice: null,
   description: '',
-  cost: null
+  cost: null,
+  deliveryCount: 1.0 // 配送计件数，默认1.0
 })
 
 // 当前编辑的规格索引（-1表示新增模式）
@@ -873,7 +890,8 @@ const addSpec = () => {
     cost: currentSpec.cost || 0, // 成本，默认为0
     wholesale_price: currentSpec.wholesalePrice,
     retail_price: currentSpec.retailPrice,
-    description: currentSpec.description || ''
+    description: currentSpec.description || '',
+    delivery_count: currentSpec.deliveryCount || 1.0 // 配送计件数，默认1.0
   })
 
   // 清空当前输入
@@ -909,6 +927,7 @@ const updateSpec = () => {
   spec.wholesale_price = currentSpec.wholesalePrice
   spec.retail_price = currentSpec.retailPrice
   spec.description = currentSpec.description || ''
+  spec.delivery_count = currentSpec.deliveryCount || 1.0 // 配送计件数，默认1.0
 
   // 清空编辑状态
   resetSpecForm()
@@ -926,6 +945,7 @@ const editSpec = (index) => {
   currentSpec.wholesalePrice = spec.wholesale_price || spec.wholesalePrice || null
   currentSpec.retailPrice = spec.retail_price || spec.retailPrice || null
   currentSpec.description = spec.description || ''
+  currentSpec.deliveryCount = spec.delivery_count || spec.deliveryCount || 1.0 // 配送计件数，默认1.0
 
   // 设置编辑索引
   editingSpecIndex.value = index
@@ -951,7 +971,8 @@ const resetSpecForm = () => {
     cost: null,
     wholesalePrice: null,
     retailPrice: null,
-    description: ''
+    description: '',
+    deliveryCount: 1.0 // 配送计件数，默认1.0
   })
   editingSpecIndex.value = -1
 }

@@ -646,6 +646,7 @@ func SyncOrderItemsToPurchaseList(c *gin.Context) {
 					Cost:           spec.Cost,
 					WholesalePrice: spec.WholesalePrice,
 					RetailPrice:    spec.RetailPrice,
+					DeliveryCount:  spec.DeliveryCount, // 配送计件数
 				}
 				found = true
 				break
@@ -660,6 +661,7 @@ func SyncOrderItemsToPurchaseList(c *gin.Context) {
 				Cost:           0,
 				WholesalePrice: orderItem.UnitPrice,
 				RetailPrice:    orderItem.UnitPrice,
+				DeliveryCount:  1.0, // 默认1.0
 			}
 		}
 
@@ -1176,6 +1178,16 @@ func CancelSalesOrder(c *gin.Context) {
 		return
 	}
 
+	// 清理该订单的分成记录（特别是新客订单记录）
+	// 异步处理，避免阻塞
+	go func(orderID int) {
+		if err := model.CancelOrderCommissions(orderID); err != nil {
+			log.Printf("取消订单 %d 的分成记录失败: %v", orderID, err)
+		} else {
+			log.Printf("订单 %d 的分成记录已清理", orderID)
+		}
+	}(id)
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "订单已取消",
@@ -1476,7 +1488,8 @@ func UploadAddressAvatarByEmployee(c *gin.Context) {
 	}
 
 	// 上传到 MinIO（与小程序地址头像共用 bucket 前缀）
-	fileURL, err := utils.UploadFile("mini-address-avatar", c.Request)
+	// 上传图片到MinIO，地址头像存到users目录
+	fileURL, err := utils.UploadFile("mini-address-avatar", c.Request, "users")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
 		return
@@ -2081,6 +2094,7 @@ func AddSalesCustomerPurchaseItem(c *gin.Context) {
 				Cost:           spec.Cost,
 				WholesalePrice: spec.WholesalePrice,
 				RetailPrice:    spec.RetailPrice,
+				DeliveryCount:  spec.DeliveryCount, // 配送计件数
 			}
 			found = true
 			break

@@ -56,7 +56,8 @@ func InitMinIO() error {
 }
 
 // UploadFile 上传文件到MinIO
-func UploadFile(fileName string, reader *http.Request) (string, error) {
+// category: 目录分类，如 "products", "carousels", "others" 等，为空则不上传
+func UploadFile(fileName string, reader *http.Request, category ...string) (string, error) {
 	if minioClient == nil {
 		// 如果客户端未初始化，先初始化
 		if err := InitMinIO(); err != nil {
@@ -79,7 +80,13 @@ func UploadFile(fileName string, reader *http.Request) (string, error) {
 	}
 
 	// 生成唯一的对象名称
-	objectName := fmt.Sprintf("%s_%d%s", fileName, time.Now().Unix(), getFileExtension(header.Filename))
+	var objectName string
+	if len(category) > 0 && category[0] != "" {
+		// 如果有目录分类，添加到对象名称前缀
+		objectName = fmt.Sprintf("%s/%s_%d%s", category[0], fileName, time.Now().Unix(), getFileExtension(header.Filename))
+	} else {
+		objectName = fmt.Sprintf("%s_%d%s", fileName, time.Now().Unix(), getFileExtension(header.Filename))
+	}
 
 	// 读取到内存以便压缩 / 处理
 	var buf bytes.Buffer
@@ -125,7 +132,8 @@ func UploadFile(fileName string, reader *http.Request) (string, error) {
 }
 
 // UploadFileByFieldName 根据字段名上传文件到MinIO（支持多文件上传）
-func UploadFileByFieldName(fieldName string, fileName string, reader *http.Request) (string, error) {
+// category: 目录分类，如 "products", "carousels", "others" 等，为空则不上传
+func UploadFileByFieldName(fieldName string, fileName string, reader *http.Request, category ...string) (string, error) {
 	if minioClient == nil {
 		// 如果客户端未初始化，先初始化
 		if err := InitMinIO(); err != nil {
@@ -148,7 +156,13 @@ func UploadFileByFieldName(fieldName string, fileName string, reader *http.Reque
 	}
 
 	// 生成唯一的对象名称
-	objectName := fmt.Sprintf("%s_%d%s", fileName, time.Now().Unix(), getFileExtension(header.Filename))
+	var objectName string
+	if len(category) > 0 && category[0] != "" {
+		// 如果有目录分类，添加到对象名称前缀
+		objectName = fmt.Sprintf("%s/%s_%d%s", category[0], fileName, time.Now().Unix(), getFileExtension(header.Filename))
+	} else {
+		objectName = fmt.Sprintf("%s_%d%s", fileName, time.Now().Unix(), getFileExtension(header.Filename))
+	}
 
 	// 读取到内存以便压缩 / 处理
 	var buf bytes.Buffer
@@ -340,7 +354,8 @@ func extractObjectNameFromURL(url, endpoint, bucket string) string {
 }
 
 // ListImages 列出MinIO桶中的所有图片
-func ListImages() ([]map[string]interface{}, error) {
+// category: 目录分类，如 "products", "carousels", "others" 等，为空则列出所有
+func ListImages(category ...string) ([]map[string]interface{}, error) {
 	if minioClient == nil {
 		// 如果客户端未初始化，先初始化
 		if err := InitMinIO(); err != nil {
@@ -351,10 +366,18 @@ func ListImages() ([]map[string]interface{}, error) {
 	cfg := config.Config.MinIO
 	ctx := context.Background()
 
-	// 列出所有对象
-	objectCh := minioClient.ListObjects(ctx, cfg.Bucket, minio.ListObjectsOptions{
+	// 构建列表选项
+	listOptions := minio.ListObjectsOptions{
 		Recursive: true,
-	})
+	}
+	
+	// 如果指定了目录分类，添加前缀过滤
+	if len(category) > 0 && category[0] != "" {
+		listOptions.Prefix = category[0] + "/"
+	}
+
+	// 列出所有对象
+	objectCh := minioClient.ListObjects(ctx, cfg.Bucket, listOptions)
 
 	var images []map[string]interface{}
 	imageExtensions := map[string]bool{

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../api/order_api.dart';
+import '../utils/storage.dart';
 import 'package:map_launcher/map_launcher.dart';
 
 /// 批量取货商品列表和操作页面
@@ -25,8 +27,9 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
   bool _isLoadingItems = false;
   bool _isMarkingPicked = false;
   bool _hasPickedItems = false; // 标记是否有取货操作
-  List<dynamic> _items = [];
-  Set<int> _selectedItemIds = {};
+  List<dynamic> _items = []; // 合并后的商品列表
+  List<dynamic> _originalItems = []; // 原始商品列表（用于取货操作）
+  Set<int> _selectedItemIds = {}; // 选中的合并后商品索引
 
   @override
   void initState() {
@@ -46,10 +49,15 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
       );
       if (response.isSuccess && response.data != null) {
         final items = response.data!;
+        _originalItems = items;
+        
+        // 合并相同商品和规格
+        final mergedItems = _mergeItemsByProductAndSpec(items);
+        
         setState(() {
-          _items = items;
-          // 默认选中所有商品
-          _selectedItemIds = _items.map((item) => item['id'] as int).toSet();
+          _items = mergedItems;
+          // 默认选中所有商品（使用索引）
+          _selectedItemIds = List.generate(_items.length, (index) => index).toSet();
         });
 
         // 如果商品列表为空且之前有取货操作，说明全部取货完成，自动返回
@@ -87,6 +95,67 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
     }
   }
 
+  /// 合并相同商品和规格的商品
+  List<dynamic> _mergeItemsByProductAndSpec(List<dynamic> items) {
+    // 使用 Map 来合并，key 为 product_id + spec_name
+    final Map<String, dynamic> mergedMap = {};
+    
+    for (var item in items) {
+      final productId = item['product_id'] as int? ?? 0;
+      final specName = item['spec_name'] as String? ?? '';
+      final key = '$productId|$specName';
+      
+      if (mergedMap.containsKey(key)) {
+        // 合并：累加数量，收集所有 item_ids
+        final existing = mergedMap[key]!;
+        final existingQuantity = existing['quantity'] as int? ?? 0;
+        final currentQuantity = item['quantity'] as int? ?? 0;
+        final existingItemIds = (existing['item_ids'] as List<dynamic>?) ?? [];
+        final currentItemId = item['id'] as int? ?? 0;
+        
+        mergedMap[key] = {
+          ...existing,
+          'quantity': existingQuantity + currentQuantity,
+          'item_ids': [...existingItemIds, currentItemId],
+        };
+      } else {
+        // 新建：初始化 item_ids 列表
+        final currentItemId = item['id'] as int? ?? 0;
+        mergedMap[key] = {
+          ...item,
+          'item_ids': [currentItemId],
+        };
+      }
+    }
+    
+    return mergedMap.values.toList();
+  }
+
+  /// 获取选中商品的所有 item_ids（用于取货操作）
+  List<int> _getSelectedItemIds() {
+    final List<int> allItemIds = [];
+    for (var index in _selectedItemIds) {
+      if (index >= 0 && index < _items.length) {
+        final item = _items[index];
+        final itemIds = item['item_ids'] as List<dynamic>? ?? [];
+        allItemIds.addAll(itemIds.map((id) => id as int));
+      }
+    }
+    return allItemIds;
+  }
+
+  /// 获取选中商品的总数量
+  int _getSelectedTotalQuantity() {
+    int total = 0;
+    for (var index in _selectedItemIds) {
+      if (index >= 0 && index < _items.length) {
+        final quantity = _items[index]['quantity'] as int? ?? 0;
+        total += quantity;
+      }
+    }
+    return total;
+  }
+
   Future<void> _markItemsAsPicked() async {
     if (_selectedItemIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -97,6 +166,9 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
       );
       return;
     }
+    
+    // 获取所有选中的 item_ids
+    final allItemIds = _getSelectedItemIds();
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -139,7 +211,7 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
               const SizedBox(height: 12),
               // 内容
               Text(
-                '确认已取货 ${_selectedItemIds.length} 件商品？',
+                '确认取货 共${_selectedItemIds.length}种商品（${_getSelectedTotalQuantity()}件）？',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,
@@ -210,8 +282,9 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
     });
 
     try {
+      final allItemIds = _getSelectedItemIds();
       final response = await OrderApi.markItemsAsPicked(
-        _selectedItemIds.toList(),
+        allItemIds,
       );
       if (response.isSuccess) {
         // 标记取货成功后，返回true通知调用页面刷新
@@ -249,6 +322,71 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
         setState(() {
           _isMarkingPicked = false;
         });
+      }
+    }
+  }
+
+  /// 复制商品信息列表
+  Future<void> _copyGoodsInfo() async {
+    try {
+      // 获取配送员信息
+      final employeeInfo = await Storage.getEmployeeInfo();
+      final employeeName = employeeInfo?['name'] as String? ?? '配送员';
+      
+      // 获取当前日期
+      final now = DateTime.now();
+      final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      
+      // 统计货物种类和数量
+      final totalTypes = _items.length;
+      final totalQuantity = _items.fold<int>(
+        0,
+        (sum, item) => sum + (item['quantity'] as int? ?? 0),
+      );
+      
+      // 构建商品列表信息
+      final buffer = StringBuffer();
+      buffer.writeln('${widget.supplierName}');
+      buffer.writeln('日期：$dateStr');
+      buffer.writeln('配送员：$employeeName');
+      buffer.writeln('货物种类：$totalTypes 种');
+      buffer.writeln('数量统计：$totalQuantity 件');
+      buffer.writeln('');
+      buffer.writeln('取货列表：');
+      
+      for (var i = 0; i < _items.length; i++) {
+        final item = _items[i];
+        final productName = item['product_name'] as String? ?? '';
+        final specName = item['spec_name'] as String? ?? '';
+        final quantity = item['quantity'] as int? ?? 0;
+        
+        buffer.write('${i + 1}. $productName');
+        if (specName.isNotEmpty) {
+          buffer.write(' - $specName');
+        }
+        buffer.writeln(' × $quantity');
+      }
+      
+      // 复制到剪贴板
+      await Clipboard.setData(ClipboardData(text: buffer.toString()));
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('商品信息已复制到剪贴板'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('复制失败: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -331,6 +469,12 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
             fontWeight: FontWeight.w600,
           ),
           actions: [
+            // 复制按钮
+            IconButton(
+              icon: const Icon(Icons.copy, color: Colors.white),
+              onPressed: _copyGoodsInfo,
+              tooltip: '复制商品信息',
+            ),
             // 导航按钮
             if (widget.supplierLatitude != null &&
                 widget.supplierLongitude != null)
@@ -396,15 +540,12 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
                       itemCount: _items.length,
                       itemBuilder: (context, index) {
                         final item = _items[index];
-                        final itemId = item['id'] as int;
                         final productName =
                             item['product_name'] as String? ?? '';
                         final specName = item['spec_name'] as String? ?? '';
                         final quantity = item['quantity'] as int? ?? 0;
                         final image = item['image'] as String? ?? '';
-                        final orderNumber =
-                            item['order_number'] as String? ?? '';
-                        final isSelected = _selectedItemIds.contains(itemId);
+                        final isSelected = _selectedItemIds.contains(index);
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
@@ -433,9 +574,9 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
                               onTap: () {
                                 setState(() {
                                   if (isSelected) {
-                                    _selectedItemIds.remove(itemId);
+                                    _selectedItemIds.remove(index);
                                   } else {
-                                    _selectedItemIds.add(itemId);
+                                    _selectedItemIds.add(index);
                                   }
                                 });
                               },
@@ -574,15 +715,12 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
                                                 ),
                                               ),
                                               const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
-                                                  '订单: $orderNumber',
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Color(0xFF8C92A4),
-                                                  ),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
+                                              // 显示合并的商品数量信息
+                                              Text(
+                                                '共 ${(item['item_ids'] as List<dynamic>?)?.length ?? 0} 单',
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: Color(0xFF8C92A4),
                                                 ),
                                               ),
                                             ],
@@ -644,7 +782,7 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  '已选择 ${_selectedItemIds.length}/${_items.length} 件商品',
+                                  '已选择 ${_selectedItemIds.length}/${_items.length} 种商品',
                                   style: TextStyle(
                                     fontSize: 13,
                                     color: Colors.orange[700],
@@ -655,9 +793,10 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
                               TextButton(
                                 onPressed: () {
                                   setState(() {
-                                    _selectedItemIds = _items
-                                        .map((item) => item['id'] as int)
-                                        .toSet();
+                                    _selectedItemIds = List.generate(
+                                      _items.length,
+                                      (index) => index,
+                                    ).toSet();
                                   });
                                 },
                                 child: Text(
@@ -707,7 +846,7 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    '已全部取货 (${_selectedItemIds.length}件)',
+                                    '取货 共${_selectedItemIds.length}种商品（${_getSelectedTotalQuantity()}件）',
                                     style: const TextStyle(
                                       fontSize: 17,
                                       fontWeight: FontWeight.w700,

@@ -377,9 +377,11 @@
             <el-empty v-else description="利润信息暂不可用" :image-size="80" />
           </el-tab-pane>
 
-          <!-- 配送费详情标签页 -->
-          <el-tab-pane label="配送费详情" name="delivery">
-            <el-descriptions :column="1" border
+          <!-- 配送详情标签页 -->
+          <el-tab-pane label="配送详情" name="delivery">
+            <!-- 配送费详情 -->
+            <el-divider content-position="left">配送费详情</el-divider>
+            <el-descriptions :column="1" border style="margin-bottom: 20px;"
               v-if="orderDetail.delivery_fee_calculation && Object.keys(orderDetail.delivery_fee_calculation).length > 0">
               <el-descriptions-item label="基础配送费">
                 ¥{{ (orderDetail.delivery_fee_calculation.base_fee || 0).toFixed(2) }}
@@ -425,6 +427,75 @@
               </el-descriptions-item>
             </el-descriptions>
             <el-empty v-else description="配送费计算信息暂不可用" :image-size="80" />
+
+            <!-- 配送记录 -->
+            <el-divider content-position="left">配送记录</el-divider>
+            <div v-if="orderDetail.delivery_record" style="margin-bottom: 20px;">
+              <el-descriptions :column="2" border>
+                <el-descriptions-item label="配送员员工码">
+                  {{ orderDetail.delivery_record.delivery_employee_code || '-' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="完成时间">
+                  {{ formatDate(orderDetail.delivery_record.completed_at) }}
+                </el-descriptions-item>
+              </el-descriptions>
+            </div>
+            <el-empty v-else description="暂无配送记录" :image-size="80" />
+
+            <!-- 配送日志 -->
+            <el-divider content-position="left">配送流程日志</el-divider>
+            <el-timeline v-if="orderDetail.delivery_logs && orderDetail.delivery_logs.length > 0" style="margin-top: 20px;">
+              <el-timeline-item
+                v-for="(log, index) in orderDetail.delivery_logs"
+                :key="index"
+                :timestamp="formatDate(log.action_time)"
+                placement="top">
+                <el-card>
+                  <h4>{{ formatDeliveryLogAction(log.action) }}</h4>
+                  <p v-if="log.delivery_employee_code" style="color: #909399; font-size: 12px; margin-top: 4px;">
+                    配送员：{{ log.delivery_employee_code }}
+                  </p>
+                  <p v-if="log.remark" style="color: #606266; font-size: 13px; margin-top: 4px;">
+                    {{ log.remark }}
+                  </p>
+                </el-card>
+              </el-timeline-item>
+            </el-timeline>
+            <el-empty v-else description="暂无配送流程日志" :image-size="80" />
+
+            <!-- 配送完成图片 -->
+            <el-divider content-position="left" v-if="orderDetail.delivery_record && (orderDetail.delivery_record.product_image_url || orderDetail.delivery_record.doorplate_image_url)">
+              配送完成图片
+            </el-divider>
+            <div v-if="orderDetail.delivery_record && (orderDetail.delivery_record.product_image_url || orderDetail.delivery_record.doorplate_image_url)"
+              style="margin-top: 20px;">
+              <el-row :gutter="20">
+                <el-col :span="12" v-if="orderDetail.delivery_record.product_image_url">
+                  <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-weight: 600; margin-bottom: 8px; color: #606266;">货物照片</div>
+                    <el-image
+                      :src="orderDetail.delivery_record.product_image_url"
+                      style="width: 100%; max-width: 400px; border-radius: 8px;"
+                      fit="cover"
+                      :preview-src-list="[orderDetail.delivery_record.product_image_url]"
+                      preview-teleported>
+                    </el-image>
+                  </div>
+                </el-col>
+                <el-col :span="12" v-if="orderDetail.delivery_record.doorplate_image_url">
+                  <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-weight: 600; margin-bottom: 8px; color: #606266;">门牌照片</div>
+                    <el-image
+                      :src="orderDetail.delivery_record.doorplate_image_url"
+                      style="width: 100%; max-width: 400px; border-radius: 8px;"
+                      fit="cover"
+                      :preview-src-list="[orderDetail.delivery_record.doorplate_image_url]"
+                      preview-teleported>
+                    </el-image>
+                  </div>
+                </el-col>
+              </el-row>
+            </div>
           </el-tab-pane>
 
           <!-- 销售分成标签页 -->
@@ -757,6 +828,18 @@ const formatMoney = (value) => {
   const num = Number(value)
   if (isNaN(num)) return '0.00'
   return num.toFixed(2)
+}
+
+const formatDeliveryLogAction = (action) => {
+  const actionMap = {
+    'created': '订单创建',
+    'accepted': '接单',
+    'pickup_started': '开始取货',
+    'pickup_completed': '取货完成',
+    'delivering_started': '开始配送',
+    'delivering_completed': '配送完成'
+  }
+  return actionMap[action] || action
 }
 
 const formatStatus = (status) => {

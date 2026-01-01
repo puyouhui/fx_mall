@@ -1115,6 +1115,14 @@ func UpdateOrderStatus(orderID int, newStatus string) error {
 		return err
 	}
 
+	// 如果订单被取消，更新受影响订单的孤立状态
+	if newStatus == "cancelled" {
+		go func() {
+			// 更新受影响订单的孤立状态（因为当前订单被取消）
+			_ = updateAffectedOrdersIsolatedStatus(orderID)
+		}()
+	}
+
 	// 更新订单状态后，重新计算配送费和利润（异步执行，避免阻塞）
 	go func() {
 		_ = CalculateAndStoreOrderProfit(orderID)
@@ -1145,19 +1153,47 @@ func UpdateOrderStatusWithDeliveryEmployee(orderID int, newStatus string, delive
 	if rowsAffected == 0 {
 		// 检查订单是否被锁定
 		var isLockedTinyInt int
-		err := database.DB.QueryRow("SELECT is_locked FROM orders WHERE id = ?", orderID).Scan(&isLockedTinyInt)
-		if err == nil {
-			if isLockedTinyInt == 1 {
-				return fmt.Errorf("订单正在被修改中，暂时无法接单")
-			}
+		err := database.DB.QueryRow("SELECT COALESCE(is_locked, 0) FROM orders WHERE id = ?", orderID).Scan(&isLockedTinyInt)
+		if err == nil && isLockedTinyInt == 1 {
+			return fmt.Errorf("订单已被锁定，无法接单")
 		}
-		return fmt.Errorf("更新订单状态失败，订单可能不存在或已被锁定")
+		return fmt.Errorf("订单不存在或已被其他配送员接单")
 	}
 
-	// 更新订单状态后，重新计算配送费和利润（异步执行，避免阻塞）
-	go func() {
-		_ = CalculateAndStoreOrderProfit(orderID)
-	}()
+	// 如果状态变为 pending_pickup（接单），立即计算并锁定配送费
+	// 使用基于该配送员批次的判断（与预览时一致）
+	if newStatus == "pending_pickup" {
+		// 立即计算并存储配送费（锁定配送费，确保接单前后一致）
+		go func() {
+			// 使用基于配送员批次的判断重新计算孤立状态和配送费
+			calculator, err := NewDeliveryFeeCalculatorForEmployee(orderID, deliveryEmployeeCode)
+			if err == nil {
+				// 重新计算孤立状态（基于配送员批次）
+				address, err := GetAddressByID(calculator.order.AddressID)
+				if err == nil && address != nil && address.Latitude != nil && address.Longitude != nil {
+					isolatedDistance := calculator.getConfigFloat("delivery_isolated_distance", 8.0)
+					nearbyOrders, err := calculator.getNearbyOrders(*address.Latitude, *address.Longitude, isolatedDistance)
+					if err == nil {
+						validNearby := calculator.filterNearbyOrders(nearbyOrders)
+						isIsolated := len(validNearby) == 0
+						
+						// 更新孤立状态
+						_, _ = database.DB.Exec(`
+							UPDATE orders 
+							SET is_isolated = ?, updated_at = NOW()
+							WHERE id = ?
+						`, isIsolated, orderID)
+					}
+				}
+				
+				// 计算并锁定配送费
+				_ = CalculateAndStoreOrderProfitWithCalculator(calculator, orderID)
+			}
+			
+			// 更新受影响订单的孤立状态（因为当前订单从"未接单"变为"已接单"）
+			_ = updateAffectedOrdersIsolatedStatus(orderID)
+		}()
+	}
 
 	return nil
 }

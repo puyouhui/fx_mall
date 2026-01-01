@@ -105,6 +105,7 @@ const handleLogin = async () => {
       localStorage.setItem('username', loginForm.username)
       
       ElMessage.success('登录成功')
+      // 使用相对路径，Vue Router会自动处理base URL
       router.push('/dashboard')
     } else {
       ElMessage.error('登录失败，返回数据格式不正确')

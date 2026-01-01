@@ -196,6 +196,7 @@ func main() {
 
 				// 图库管理接口
 				protectedGroup.GET("/images", api.ListImages)                               // 获取所有图片列表
+				protectedGroup.POST("/images/upload", api.UploadImageWithCategory)          // 上传图片（支持目录分类）
 				protectedGroup.DELETE("/images/batch", api.BatchDeleteImages)               // 批量删除图片
 				protectedGroup.GET("/products/:id", api.GetProductDetail)                   // 获取商品详情（管理后台）
 				protectedGroup.POST("/products", api.CreateProduct)                         // 创建商品

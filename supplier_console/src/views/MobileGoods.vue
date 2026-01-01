@@ -1,7 +1,8 @@
 <template>
   <div class="mobile-goods-page">
     <div class="header">
-      <h1>待备货</h1>
+      <div class="supplier-name" v-if="supplierName">{{ supplierName }}</div>
+      <div class="supplier-name" >备货清单</div>
     </div>
     
     <div v-if="loading" class="loading">
@@ -61,9 +62,11 @@ const loading = ref(false)
 const error = ref('')
 const goodsList = ref([])
 
-// 从URL参数获取 name 和 ID
+// 从URL参数获取 name（供应商账号）和 ID
+const supplierUsername = ref(route.query.name || '') // URL参数中的name是供应商账号
+const supplierId = ref(route.query.ID || route.query.id || '')
+// 供应商名称（后台配置的名称），从API响应中获取
 const supplierName = ref('')
-const supplierId = ref('')
 
 // 计算总件数
 const totalQuantity = computed(() => {
@@ -88,20 +91,24 @@ const loadGoods = async () => {
   error.value = ''
   
   try {
-    // 从URL参数获取
-    supplierName.value = route.query.name || ''
+    // 从URL参数获取供应商账号和ID
+    supplierUsername.value = route.query.name || ''
     supplierId.value = route.query.ID || route.query.id || ''
     
-    if (!supplierName.value || !supplierId.value) {
+    if (!supplierUsername.value || !supplierId.value) {
       error.value = '缺少必要参数：name 和 ID'
       loading.value = false
       return
     }
     
-    const response = await getMobilePendingGoods(supplierName.value, supplierId.value)
+    const response = await getMobilePendingGoods(supplierUsername.value, supplierId.value)
     
     if (response.code === 200 && response.data) {
       goodsList.value = response.data.list || []
+      // 从API响应中获取供应商名称（后台配置的名称）
+      if (response.data.supplier_name) {
+        supplierName.value = response.data.supplier_name
+      }
     } else {
       error.value = response.message || '获取数据失败'
     }
@@ -131,6 +138,16 @@ onMounted(() => {
   padding: 20px;
   text-align: center;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.supplier-name {
+  font-size: 18px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  opacity: 0.95;
 }
 
 .header h1 {
@@ -275,6 +292,11 @@ onMounted(() => {
 @media (max-width: 480px) {
   .header {
     padding: 15px;
+  }
+  
+  .supplier-name {
+    font-size: 16px;
+    margin-bottom: 6px;
   }
   
   .header h1 {

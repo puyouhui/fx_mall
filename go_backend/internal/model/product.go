@@ -17,6 +17,8 @@ type Spec struct {
 	RetailPrice    float64 `json:"retail_price"`    // 零售价
 	Cost           float64 `json:"cost"`            // 成本（用于计算利润）
 	Description    string  `json:"description"`     // 规格描述（例如：≈1.5元/瓶）
+	DeliveryCount  float64 `json:"delivery_count"`  // 配送计件数（默认1.0，用于计算件数补贴）
+	// 例如：1包装=0.1（10包=1件），1件装（100包）=1.0
 }
 
 // Product 商品模型
@@ -85,6 +87,8 @@ func GetSpecialProductsWithPagination(pageNum, pageSize int) ([]Product, int, er
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
 		}
+		// 修复旧数据：如果规格没有 delivery_count 或为0，设置为默认值1.0
+		fixSpecDeliveryCount(&product.Specs)
 
 		products = append(products, product)
 	}
@@ -133,6 +137,8 @@ func GetAllProducts() ([]Product, error) {
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
 		}
+		// 修复旧数据：如果规格没有 delivery_count 或为0，设置为默认值1.0
+		fixSpecDeliveryCount(&product.Specs)
 
 		products = append(products, product)
 	}
@@ -192,6 +198,8 @@ func GetAllProductsWithPagination(pageNum, pageSize int) ([]Product, int, error)
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
 		}
+		// 修复旧数据：如果规格没有 delivery_count 或为0，设置为默认值1.0
+		fixSpecDeliveryCount(&product.Specs)
 
 		products = append(products, product)
 	}
@@ -236,7 +244,23 @@ func GetProductByID(id int) (*Product, error) {
 		product.Specs = []Spec{}
 	}
 
+	// 修复旧数据：如果规格没有 delivery_count 或为0，设置为默认值1.0
+	fixSpecDeliveryCount(&product.Specs)
+
 	return &product, nil
+}
+
+// fixSpecDeliveryCount 修复规格的配送计件数，确保旧数据兼容
+func fixSpecDeliveryCount(specs *[]Spec) {
+	if specs == nil {
+		return
+	}
+	for i := range *specs {
+		// 如果 delivery_count 为0或未设置，设置为默认值1.0
+		if (*specs)[i].DeliveryCount <= 0 {
+			(*specs)[i].DeliveryCount = 1.0
+		}
+	}
 }
 
 // CreateProduct 创建商品
@@ -419,6 +443,8 @@ func SearchProductsWithPagination(keyword string, pageNum, pageSize int) ([]Prod
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
 		}
+		// 修复旧数据：如果规格没有 delivery_count 或为0，设置为默认值1.0
+		fixSpecDeliveryCount(&product.Specs)
 
 		products = append(products, product)
 	}
@@ -534,6 +560,8 @@ func GetProductsByCategoryWithPagination(categoryID, pageNum, pageSize int) ([]P
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
 		}
+		// 修复旧数据：如果规格没有 delivery_count 或为0，设置为默认值1.0
+		fixSpecDeliveryCount(&product.Specs)
 
 		products = append(products, product)
 	}
@@ -577,6 +605,8 @@ func GetProductsByCategoryID(categoryID int) ([]Product, error) {
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
 		}
+		// 修复旧数据：如果规格没有 delivery_count 或为0，设置为默认值1.0
+		fixSpecDeliveryCount(&product.Specs)
 
 		products = append(products, product)
 	}
@@ -620,6 +650,8 @@ func GetSpecialProducts() ([]Product, error) {
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
 		}
+		// 修复旧数据：如果规格没有 delivery_count 或为0，设置为默认值1.0
+		fixSpecDeliveryCount(&product.Specs)
 
 		products = append(products, product)
 	}

@@ -433,6 +433,7 @@ const handleLogout = async () => {
     await logout()
     localStorage.removeItem('token')
     localStorage.removeItem('username')
+    // 使用相对路径，Vue Router会自动处理base URL
     router.push('/login')
   } catch (error) {
     console.error('退出登录失败:', error)

@@ -240,9 +240,14 @@ router.beforeEach((to, from, next) => {
   
   // 检查是否需要登录
   const token = localStorage.getItem('token')
-  if (to.path !== '/login' && !token) {
+  // 登录页路径（相对于base URL）
+  const loginPath = '/login'
+  if (to.path !== loginPath && !token) {
     // 未登录，重定向到登录页
-    next('/login')
+    next(loginPath)
+  } else if (to.path === loginPath && token) {
+    // 已登录访问登录页，重定向到首页
+    next('/dashboard')
   } else {
     // 已登录，继续访问
     next()

@@ -568,7 +568,7 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 					"settlement_date":       commission.SettlementDate,
 					"order_profit":          commission.OrderProfit,
 					"order_amount":          commission.OrderAmount,
-					"goods_cost":            commission.GoodsCost,
+					"goods_cost":               commission.GoodsCost,
 					"delivery_cost":         commission.DeliveryCost,
 					"calculation_month":     commission.CalculationMonth,
 				}
@@ -576,6 +576,49 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 				result["sales_commission"] = nil
 			}
 		}
+	}
+
+	// 获取配送记录（包含图片）
+	deliveryRecord, err := model.GetDeliveryRecordByOrderID(id)
+	if err == nil && deliveryRecord != nil {
+		deliveryRecordData := map[string]interface{}{
+			"id":                     deliveryRecord.ID,
+			"order_id":               deliveryRecord.OrderID,
+			"delivery_employee_code": deliveryRecord.DeliveryEmployeeCode,
+			"completed_at":           deliveryRecord.CompletedAt,
+			"created_at":             deliveryRecord.CreatedAt,
+			"updated_at":             deliveryRecord.UpdatedAt,
+		}
+		if deliveryRecord.ProductImageURL != nil {
+			deliveryRecordData["product_image_url"] = *deliveryRecord.ProductImageURL
+		}
+		if deliveryRecord.DoorplateImageURL != nil {
+			deliveryRecordData["doorplate_image_url"] = *deliveryRecord.DoorplateImageURL
+		}
+		result["delivery_record"] = deliveryRecordData
+	}
+
+	// 获取配送日志
+	deliveryLogs, err := model.GetDeliveryLogsByOrderID(id)
+	if err == nil && len(deliveryLogs) > 0 {
+		logsData := make([]map[string]interface{}, 0, len(deliveryLogs))
+		for _, log := range deliveryLogs {
+			logData := map[string]interface{}{
+				"id":          log.ID,
+				"order_id":    log.OrderID,
+				"action":      log.Action,
+				"action_time": log.ActionTime,
+				"created_at":  log.CreatedAt,
+			}
+			if log.DeliveryEmployeeCode != nil {
+				logData["delivery_employee_code"] = *log.DeliveryEmployeeCode
+			}
+			if log.Remark != nil {
+				logData["remark"] = *log.Remark
+			}
+			logsData = append(logsData, logData)
+		}
+		result["delivery_logs"] = logsData
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -643,6 +686,19 @@ func UpdateOrderStatus(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新订单状态失败: " + err.Error()})
 		return
+	}
+
+	// 如果订单状态变为 cancelled（已取消），清理该订单的分成记录
+	// 特别是新客订单记录，这样其他订单就可以重新计算新客激励了
+	if req.Status == "cancelled" {
+		// 异步处理，避免阻塞
+		go func(orderID int) {
+			if err := model.CancelOrderCommissions(orderID); err != nil {
+				log.Printf("取消订单 %d 的分成记录失败: %v", orderID, err)
+			} else {
+				log.Printf("订单 %d 的分成记录已清理", orderID)
+			}
+		}(id)
 	}
 
 	// 如果订单状态变为 paid（已收款），需要计算销售分成和处理推荐奖励

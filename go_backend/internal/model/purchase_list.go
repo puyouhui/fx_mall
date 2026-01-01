@@ -16,6 +16,7 @@ type PurchaseSpecSnapshot struct {
 	Cost           float64 `json:"cost"`
 	WholesalePrice float64 `json:"wholesale_price"`
 	RetailPrice    float64 `json:"retail_price"`
+	DeliveryCount  float64 `json:"delivery_count"` // 配送计件数（默认1.0，用于计算件数补贴）
 }
 
 // PurchaseListItem 采购单中的商品
@@ -236,6 +237,10 @@ func scanPurchaseListItem(scanner interface {
 	item.IsSpecial = isSpecialInt == 1
 	if specSnapshotStr != "" {
 		_ = json.Unmarshal([]byte(specSnapshotStr), &item.SpecSnapshot)
+		// 修复旧数据：如果规格快照没有 delivery_count 或为0，设置为默认值1.0
+		if item.SpecSnapshot.DeliveryCount <= 0 {
+			item.SpecSnapshot.DeliveryCount = 1.0
+		}
 	}
 
 	return &item, nil

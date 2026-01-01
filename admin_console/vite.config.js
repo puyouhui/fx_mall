@@ -5,6 +5,9 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   plugins: [vue()],
   base: '/admin/', // 使用 /admin/ 作为基础路径，匹配 Nginx 配置 location /admin/
+  optimizeDeps: {
+    include: ['vuedraggable']
+  },
   build: {
     outDir: 'dist',
     assetsDir: 'assets',

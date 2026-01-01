@@ -5,8 +5,8 @@ import axios from 'axios'
 const getBaseURL = () => {
   // 如果是开发环境（localhost 或 127.0.0.1）
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    // return 'http://localhost:8082/api/mini'
-    return 'https://mall.sscchh.com/api_mall/mini' // 生产环境
+    return 'http://localhost:8082/api/mini'
+      // return 'https://mall.sscchh.com/api_mall/mini' // 生产环境
   }
   // 生产环境使用相对路径，通过 Nginx 代理到后端
   // 注意：后端 Nginx 配置为 /api_mall/，所以这里使用 /api_mall/mini
@@ -54,7 +54,15 @@ request.interceptors.response.use(
         case 401:
           // 未授权，跳转到登录页
           localStorage.removeItem('token')
-          window.location.href = '/login'
+            // 获取base URL（从Vite配置的base或当前路径推断）
+            // Vite配置了 base: '/admin/'，所以需要包含 /admin 前缀
+            // 如果当前路径包含 /admin，则使用 /admin/login，否则使用 /login（兼容开发环境）
+          const currentPath = window.location.pathname
+          let loginPath = '/login'
+          if (currentPath.startsWith('/admin')) {
+            loginPath = '/admin/login'
+          }
+          window.location.href = loginPath
           break
         case 403:
           // alert('您没有权限执行此操作')、

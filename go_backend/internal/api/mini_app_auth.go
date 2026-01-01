@@ -1152,8 +1152,8 @@ func UploadMiniAppUserAvatar(c *gin.Context) {
 		return
 	}
 
-	// 上传图片到MinIO
-	fileURL, err := utils.UploadFile("mini-user-avatar", c.Request)
+	// 上传图片到MinIO，用户头像存到users目录
+	fileURL, err := utils.UploadFile("mini-user-avatar", c.Request, "users")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
 		return
@@ -1242,8 +1242,8 @@ func UploadMiniAppUserAvatarByAdmin(c *gin.Context) {
 		return
 	}
 
-	// 上传图片到MinIO
-	fileURL, err := utils.UploadFile("mini-user-avatar", c.Request)
+	// 上传图片到MinIO，用户头像存到users目录
+	fileURL, err := utils.UploadFile("mini-user-avatar", c.Request, "users")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
 		return
@@ -1307,8 +1307,8 @@ func UploadAddressAvatar(c *gin.Context) {
 		return
 	}
 
-	// 上传图片到MinIO（使用不同的bucket前缀以区分地址头像）
-	fileURL, err := utils.UploadFile("mini-address-avatar", c.Request)
+	// 上传图片到MinIO，地址头像存到users目录
+	fileURL, err := utils.UploadFile("mini-address-avatar", c.Request, "users")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
 		return
@@ -1361,8 +1361,8 @@ func UploadAddressAvatarByAdmin(c *gin.Context) {
 		return
 	}
 
-	// 上传图片到MinIO（使用不同的bucket前缀以区分地址头像）
-	fileURL, err := utils.UploadFile("mini-address-avatar", c.Request)
+	// 上传图片到MinIO，地址头像存到users目录
+	fileURL, err := utils.UploadFile("mini-address-avatar", c.Request, "users")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
 		return

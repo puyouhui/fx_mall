@@ -1,6 +1,6 @@
 import request from '../utils/request'
 
-// 获取图片列表（支持分页）
+// 获取图片列表（支持分页和目录过滤）
 export function getImageList(params = {}) {
   return request({
     url: '/admin/images',
@@ -20,10 +20,12 @@ export function batchDeleteImages(imageUrls) {
   })
 }
 
-// 上传图片（复用商品图片上传接口）
-export function uploadImage(formData) {
+// 上传图片（支持目录分类）
+export function uploadImage(formData, category = 'others') {
+  // 将category添加到FormData
+  formData.append('category', category)
   return request({
-    url: '/admin/products/upload',
+    url: '/admin/images/upload',
     method: 'post',
     data: formData,
     headers: {

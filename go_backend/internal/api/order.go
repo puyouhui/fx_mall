@@ -596,6 +596,16 @@ func CancelUserOrder(c *gin.Context) {
 		return
 	}
 
+	// 清理该订单的分成记录（特别是新客订单记录）
+	// 异步处理，避免阻塞
+	go func(orderID int) {
+		if err := model.CancelOrderCommissions(orderID); err != nil {
+			log.Printf("取消订单 %d 的分成记录失败: %v", orderID, err)
+		} else {
+			log.Printf("订单 %d 的分成记录已清理", orderID)
+		}
+	}(id)
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "订单已取消",

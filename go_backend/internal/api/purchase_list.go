@@ -105,6 +105,7 @@ func AddPurchaseListItem(c *gin.Context) {
 		Cost:           matchedSpec.Cost,
 		WholesalePrice: matchedSpec.WholesalePrice,
 		RetailPrice:    matchedSpec.RetailPrice,
+		DeliveryCount:  matchedSpec.DeliveryCount, // 配送计件数
 	}
 
 	image := ""

@@ -2313,11 +2313,12 @@ func GetMobilePendingGoods(c *gin.Context) {
 		return
 	}
 
-	// 验证供应商是否存在，并且账号和ID匹配
+	// 验证供应商是否存在，并且账号和ID匹配，同时获取供应商名称
 	var actualSupplierID int
 	var supplierStatus int
-	checkQuery := "SELECT id, status FROM suppliers WHERE username = ? AND id = ?"
-	if err := database.DB.QueryRow(checkQuery, supplierUsername, supplierID).Scan(&actualSupplierID, &supplierStatus); err != nil {
+	var supplierName string
+	checkQuery := "SELECT id, status, name FROM suppliers WHERE username = ? AND id = ?"
+	if err := database.DB.QueryRow(checkQuery, supplierUsername, supplierID).Scan(&actualSupplierID, &supplierStatus, &supplierName); err != nil {
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "供应商账号或ID验证失败"})
 			return
@@ -2405,7 +2406,10 @@ func GetMobilePendingGoods(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
-		"data":    gin.H{"list": goodsList},
+		"data": gin.H{
+			"list":         goodsList,
+			"supplier_name": supplierName, // 返回供应商名称
+		},
 		"message": "获取成功",
 	})
 }

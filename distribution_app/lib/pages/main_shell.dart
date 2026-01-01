@@ -27,6 +27,10 @@ class _MainShellState extends State<MainShell> {
     super.initState();
     // 立即开始获取位置，不等待UI渲染完成，以优化接单时的响应速度
     _getLocation();
+    // 初始状态：接单大厅可见
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _orderHallViewKey.setPageVisible(true);
+    });
   }
 
   /// 显示定位服务未启用对话框
@@ -278,6 +282,8 @@ class _MainShellState extends State<MainShell> {
         child: NavigationBar(
           selectedIndex: _currentIndex,
           onDestinationSelected: (index) {
+            // 更新页面可见性
+            _orderHallViewKey.setPageVisible(index == 0);
             setState(() {
               _currentIndex = index;
             });

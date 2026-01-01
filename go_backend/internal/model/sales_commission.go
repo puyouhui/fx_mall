@@ -192,9 +192,13 @@ func HasSettledOrder(userID int) (bool, error) {
 }
 
 // IsNewCustomerOrder 判断订单是否为新客户首单
+// 规则：
+// 1. 该用户在此订单之前没有已结算的有效订单
+// 2. 该用户没有已计入分成的新客订单（即使未结算，但已经标记为新客订单的）
+// 3. 如果订单被取消（cancelled），不影响新客判断
 func IsNewCustomerOrder(userID int, orderID int) (bool, error) {
-	// 查询该用户在此订单之前是否有已结算的有效订单
-	query := `
+	// 1. 查询该用户在此订单之前是否有已结算的有效订单
+	query1 := `
 		SELECT COUNT(*) 
 		FROM orders o
 		WHERE o.user_id = ? 
@@ -204,12 +208,103 @@ func IsNewCustomerOrder(userID int, orderID int) (bool, error) {
 		  AND (o.total_amount - (o.goods_amount - COALESCE(o.order_profit, 0)) - 
 		       COALESCE(JSON_EXTRACT(o.delivery_fee_calculation, '$.total_platform_cost'), 0)) > 5
 	`
-	var count int
-	err := database.DB.QueryRow(query, userID, orderID).Scan(&count)
+	var count1 int
+	err := database.DB.QueryRow(query1, userID, orderID).Scan(&count1)
 	if err != nil {
 		return false, err
 	}
-	return count == 0, nil
+	if count1 > 0 {
+		// 已有已结算的有效订单，不是新客户
+		return false, nil
+	}
+
+	// 2. 查询该用户是否有已计入分成的新客订单（订单状态不是 cancelled）
+	// 这样可以避免同一用户多个未结算订单都被标记为新客订单
+	query2 := `
+		SELECT COUNT(*) 
+		FROM sales_commissions sc
+		INNER JOIN orders o ON sc.order_id = o.id
+		WHERE sc.user_id = ?
+		  AND sc.order_id != ?
+		  AND sc.is_new_customer_order = 1
+		  AND sc.is_accounted = 1
+		  AND sc.is_accounted_cancelled = 0
+		  AND o.status != 'cancelled'
+	`
+	var count2 int
+	err = database.DB.QueryRow(query2, userID, orderID).Scan(&count2)
+	if err != nil {
+		return false, err
+	}
+	if count2 > 0 {
+		// 已有已计入分成的新客订单，不是新客户
+		return false, nil
+	}
+
+	// 3. 检查是否有其他未结算但已创建分成记录的新客订单（订单状态不是 cancelled）
+	// 这样可以避免同一用户多个未结算订单都被标记为新客订单
+	query3 := `
+		SELECT COUNT(*) 
+		FROM sales_commissions sc
+		INNER JOIN orders o ON sc.order_id = o.id
+		WHERE sc.user_id = ?
+		  AND sc.order_id != ?
+		  AND sc.is_new_customer_order = 1
+		  AND o.status != 'cancelled'
+		  AND o.status != 'paid'
+	`
+	var count3 int
+	err = database.DB.QueryRow(query3, userID, orderID).Scan(&count3)
+	if err != nil {
+		return false, err
+	}
+	if count3 > 0 {
+		// 已有未结算的新客订单记录，不是新客户
+		return false, nil
+	}
+
+	// 满足所有条件，是新客户首单
+	return true, nil
+}
+
+// CancelOrderCommissions 取消订单的分成记录（订单取消时调用）
+// 如果该订单是新客订单，取消后其他订单可以重新计算新客激励
+func CancelOrderCommissions(orderID int) error {
+	// 删除或标记该订单的分成记录
+	// 注意：如果已经计入或结算，需要谨慎处理
+	// 这里我们只删除未计入且未结算的记录，已计入或已结算的需要通过其他方式处理
+	query := `
+		DELETE FROM sales_commissions
+		WHERE order_id = ?
+		  AND is_accounted = 0
+		  AND is_settled = 0
+	`
+	_, err := database.DB.Exec(query, orderID)
+	if err != nil {
+		log.Printf("取消订单 %d 的分成记录失败: %v", orderID, err)
+		return err
+	}
+	
+	// 对于已计入但未结算的新客订单记录，标记为取消计入
+	// 这样其他订单就可以重新计算新客激励了
+	updateQuery := `
+		UPDATE sales_commissions
+		SET is_accounted_cancelled = 1,
+		    is_accounted = 0,
+		    accounted_at = NULL,
+		    updated_at = NOW()
+		WHERE order_id = ?
+		  AND is_new_customer_order = 1
+		  AND is_accounted = 1
+		  AND is_settled = 0
+	`
+	_, err = database.DB.Exec(updateQuery, orderID)
+	if err != nil {
+		log.Printf("取消订单 %d 的新客分成记录失败: %v", orderID, err)
+		return err
+	}
+	
+	return nil
 }
 
 // CalculateSalesCommission 计算销售分成

@@ -61,8 +61,12 @@
               </span>
             </span>
             <div class="panel-actions">
+              <el-button type="info" :disabled="!selectedDeliveryId" @click="handleCopyGoodsInfo"
+                :loading="copyLoading">
+                复制商品信息
+              </el-button>
               <el-button type="primary" :disabled="!selectedDeliveryId" @click="handlePrintPickupList"
-                :loading="printLoading">
+                :loading="printLoading" style="margin-left: 10px;">
                 打印取货单
               </el-button>
               <el-button type="success" :disabled="!selectedDeliveryId" @click="handleOpenPrintOrderDialog"
@@ -370,6 +374,9 @@ const printLoading = ref(false)
 const printOrderLoading = ref(false)
 const printOrderDialogVisible = ref(false)
 const selectedPrintOrderStatus = ref('pending_pickup')
+
+// 复制相关
+const copyLoading = ref(false)
 
 // 初始化日期为近3日
 const initDateRange = () => {
@@ -1118,6 +1125,208 @@ const handleViewOrderItems = async (id) => {
     itemsDialogVisible.value = false
   } finally {
     itemsLoading.value = false
+  }
+}
+
+// 复制商品信息（按供应商分组）
+const handleCopyGoodsInfo = async () => {
+  if (!selectedDeliveryId.value) {
+    ElMessage.warning('请先选择配送员')
+    return
+  }
+
+  // 必须选择日期范围
+  if (!dateRange.value || dateRange.value.length !== 2) {
+    ElMessage.warning('请先选择日期范围')
+    return
+  }
+
+  copyLoading.value = true
+  try {
+    // 获取选中配送员信息
+    const selectedEmployee = deliveryEmployees.value.find(emp => emp.id === selectedDeliveryId.value)
+    if (!selectedEmployee) {
+      ElMessage.error('未找到配送员信息')
+      return
+    }
+
+    // 获取所有订单（必须使用日期范围）
+    const params = {
+      pageNum: 1,
+      pageSize: 1000, // 获取足够多的数据
+      delivery_employee_ids: selectedDeliveryId.value.toString(),
+      // 包含所有配送相关状态
+      status: 'pending_delivery,pending_pickup,delivering,delivered,paid',
+      start_date: dateRange.value[0],
+      end_date: dateRange.value[1]
+    }
+
+    const res = await getOrders(params)
+    let orderList = []
+
+    if (res) {
+      if (res.code === 200 && res.data) {
+        orderList = res.data.list || []
+      } else if (res.list && Array.isArray(res.list)) {
+        orderList = res.list
+      } else if (Array.isArray(res)) {
+        orderList = res
+      } else if (res.data && Array.isArray(res.data)) {
+        orderList = res.data
+      }
+    }
+
+    if (orderList.length === 0) {
+      ElMessage.warning('该配送员暂无订单')
+      return
+    }
+
+    // 获取所有订单的详情和商品信息
+    const allItems = []
+    for (const order of orderList) {
+      try {
+        const detailRes = await getOrderDetail(order.id)
+        if (detailRes && detailRes.code === 200 && detailRes.data && detailRes.data.order_items) {
+          const items = detailRes.data.order_items.map(item => ({
+            ...item,
+            order_id: order.id,
+            order_number: order.order_number || detailRes.data.order?.order_number
+          }))
+          allItems.push(...items)
+        }
+      } catch (error) {
+        console.error(`获取订单 ${order.id} 详情失败:`, error)
+      }
+    }
+
+    if (allItems.length === 0) {
+      ElMessage.warning('未找到商品信息')
+      return
+    }
+
+    // 获取商品的供应商信息并分组
+    const productIds = [...new Set(allItems.map(item => item.product_id))]
+
+    // 批量查询商品信息（获取供应商ID）
+    const productSupplierMap = new Map()
+    for (const productId of productIds) {
+      try {
+        const productRes = await getProductDetail(productId)
+        if (productRes && productRes.code === 200 && productRes.data) {
+          const supplierId = productRes.data.supplier_id || productRes.data.supplier?.id || 0
+          productSupplierMap.set(productId, supplierId)
+        }
+      } catch (error) {
+        console.error(`获取商品 ${productId} 详情失败:`, error)
+        productSupplierMap.set(productId, 0)
+      }
+    }
+
+    // 获取供应商名称
+    const supplierIds = [...new Set(Array.from(productSupplierMap.values()))].filter(id => id > 0)
+    const supplierNameMap = new Map()
+    supplierNameMap.set(0, '未知供应商')
+
+    try {
+      const suppliersRes = await getAllSuppliers()
+      if (suppliersRes && suppliersRes.code === 200 && suppliersRes.data) {
+        const suppliers = Array.isArray(suppliersRes.data) ? suppliersRes.data : (suppliersRes.data.list || [])
+        suppliers.forEach(supplier => {
+          if (supplier.id) {
+            supplierNameMap.set(supplier.id, supplier.name || `供应商${supplier.id}`)
+          }
+        })
+      }
+    } catch (error) {
+      console.error('获取供应商列表失败:', error)
+    }
+
+    supplierIds.forEach(id => {
+      if (!supplierNameMap.has(id)) {
+        supplierNameMap.set(id, `供应商${id}`)
+      }
+    })
+
+    // 按供应商分组商品
+    const supplierItemsMap = new Map()
+    for (const item of allItems) {
+      const supplierId = productSupplierMap.get(item.product_id) || 0
+      const supplierName = supplierNameMap.get(supplierId) || '未知供应商'
+
+      if (!supplierItemsMap.has(supplierId)) {
+        supplierItemsMap.set(supplierId, {
+          supplierId,
+          supplierName,
+          items: []
+        })
+      }
+
+      supplierItemsMap.get(supplierId).items.push({
+        product_name: item.product_name,
+        spec_name: item.spec_name,
+        quantity: item.quantity
+      })
+    }
+
+    // 合并相同商品和规格
+    for (const [supplierId, supplierData] of supplierItemsMap) {
+      const mergedItems = mergeItemsByProductAndSpec(supplierData.items)
+      supplierItemsMap.set(supplierId, {
+        ...supplierData,
+        items: mergedItems
+      })
+    }
+
+    // 格式化输出
+    const now = new Date()
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const employeeName = selectedEmployee.name || selectedEmployee.employee_code || '配送员'
+
+    const buffer = []
+    buffer.push(`配送员：${employeeName}`)
+    buffer.push(`日期：${dateStr}`)
+    buffer.push('')
+    
+    // 按供应商分组输出
+    let totalTypes = 0
+    let totalQuantity = 0
+    for (const [supplierId, supplierData] of supplierItemsMap) {
+      buffer.push(`【${supplierData.supplierName}】`)
+      
+      const supplierTypes = supplierData.items.length
+      const supplierQuantity = supplierData.items.reduce((sum, item) => sum + (item.quantity || 0), 0)
+      totalTypes += supplierTypes
+      totalQuantity += supplierQuantity
+      
+      buffer.push(`货物种类：${supplierTypes} 种`)
+      buffer.push(`数量统计：${supplierQuantity} 件`)
+      buffer.push('')
+      buffer.push('取货列表：')
+      
+      supplierData.items.forEach((item, index) => {
+        let itemText = `${index + 1}. ${item.product_name}`
+        if (item.spec_name) {
+          itemText += ` - ${item.spec_name}`
+        }
+        itemText += ` × ${item.quantity}`
+        buffer.push(itemText)
+      })
+      
+      buffer.push('')
+    }
+    
+    buffer.push(`总计：${supplierItemsMap.size} 个供应商，${totalTypes} 种商品，${totalQuantity} 件`)
+
+    // 复制到剪贴板
+    const text = buffer.join('\n')
+    await navigator.clipboard.writeText(text)
+    
+    ElMessage.success('商品信息已复制到剪贴板')
+  } catch (error) {
+    console.error('复制商品信息失败:', error)
+    ElMessage.error('复制失败，请稍后再试')
+  } finally {
+    copyLoading.value = false
   }
 }
 

@@ -12,6 +12,7 @@ import '../utils/location_service.dart';
 import '../utils/coordinate_transform.dart';
 import '../widgets/accept_order_dialog.dart';
 import 'route_planning_view.dart';
+import 'batch_pickup_items_view.dart';
 
 /// 订单详情页面：显示订单的完整信息，包括配送费、加急状态等
 class OrderDetailView extends StatefulWidget {
@@ -103,9 +104,16 @@ class _OrderDetailViewState extends State<OrderDetailView>
     }
   }
 
+  // 标记是否已经处理过 didChangeDependencies，避免重复执行
+  bool _hasHandledDependencies = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // 只在首次调用时处理，避免重复执行
+    if (_hasHandledDependencies) return;
+    _hasHandledDependencies = true;
+
     // 当页面依赖发生变化时（比如从其他页面返回），检查并重新启动位置跟踪
     // 使用延迟确保页面已完全恢复
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2090,6 +2098,7 @@ class _OrderDetailViewState extends State<OrderDetailView>
   }
 
   Widget _buildSupplierRow(Map<String, dynamic> supplier) {
+    final supplierId = (supplier['id'] as num?)?.toInt();
     final name = supplier['name'] as String? ?? '';
     final address = supplier['address'] as String? ?? '';
     final contact = supplier['contact'] as String? ?? '';
@@ -2102,13 +2111,26 @@ class _OrderDetailViewState extends State<OrderDetailView>
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFFF8F9FA),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
       ),
-      child: Column(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: supplierId != null && _isPendingPickup()
+              ? () => _goToSupplierPickupList(
+                    supplierId,
+                    name,
+                    latitude,
+                    longitude,
+                  )
+              : null,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 供应商名称和导航图标
@@ -2128,7 +2150,7 @@ class _OrderDetailViewState extends State<OrderDetailView>
               ),
               // 导航图标（如果有经纬度）
               if (latitude != null && longitude != null)
-                InkWell(
+                GestureDetector(
                   onTap: () => _navigateToSupplier(latitude, longitude, name),
                   child: Container(
                     padding: const EdgeInsets.all(6),
@@ -2233,8 +2255,41 @@ class _OrderDetailViewState extends State<OrderDetailView>
             ),
           ],
         ],
+            ),
+          ),
+        ),
       ),
     );
+  }
+
+  // 跳转到供应商取货列表
+  Future<void> _goToSupplierPickupList(
+    int supplierId,
+    String supplierName,
+    double? latitude,
+    double? longitude,
+  ) async {
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => BatchPickupItemsView(
+          supplierId: supplierId,
+          supplierName: supplierName,
+          supplierLatitude: latitude,
+          supplierLongitude: longitude,
+        ),
+      ),
+    );
+    
+    // 如果取货成功，刷新订单详情
+    if (result == true && mounted) {
+      await _loadOrderDetailSilently();
+      // 检查订单状态，如果变为配送中，返回true通知列表刷新
+      final order = _orderData?['order'] as Map<String, dynamic>?;
+      final status = order?['status'] as String?;
+      if (status == 'delivering') {
+        Navigator.of(context).pop(true);
+      }
+    }
   }
 
   // 构建供应商商品行
@@ -3631,15 +3686,37 @@ class _OrderDetailViewState extends State<OrderDetailView>
         await Future.delayed(const Duration(milliseconds: 800));
         // 静默刷新订单详情（不显示加载状态，避免白屏）
         await _loadOrderDetailSilently();
+        // 接单成功后，返回true通知列表页面刷新
+        if (mounted) {
+          Navigator.of(context).pop(true);
+        }
+        return; // 提前返回，避免继续执行后面的代码
       } else {
+        // 检查是否是订单已被接走等错误，如果是则自动返回首页
+        final errorMessage = response.message.toLowerCase();
+        final shouldReturnHome = errorMessage.contains('已被') ||
+            errorMessage.contains('接走') ||
+            errorMessage.contains('已被接') ||
+            errorMessage.contains('其他配送员') ||
+            errorMessage.contains('已被其他');
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               response.message.isNotEmpty ? response.message : '接单失败，请稍后重试',
             ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
           ),
         );
+        
+        // 如果是订单已被接走等错误，自动返回首页
+        if (shouldReturnHome && mounted) {
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (mounted) {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          }
+        }
       }
 
       if (mounted) {
@@ -3649,16 +3726,33 @@ class _OrderDetailViewState extends State<OrderDetailView>
       }
     } catch (e) {
       if (!mounted) return;
+      final errorMessage = e.toString().toLowerCase();
+      final shouldReturnHome = errorMessage.contains('已被') ||
+          errorMessage.contains('接走') ||
+          errorMessage.contains('已被接') ||
+          errorMessage.contains('其他配送员') ||
+          errorMessage.contains('已被其他');
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('接单失败: ${e.toString()}'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2),
         ),
       );
+      
       if (mounted) {
         setState(() {
           _isProcessing = false;
         });
+      }
+      
+      // 如果是订单已被接走等错误，自动返回首页
+      if (shouldReturnHome && mounted) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
       }
     }
   }
@@ -3685,7 +3779,11 @@ class _OrderDetailViewState extends State<OrderDetailView>
     final result = await Navigator.of(context).pushNamed('/batch-pickup');
     // 无论返回什么，都刷新订单详情（因为取货操作可能已完成）
     if (mounted) {
+      // 先刷新订单详情，等待刷新完成
       await _loadOrderDetail();
+      // 等待一下，确保后端已处理状态变更
+      await Future.delayed(const Duration(milliseconds: 300));
+      
       // 从批量取货页面返回后，强制重新启动位置跟踪，确保 CurrentLocationLayer 能显示
       print('[OrderDetailView] 从批量取货页面返回，强制重新启动位置跟踪');
       // 先尝试使用缓存位置立即显示
@@ -3715,13 +3813,21 @@ class _OrderDetailViewState extends State<OrderDetailView>
           _startLocationTracking();
         }
       });
-      // 如果订单状态变为配送中，返回true通知列表刷新
-      final status = _orderData?['status'] as String?;
-      if (status == 'delivering') {
+      
+      // 如果取货成功（result == true），返回true通知列表刷新
+      // 无论状态是否变化，只要取货成功就刷新列表
+      if (result == true) {
         Navigator.of(context).pop(true);
-      } else if (result == true) {
-        // 如果取货成功但状态未变，也返回true以触发刷新
-        Navigator.of(context).pop(true);
+      } else {
+        // 即使取货没有完成，也检查一下状态是否变化
+        // 重新读取订单数据（因为可能在其他地方被更新了）
+        await _loadOrderDetailSilently();
+        final order = _orderData?['order'] as Map<String, dynamic>?;
+        final status = order?['status'] as String?;
+        // 如果状态变为配送中，也返回true通知列表刷新
+        if (status == 'delivering') {
+          Navigator.of(context).pop(true);
+        }
       }
     }
   }

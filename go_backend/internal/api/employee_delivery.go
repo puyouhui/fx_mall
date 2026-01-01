@@ -192,33 +192,43 @@ func GetDeliveryOrders(c *gin.Context) {
 			}
 		}
 
-		// 从订单表中读取已存储的配送费计算结果（配送员视图）
-		var deliveryFeeCalcJSON sql.NullString
-		err = database.DB.QueryRow(`
-			SELECT delivery_fee_calculation
-			FROM orders WHERE id = ?
-		`, order.ID).Scan(&deliveryFeeCalcJSON)
-
 		var deliveryFeeResult model.DeliveryFeeCalculationResult
 		var riderUrgentFee float64 // 配送员能拿到的加急费用
 
-		if err == nil && deliveryFeeCalcJSON.Valid && deliveryFeeCalcJSON.String != "" {
-			if json.Unmarshal([]byte(deliveryFeeCalcJSON.String), &deliveryFeeResult) == nil {
-				// 配送员能拿到的加急费用是配送费计算中的urgent_fee
-				riderUrgentFee = deliveryFeeResult.UrgentFee
-			}
-		} else {
-			// 如果订单中没有存储的数据，则尝试计算（这种情况应该很少）
-			calculator, calcErr := model.NewDeliveryFeeCalculator(order.ID)
+		// 对于未接单订单，基于该配送员的批次订单实时计算配送费
+		if order.Status == "pending_delivery" || order.Status == "pending" {
+			// 使用基于该配送员批次的计算器
+			calculator, calcErr := model.NewDeliveryFeeCalculatorForEmployee(order.ID, employee.EmployeeCode)
 			if calcErr == nil {
 				result, calcErr := calculator.Calculate(false) // false表示配送员视图
 				if calcErr == nil {
 					deliveryFeeResult = *result
 					riderUrgentFee = deliveryFeeResult.UrgentFee
-					// 异步存储计算结果，下次查询时可以直接使用
-					go func() {
-						_ = model.CalculateAndStoreOrderProfit(order.ID)
-					}()
+					// 注意：这里不存储计算结果，因为这是实时计算的，每个配送员看到的不同
+				}
+			}
+		} else {
+			// 已接单订单，从数据库读取已存储的配送费计算结果
+			var deliveryFeeCalcJSON sql.NullString
+			err = database.DB.QueryRow(`
+				SELECT delivery_fee_calculation
+				FROM orders WHERE id = ?
+			`, order.ID).Scan(&deliveryFeeCalcJSON)
+
+			if err == nil && deliveryFeeCalcJSON.Valid && deliveryFeeCalcJSON.String != "" {
+				if json.Unmarshal([]byte(deliveryFeeCalcJSON.String), &deliveryFeeResult) == nil {
+					// 配送员能拿到的加急费用是配送费计算中的urgent_fee
+					riderUrgentFee = deliveryFeeResult.UrgentFee
+				}
+			} else {
+				// 如果订单中没有存储的数据，则尝试计算
+				calculator, calcErr := model.NewDeliveryFeeCalculator(order.ID)
+				if calcErr == nil {
+					result, calcErr := calculator.Calculate(false)
+					if calcErr == nil {
+						deliveryFeeResult = *result
+						riderUrgentFee = deliveryFeeResult.UrgentFee
+					}
 				}
 			}
 		}
@@ -484,23 +494,34 @@ func GetDeliveryOrderDetail(c *gin.Context) {
 	var deliveryFeeResult model.DeliveryFeeCalculationResult
 	var riderUrgentFee float64 // 配送员能拿到的加急费用
 
-	if err == nil && deliveryFeeCalcJSON.Valid && deliveryFeeCalcJSON.String != "" {
-		if json.Unmarshal([]byte(deliveryFeeCalcJSON.String), &deliveryFeeResult) == nil {
-			// 配送员能拿到的加急费用是配送费计算中的urgent_fee
-			riderUrgentFee = deliveryFeeResult.UrgentFee
-		}
-	} else {
-		// 如果订单中没有存储的数据，则尝试计算（这种情况应该很少）
-		calculator, calcErr := model.NewDeliveryFeeCalculator(id)
+	// 对于未接单订单，基于该配送员的批次订单实时计算配送费
+	if order.Status == "pending_delivery" || order.Status == "pending" {
+		// 使用基于该配送员批次的计算器
+		calculator, calcErr := model.NewDeliveryFeeCalculatorForEmployee(id, employee.EmployeeCode)
 		if calcErr == nil {
 			result, calcErr := calculator.Calculate(false) // false表示配送员视图
 			if calcErr == nil {
 				deliveryFeeResult = *result
 				riderUrgentFee = deliveryFeeResult.UrgentFee
-				// 异步存储计算结果，下次查询时可以直接使用
-				go func() {
-					_ = model.CalculateAndStoreOrderProfit(id)
-				}()
+				// 注意：这里不存储计算结果，因为这是实时计算的，每个配送员看到的不同
+			}
+		}
+	} else {
+		// 已接单订单，从数据库读取已存储的配送费计算结果
+		if err == nil && deliveryFeeCalcJSON.Valid && deliveryFeeCalcJSON.String != "" {
+			if json.Unmarshal([]byte(deliveryFeeCalcJSON.String), &deliveryFeeResult) == nil {
+				// 配送员能拿到的加急费用是配送费计算中的urgent_fee
+				riderUrgentFee = deliveryFeeResult.UrgentFee
+			}
+		} else {
+			// 如果订单中没有存储的数据，则尝试计算
+			calculator, calcErr := model.NewDeliveryFeeCalculator(id)
+			if calcErr == nil {
+				result, calcErr := calculator.Calculate(false)
+				if calcErr == nil {
+					deliveryFeeResult = *result
+					riderUrgentFee = deliveryFeeResult.UrgentFee
+				}
 			}
 		}
 	}
@@ -759,7 +780,7 @@ func CompleteDeliveryOrder(c *gin.Context) {
 
 	// 上传货物照片
 	if _, _, err := c.Request.FormFile("product_image"); err == nil {
-		url, uploadErr := utils.UploadFileByFieldName("product_image", "delivery_product", c.Request)
+		url, uploadErr := utils.UploadFileByFieldName("product_image", "delivery_product", c.Request, "delivery")
 		if uploadErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "上传货物照片失败: " + uploadErr.Error()})
 			return
@@ -769,7 +790,7 @@ func CompleteDeliveryOrder(c *gin.Context) {
 
 	// 上传门牌照片
 	if _, _, err := c.Request.FormFile("doorplate_image"); err == nil {
-		url, uploadErr := utils.UploadFileByFieldName("doorplate_image", "delivery_doorplate", c.Request)
+		url, uploadErr := utils.UploadFileByFieldName("doorplate_image", "delivery_doorplate", c.Request, "delivery")
 		if uploadErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "上传门牌照片失败: " + uploadErr.Error()})
 			return
@@ -1412,8 +1433,14 @@ func MarkItemsAsPicked(c *gin.Context) {
 						_ = model.CreateDeliveryLog(deliveryLog) // 记录日志失败不影响主流程
 					}
 
-					// 订单状态更新后，重新计算配送费和利润（异步执行，避免阻塞）
+					// 订单状态更新后，更新受影响订单的孤立状态，然后重新计算配送费和利润
+					// 注意：虽然 delivering 状态的订单不在查询范围内，但为了保持逻辑一致性，
+					// 我们仍然更新受影响订单（实际上不会有影响，因为 delivering 不在查询范围内）
 					go func(orderID int) {
+						// 更新受影响订单的孤立状态（因为当前订单从"待取货"变为"配送中"）
+						// 注意：由于 updateAffectedOrdersIsolatedStatus 是私有函数，我们需要通过 UpdateOrderDeliveryInfo 来触发
+						// 但实际上，由于 delivering 状态的订单不在查询范围内，所以不需要更新
+						// 这里我们只重新计算当前订单的配送费即可
 						_ = model.CalculateAndStoreOrderProfit(orderID)
 					}(orderID)
 

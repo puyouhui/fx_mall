@@ -93,8 +93,10 @@ export function deleteRichContent(id) {
  * @param {FormData} formData - 包含图片文件的FormData
  */
 export function uploadImage(formData) {
+  // 富文本编辑器的图片存到rich-content目录
+  formData.append('category', 'rich-content')
   return request({
-    url: '/admin/products/upload', // 复用商品图片上传接口
+    url: '/admin/images/upload', // 使用支持目录分类的上传接口
     method: 'post',
     headers: {
       'Content-Type': 'multipart/form-data'
