@@ -569,6 +569,7 @@ func DeleteProduct(c *gin.Context) {
 }
 
 // ListImages 列出MinIO桶中的所有图片（支持分页和目录过滤）
+// 优化：使用分页功能，避免一次性加载所有图片导致性能问题
 func ListImages(c *gin.Context) {
 	// 解析分页参数
 	pageNum := 1
@@ -583,20 +584,19 @@ func ListImages(c *gin.Context) {
 	if pageSizeStr := c.Query("pageSize"); pageSizeStr != "" {
 		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
 			pageSize = ps
+			// 限制最大pageSize，避免请求过大
+			if pageSize > 500 {
+				pageSize = 500
+			}
 		}
 	}
 
 	// 解析目录分类参数
 	category := strings.TrimSpace(c.Query("category"))
-	
-	// 调用ListImages，如果指定了目录则只列出该目录的图片
-	var images []map[string]interface{}
-	var err error
-	if category != "" {
-		images, err = utils.ListImages(category)
-	} else {
-		images, err = utils.ListImages()
-	}
+
+	// 使用分页功能，避免一次性加载所有图片
+	// 这样可以显著提升性能，特别是当某个目录下有大量图片时
+	images, total, err := utils.ListImagesWithPagination(category, pageNum, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
@@ -605,26 +605,9 @@ func ListImages(c *gin.Context) {
 		return
 	}
 
-	// 计算分页
-	total := len(images)
-	start := (pageNum - 1) * pageSize
-	end := start + pageSize
-
-	if start > total {
-		start = total
-	}
-	if end > total {
-		end = total
-	}
-
-	var paginatedImages []map[string]interface{}
-	if start < total {
-		paginatedImages = images[start:end]
-	}
-
 	c.JSON(http.StatusOK, gin.H{
 		"code":     200,
-		"data":     paginatedImages,
+		"data":     images,
 		"total":    total,
 		"pageNum":  pageNum,
 		"pageSize": pageSize,

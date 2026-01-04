@@ -814,11 +814,57 @@ func calculateSalesCommissionPreview(order *model.Order, deliveryFeeResult *mode
 		deliveryCost = deliveryFeeResult.TotalPlatformCost
 	}
 
-	// 判断是否新客户首单（正确查询数据库）
-	isNewCustomer, err := model.IsNewCustomerOrder(order.UserID, order.ID)
-	if err != nil {
-		log.Printf("判断是否新客户失败: %v", err)
-		isNewCustomer = false
+	// 对于已收款订单，如果已有销售分成记录，优先从记录中读取新客状态
+	// 这样可以确保第一单的新客状态不会因为创建第二单而改变
+	var isNewCustomer bool
+	if order.Status == "paid" {
+		commissions, err := model.GetSalesCommissionsByOrderIDs([]int{order.ID})
+		if err == nil && len(commissions) > 0 && commissions[0] != nil {
+			// 已有销售分成记录，使用记录中的新客状态
+			isNewCustomer = commissions[0].IsNewCustomerOrder
+		} else {
+			// 没有销售分成记录，重新判断
+			isNewCustomer, _ = model.IsNewCustomerOrder(order.UserID, order.ID)
+		}
+	} else {
+		// 未收款订单：检查是否有已计入分成的新客订单记录
+		// 如果有，说明该用户已经有新客订单，当前订单不是新客
+		query := `
+			SELECT COUNT(*) 
+			FROM sales_commissions sc
+			INNER JOIN orders o ON sc.order_id = o.id
+			WHERE sc.user_id = ?
+			  AND sc.order_id != ?
+			  AND sc.is_new_customer_order = 1
+			  AND sc.is_accounted = 1
+			  AND sc.is_accounted_cancelled = 0
+			  AND o.status != 'cancelled'
+		`
+		var count int
+		err := database.DB.QueryRow(query, order.UserID, order.ID).Scan(&count)
+		if err == nil && count > 0 {
+			// 已有新客订单记录，当前订单不是新客
+			isNewCustomer = false
+		} else {
+			// 没有新客订单记录，检查是否是第一个订单
+			// 检查该订单是否是该用户的第一个订单（基于订单ID，排除取消的）
+			checkQuery := `
+				SELECT COUNT(*) 
+				FROM orders o
+				WHERE o.user_id = ?
+				  AND o.id < ?
+				  AND o.status != 'cancelled'
+			`
+			var orderCount int
+			err = database.DB.QueryRow(checkQuery, order.UserID, order.ID).Scan(&orderCount)
+			if err == nil && orderCount == 0 {
+				// 这是第一个订单，是新客
+				isNewCustomer = true
+			} else {
+				// 不是第一个订单，不是新客
+				isNewCustomer = false
+			}
+		}
 	}
 
 	// 确定计算月份：

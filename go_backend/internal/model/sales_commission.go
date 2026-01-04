@@ -12,79 +12,79 @@ import (
 
 // SalesCommissionConfig 销售分成配置
 type SalesCommissionConfig struct {
-	ID                    int       `json:"id"`
-	EmployeeCode          string    `json:"employee_code"`
-	BaseCommissionRate   float64   `json:"base_commission_rate"`   // 基础提成比例（默认45%）
-	NewCustomerBonusRate  float64   `json:"new_customer_bonus_rate"` // 新客开发激励比例（默认20%）
-	Tier1Threshold        float64   `json:"tier1_threshold"`       // 阶梯1阈值（默认50000元）
-	Tier1Rate             float64   `json:"tier1_rate"`            // 阶梯1提成比例（默认5%）
-	Tier2Threshold        float64   `json:"tier2_threshold"`       // 阶梯2阈值（默认100000元）
-	Tier2Rate             float64   `json:"tier2_rate"`            // 阶梯2提成比例（默认10%）
-	Tier3Threshold        float64   `json:"tier3_threshold"`       // 阶梯3阈值（默认200000元）
-	Tier3Rate             float64   `json:"tier3_rate"`            // 阶梯3提成比例（默认20%）
-	MinProfitThreshold    float64   `json:"min_profit_threshold"`   // 最小利润阈值（默认5元）
-	CreatedAt             time.Time `json:"created_at"`
-	UpdatedAt             time.Time `json:"updated_at"`
+	ID                   int       `json:"id"`
+	EmployeeCode         string    `json:"employee_code"`
+	BaseCommissionRate   float64   `json:"base_commission_rate"`    // 基础提成比例（默认45%）
+	NewCustomerBonusRate float64   `json:"new_customer_bonus_rate"` // 新客开发激励比例（默认20%）
+	Tier1Threshold       float64   `json:"tier1_threshold"`         // 阶梯1阈值（默认50000元）
+	Tier1Rate            float64   `json:"tier1_rate"`              // 阶梯1提成比例（默认5%）
+	Tier2Threshold       float64   `json:"tier2_threshold"`         // 阶梯2阈值（默认100000元）
+	Tier2Rate            float64   `json:"tier2_rate"`              // 阶梯2提成比例（默认10%）
+	Tier3Threshold       float64   `json:"tier3_threshold"`         // 阶梯3阈值（默认200000元）
+	Tier3Rate            float64   `json:"tier3_rate"`              // 阶梯3提成比例（默认20%）
+	MinProfitThreshold   float64   `json:"min_profit_threshold"`    // 最小利润阈值（默认5元）
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // SalesCommission 销售分成记录
 type SalesCommission struct {
 	ID                   int        `json:"id"`
-	OrderID              int         `json:"order_id"`
-	EmployeeCode         string      `json:"employee_code"`
-	UserID               int         `json:"user_id"`
-	OrderNumber          string      `json:"order_number"`
-	OrderDate            time.Time   `json:"order_date"`
-	SettlementDate       *time.Time  `json:"settlement_date,omitempty"`
-	IsValidOrder         bool        `json:"is_valid_order"`
-	IsNewCustomerOrder   bool        `json:"is_new_customer_order"`
-	OrderAmount          float64     `json:"order_amount"`          // 平台总收入
-	GoodsCost            float64     `json:"goods_cost"`            // 商品总成本
-	DeliveryCost         float64     `json:"delivery_cost"`         // 配送成本
-	OrderProfit          float64     `json:"order_profit"`          // 订单利润
-	BaseCommission       float64     `json:"base_commission"`       // 基础提成
-	NewCustomerBonus     float64     `json:"new_customer_bonus"`    // 新客开发激励
-	TierCommission       float64     `json:"tier_commission"`       // 阶梯提成
-	TotalCommission      float64     `json:"total_commission"`     // 总分成
-	TierLevel            int         `json:"tier_level"`            // 达到的阶梯等级
-	CalculationMonth     string      `json:"calculation_month"`     // 计算月份（YYYY-MM）
-	IsAccounted          bool        `json:"is_accounted"`          // 是否已计入（平台承认了销售员这个分润收入）
-	AccountedAt          *time.Time  `json:"accounted_at,omitempty"` // 计入时间
-	IsSettled            bool        `json:"is_settled"`            // 是否已结算（平台已经将该费用结算给销售员）
-	SettledAt            *time.Time  `json:"settled_at,omitempty"`   // 结算时间
-	IsAccountedCancelled bool        `json:"is_accounted_cancelled"` // 计入是否已取消
-	CreatedAt            time.Time   `json:"created_at"`
-	UpdatedAt            time.Time   `json:"updated_at"`
+	OrderID              int        `json:"order_id"`
+	EmployeeCode         string     `json:"employee_code"`
+	UserID               int        `json:"user_id"`
+	OrderNumber          string     `json:"order_number"`
+	OrderDate            time.Time  `json:"order_date"`
+	SettlementDate       *time.Time `json:"settlement_date,omitempty"`
+	IsValidOrder         bool       `json:"is_valid_order"`
+	IsNewCustomerOrder   bool       `json:"is_new_customer_order"`
+	OrderAmount          float64    `json:"order_amount"`           // 平台总收入
+	GoodsCost            float64    `json:"goods_cost"`             // 商品总成本
+	DeliveryCost         float64    `json:"delivery_cost"`          // 配送成本
+	OrderProfit          float64    `json:"order_profit"`           // 订单利润
+	BaseCommission       float64    `json:"base_commission"`        // 基础提成
+	NewCustomerBonus     float64    `json:"new_customer_bonus"`     // 新客开发激励
+	TierCommission       float64    `json:"tier_commission"`        // 阶梯提成
+	TotalCommission      float64    `json:"total_commission"`       // 总分成
+	TierLevel            int        `json:"tier_level"`             // 达到的阶梯等级
+	CalculationMonth     string     `json:"calculation_month"`      // 计算月份（YYYY-MM）
+	IsAccounted          bool       `json:"is_accounted"`           // 是否已计入（平台承认了销售员这个分润收入）
+	AccountedAt          *time.Time `json:"accounted_at,omitempty"` // 计入时间
+	IsSettled            bool       `json:"is_settled"`             // 是否已结算（平台已经将该费用结算给销售员）
+	SettledAt            *time.Time `json:"settled_at,omitempty"`   // 结算时间
+	IsAccountedCancelled bool       `json:"is_accounted_cancelled"` // 计入是否已取消
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
 // SalesCommissionMonthlyStats 销售分成月统计
 type SalesCommissionMonthlyStats struct {
-	ID                   int       `json:"id"`
-	EmployeeCode         string    `json:"employee_code"`
-	StatMonth           string    `json:"stat_month"`            // YYYY-MM格式
-	TotalSalesAmount     float64   `json:"total_sales_amount"`  // 总销售额
-	TotalValidOrders     int       `json:"total_valid_orders"`  // 有效订单数
-	TotalNewCustomers    int       `json:"total_new_customers"` // 新客户数
-	TotalProfit          float64   `json:"total_profit"`        // 总利润
-	TotalBaseCommission  float64   `json:"total_base_commission"`  // 总基础提成
-	TotalNewCustomerBonus float64  `json:"total_new_customer_bonus"` // 总新客激励
-	TotalTierCommission  float64   `json:"total_tier_commission"`  // 总阶梯提成
-	TotalCommission      float64   `json:"total_commission"`       // 总分成
-	TierLevel            int       `json:"tier_level"`              // 达到的阶梯等级
-	CreatedAt            time.Time `json:"created_at"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	ID                    int       `json:"id"`
+	EmployeeCode          string    `json:"employee_code"`
+	StatMonth             string    `json:"stat_month"`               // YYYY-MM格式
+	TotalSalesAmount      float64   `json:"total_sales_amount"`       // 总销售额
+	TotalValidOrders      int       `json:"total_valid_orders"`       // 有效订单数
+	TotalNewCustomers     int       `json:"total_new_customers"`      // 新客户数
+	TotalProfit           float64   `json:"total_profit"`             // 总利润
+	TotalBaseCommission   float64   `json:"total_base_commission"`    // 总基础提成
+	TotalNewCustomerBonus float64   `json:"total_new_customer_bonus"` // 总新客激励
+	TotalTierCommission   float64   `json:"total_tier_commission"`    // 总阶梯提成
+	TotalCommission       float64   `json:"total_commission"`         // 总分成
+	TierLevel             int       `json:"tier_level"`               // 达到的阶梯等级
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 // CommissionCalculationResult 分成计算结果
 type CommissionCalculationResult struct {
-	OrderProfit          float64 `json:"order_profit"`          // 订单利润
-	BaseCommission       float64 `json:"base_commission"`       // 基础提成
-	NewCustomerBonus     float64 `json:"new_customer_bonus"`    // 新客开发激励
-	TierCommission       float64 `json:"tier_commission"`       // 阶梯提成
-	TotalCommission      float64 `json:"total_commission"`      // 总分成
-	TierLevel            int     `json:"tier_level"`            // 达到的阶梯等级
-	IsValidOrder         bool    `json:"is_valid_order"`        // 是否有效订单
-	IsNewCustomerOrder   bool    `json:"is_new_customer_order"` // 是否新客户首单
+	OrderProfit        float64 `json:"order_profit"`          // 订单利润
+	BaseCommission     float64 `json:"base_commission"`       // 基础提成
+	NewCustomerBonus   float64 `json:"new_customer_bonus"`    // 新客开发激励
+	TierCommission     float64 `json:"tier_commission"`       // 阶梯提成
+	TotalCommission    float64 `json:"total_commission"`      // 总分成
+	TierLevel          int     `json:"tier_level"`            // 达到的阶梯等级
+	IsValidOrder       bool    `json:"is_valid_order"`        // 是否有效订单
+	IsNewCustomerOrder bool    `json:"is_new_customer_order"` // 是否新客户首单
 }
 
 // GetSalesCommissionConfig 获取销售员的分成配置（如果不存在则创建默认配置）
@@ -118,14 +118,14 @@ func GetSalesCommissionConfig(employeeCode string) (*SalesCommissionConfig, erro
 func CreateDefaultSalesCommissionConfig(employeeCode string) (*SalesCommissionConfig, error) {
 	config := &SalesCommissionConfig{
 		EmployeeCode:         employeeCode,
-		BaseCommissionRate:  0.45,  // 45%
+		BaseCommissionRate:   0.45, // 45%
 		NewCustomerBonusRate: 0.20, // 20%
 		Tier1Threshold:       50000.00,
-		Tier1Rate:           0.05,  // 5%
+		Tier1Rate:            0.05, // 5%
 		Tier2Threshold:       100000.00,
-		Tier2Rate:           0.10,  // 10%
+		Tier2Rate:            0.10, // 10%
 		Tier3Threshold:       200000.00,
-		Tier3Rate:           0.20,  // 20%
+		Tier3Rate:            0.20, // 20%
 		MinProfitThreshold:   5.00,
 	}
 
@@ -194,8 +194,9 @@ func HasSettledOrder(userID int) (bool, error) {
 // IsNewCustomerOrder 判断订单是否为新客户首单
 // 规则：
 // 1. 该用户在此订单之前没有已结算的有效订单
-// 2. 该用户没有已计入分成的新客订单（即使未结算，但已经标记为新客订单的）
-// 3. 如果订单被取消（cancelled），不影响新客判断
+// 2. 该用户没有其他已创建的订单（不管状态，只要不是取消状态）
+// 3. 该用户没有已计入分成的新客订单（即使未结算，但已经标记为新客订单的）
+// 4. 如果订单被取消（cancelled），不影响新客判断
 func IsNewCustomerOrder(userID int, orderID int) (bool, error) {
 	// 1. 查询该用户在此订单之前是否有已结算的有效订单
 	query1 := `
@@ -218,9 +219,30 @@ func IsNewCustomerOrder(userID int, orderID int) (bool, error) {
 		return false, nil
 	}
 
-	// 2. 查询该用户是否有已计入分成的新客订单（订单状态不是 cancelled）
-	// 这样可以避免同一用户多个未结算订单都被标记为新客订单
+	// 2. 查询该用户是否有其他已创建的订单（不管状态，只要不是取消状态）
+	// 这是关键修复：订单创建时还没有销售分成记录，所以需要直接检查订单表
+	// 只要存在其他非取消状态的订单，就不应该是新客订单
+	// 这样可以确保同一用户，不管有多少地址，只有第一单（非取消状态）有新客激励
 	query2 := `
+		SELECT COUNT(*) 
+		FROM orders o
+		WHERE o.user_id = ?
+		  AND o.id != ?
+		  AND o.status != 'cancelled'
+	`
+	var count2 int
+	err = database.DB.QueryRow(query2, userID, orderID).Scan(&count2)
+	if err != nil {
+		return false, err
+	}
+	if count2 > 0 {
+		// 已有其他非取消状态的订单，不是新客户
+		return false, nil
+	}
+
+	// 3. 查询该用户是否有已计入分成的新客订单（订单状态不是 cancelled）
+	// 这样可以避免同一用户多个未结算订单都被标记为新客订单
+	query3 := `
 		SELECT COUNT(*) 
 		FROM sales_commissions sc
 		INNER JOIN orders o ON sc.order_id = o.id
@@ -231,19 +253,19 @@ func IsNewCustomerOrder(userID int, orderID int) (bool, error) {
 		  AND sc.is_accounted_cancelled = 0
 		  AND o.status != 'cancelled'
 	`
-	var count2 int
-	err = database.DB.QueryRow(query2, userID, orderID).Scan(&count2)
+	var count3 int
+	err = database.DB.QueryRow(query3, userID, orderID).Scan(&count3)
 	if err != nil {
 		return false, err
 	}
-	if count2 > 0 {
+	if count3 > 0 {
 		// 已有已计入分成的新客订单，不是新客户
 		return false, nil
 	}
 
-	// 3. 检查是否有其他未结算但已创建分成记录的新客订单（订单状态不是 cancelled）
+	// 4. 检查是否有其他未结算但已创建分成记录的新客订单（订单状态不是 cancelled）
 	// 这样可以避免同一用户多个未结算订单都被标记为新客订单
-	query3 := `
+	query4 := `
 		SELECT COUNT(*) 
 		FROM sales_commissions sc
 		INNER JOIN orders o ON sc.order_id = o.id
@@ -253,12 +275,12 @@ func IsNewCustomerOrder(userID int, orderID int) (bool, error) {
 		  AND o.status != 'cancelled'
 		  AND o.status != 'paid'
 	`
-	var count3 int
-	err = database.DB.QueryRow(query3, userID, orderID).Scan(&count3)
+	var count4 int
+	err = database.DB.QueryRow(query4, userID, orderID).Scan(&count4)
 	if err != nil {
 		return false, err
 	}
-	if count3 > 0 {
+	if count4 > 0 {
 		// 已有未结算的新客订单记录，不是新客户
 		return false, nil
 	}
@@ -284,7 +306,7 @@ func CancelOrderCommissions(orderID int) error {
 		log.Printf("取消订单 %d 的分成记录失败: %v", orderID, err)
 		return err
 	}
-	
+
 	// 对于已计入但未结算的新客订单记录，标记为取消计入
 	// 这样其他订单就可以重新计算新客激励了
 	updateQuery := `
@@ -303,7 +325,7 @@ func CancelOrderCommissions(orderID int) error {
 		log.Printf("取消订单 %d 的新客分成记录失败: %v", orderID, err)
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -817,10 +839,44 @@ func ProcessOrderSettlement(orderID int) error {
 	}
 
 	// 判断是否新客户首单
-	isNewCustomer, err := IsNewCustomerOrder(order.UserID, orderID)
-	if err != nil {
-		log.Printf("判断是否新客户失败: %v", err)
-		isNewCustomer = false
+	// 在订单结算时，应该基于订单创建时的状态来判断，而不是基于当前状态
+	// 如果该订单是该用户的第一个订单（基于订单ID，排除取消的），则判断为新客
+	var isNewCustomer bool
+	checkQuery := `
+		SELECT COUNT(*) 
+		FROM orders o
+		WHERE o.user_id = ?
+		  AND o.id < ?
+		  AND o.status != 'cancelled'
+	`
+	var orderCount int
+	err = database.DB.QueryRow(checkQuery, order.UserID, orderID).Scan(&orderCount)
+	if err == nil && orderCount == 0 {
+		// 这是第一个订单，是新客
+		isNewCustomer = true
+	} else {
+		// 不是第一个订单，检查是否有已计入分成的新客订单记录
+		// 如果有，说明该用户已经有新客订单，当前订单不是新客
+		query := `
+			SELECT COUNT(*) 
+			FROM sales_commissions sc
+			INNER JOIN orders o ON sc.order_id = o.id
+			WHERE sc.user_id = ?
+			  AND sc.order_id != ?
+			  AND sc.is_new_customer_order = 1
+			  AND sc.is_accounted = 1
+			  AND sc.is_accounted_cancelled = 0
+			  AND o.status != 'cancelled'
+		`
+		var count int
+		err = database.DB.QueryRow(query, order.UserID, orderID).Scan(&count)
+		if err == nil && count > 0 {
+			// 已有新客订单记录，当前订单不是新客
+			isNewCustomer = false
+		} else {
+			// 没有新客订单记录，且不是第一个订单，不是新客
+			isNewCustomer = false
+		}
 	}
 
 	// 计算月份（YYYY-MM格式）
@@ -865,27 +921,27 @@ func ProcessOrderSettlement(orderID int) error {
 	now := time.Now()
 	accountedAt := &now
 	commission := &SalesCommission{
-		OrderID:            orderID,
-		EmployeeCode:       user.SalesCode,
-		UserID:             order.UserID,
-		OrderNumber:        order.OrderNumber,
-		OrderDate:          order.CreatedAt,
-		SettlementDate:     order.SettlementDate,
-		IsValidOrder:       calcResult.IsValidOrder,
-		IsNewCustomerOrder: calcResult.IsNewCustomerOrder,
-		OrderAmount:        orderAmount,
-		GoodsCost:          goodsCost,
-		DeliveryCost:       deliveryCost,
-		OrderProfit:        calcResult.OrderProfit,
-		BaseCommission:     calcResult.BaseCommission,
-		NewCustomerBonus:   calcResult.NewCustomerBonus,
-		TierCommission:     calcResult.TierCommission,
-		TotalCommission:   calcResult.TotalCommission,
-		TierLevel:          calcResult.TierLevel,
-		CalculationMonth:   settlementMonth,
-		IsAccounted:        true,  // 自动计入
-		AccountedAt:        accountedAt,
-		IsSettled:          false,
+		OrderID:              orderID,
+		EmployeeCode:         user.SalesCode,
+		UserID:               order.UserID,
+		OrderNumber:          order.OrderNumber,
+		OrderDate:            order.CreatedAt,
+		SettlementDate:       order.SettlementDate,
+		IsValidOrder:         calcResult.IsValidOrder,
+		IsNewCustomerOrder:   calcResult.IsNewCustomerOrder,
+		OrderAmount:          orderAmount,
+		GoodsCost:            goodsCost,
+		DeliveryCost:         deliveryCost,
+		OrderProfit:          calcResult.OrderProfit,
+		BaseCommission:       calcResult.BaseCommission,
+		NewCustomerBonus:     calcResult.NewCustomerBonus,
+		TierCommission:       calcResult.TierCommission,
+		TotalCommission:      calcResult.TotalCommission,
+		TierLevel:            calcResult.TierLevel,
+		CalculationMonth:     settlementMonth,
+		IsAccounted:          true, // 自动计入
+		AccountedAt:          accountedAt,
+		IsSettled:            false,
 		IsAccountedCancelled: false,
 	}
 
@@ -1018,7 +1074,7 @@ func GetAllSalesCommissionMonthlyStats(month string) ([]SalesCommissionMonthlySt
 // startDate, endDate: 日期范围（可选）
 func AccountSalesCommissions(commissionIDs []int, employeeCode string, startDate, endDate *time.Time) (int64, error) {
 	now := time.Now()
-	
+
 	if len(commissionIDs) > 0 {
 		// 按ID批量计入
 		placeholders := ""
@@ -1030,25 +1086,25 @@ func AccountSalesCommissions(commissionIDs []int, employeeCode string, startDate
 			placeholders += "?"
 			args[i] = id
 		}
-		
+
 		query := fmt.Sprintf(`
 			UPDATE sales_commissions
 			SET is_accounted = 1, accounted_at = ?, is_accounted_cancelled = 0, updated_at = NOW()
 			WHERE id IN (%s) AND is_accounted = 0 AND is_accounted_cancelled = 0
 		`, placeholders)
 		args = append([]interface{}{now}, args...)
-		
+
 		result, err := database.DB.Exec(query, args...)
 		if err != nil {
 			return 0, err
 		}
 		return result.RowsAffected()
 	}
-	
+
 	// 按条件批量计入
 	where := "is_accounted = 0 AND is_accounted_cancelled = 0"
 	args := []interface{}{now}
-	
+
 	if employeeCode != "" {
 		where += " AND employee_code = ?"
 		args = append(args, employeeCode)
@@ -1061,13 +1117,13 @@ func AccountSalesCommissions(commissionIDs []int, employeeCode string, startDate
 		where += " AND order_date <= ?"
 		args = append(args, endDate.Format("2006-01-02"))
 	}
-	
-		query := fmt.Sprintf(`
+
+	query := fmt.Sprintf(`
 			UPDATE sales_commissions
 			SET is_accounted = 1, accounted_at = ?, is_accounted_cancelled = 0, updated_at = NOW()
 			WHERE %s
 		`, where)
-	
+
 	result, err := database.DB.Exec(query, args...)
 	if err != nil {
 		return 0, err
@@ -1082,7 +1138,7 @@ func AccountSalesCommissions(commissionIDs []int, employeeCode string, startDate
 // 注意：只有已计入的记录才能被结算
 func SettleSalesCommissions(commissionIDs []int, employeeCode string, startDate, endDate *time.Time) (int64, error) {
 	now := time.Now()
-	
+
 	if len(commissionIDs) > 0 {
 		// 按ID批量结算
 		placeholders := ""
@@ -1094,25 +1150,25 @@ func SettleSalesCommissions(commissionIDs []int, employeeCode string, startDate,
 			placeholders += "?"
 			args[i] = id
 		}
-		
+
 		query := fmt.Sprintf(`
 			UPDATE sales_commissions
 			SET is_settled = 1, settled_at = ?, updated_at = NOW()
 			WHERE id IN (%s) AND is_accounted = 1 AND is_settled = 0 AND is_accounted_cancelled = 0
 		`, placeholders)
 		args = append([]interface{}{now}, args...)
-		
+
 		result, err := database.DB.Exec(query, args...)
 		if err != nil {
 			return 0, err
 		}
 		return result.RowsAffected()
 	}
-	
+
 	// 按条件批量结算
 	where := "is_accounted = 1 AND is_settled = 0 AND is_accounted_cancelled = 0"
 	args := []interface{}{now}
-	
+
 	if employeeCode != "" {
 		where += " AND employee_code = ?"
 		args = append(args, employeeCode)
@@ -1125,13 +1181,13 @@ func SettleSalesCommissions(commissionIDs []int, employeeCode string, startDate,
 		where += " AND order_date <= ?"
 		args = append(args, endDate.Format("2006-01-02"))
 	}
-	
+
 	query := fmt.Sprintf(`
 		UPDATE sales_commissions
 		SET is_settled = 1, settled_at = ?, updated_at = NOW()
 		WHERE %s
 	`, where)
-	
+
 	result, err := database.DB.Exec(query, args...)
 	if err != nil {
 		return 0, err
@@ -1144,7 +1200,7 @@ func GetSalesCommissionByID(id int) (*SalesCommission, error) {
 	var commission SalesCommission
 	var settlementDate, accountedAt, settledAt sql.NullTime
 	var isValidOrder, isNewCustomerOrder, isAccounted, isSettled, isAccountedCancelled int
-	
+
 	query := `
 		SELECT id, order_id, employee_code, user_id, order_number, order_date,
 		       settlement_date, is_valid_order, is_new_customer_order,
@@ -1156,7 +1212,7 @@ func GetSalesCommissionByID(id int) (*SalesCommission, error) {
 		FROM sales_commissions
 		WHERE id = ?
 	`
-	
+
 	err := database.DB.QueryRow(query, id).Scan(
 		&commission.ID, &commission.OrderID, &commission.EmployeeCode, &commission.UserID,
 		&commission.OrderNumber, &commission.OrderDate, &settlementDate,
@@ -1174,7 +1230,7 @@ func GetSalesCommissionByID(id int) (*SalesCommission, error) {
 		}
 		return nil, err
 	}
-	
+
 	commission.IsValidOrder = isValidOrder == 1
 	commission.IsNewCustomerOrder = isNewCustomerOrder == 1
 	commission.IsAccounted = isAccounted == 1
@@ -1192,7 +1248,7 @@ func GetSalesCommissionByID(id int) (*SalesCommission, error) {
 		t := settledAt.Time
 		commission.SettledAt = &t
 	}
-	
+
 	return &commission, nil
 }
 
@@ -1354,16 +1410,16 @@ func ResetAccountSalesCommissions(commissionIDs []int) (int64, error) {
 
 // SalesCommissionOverview 销售分成总览统计
 type SalesCommissionOverview struct {
-	TotalAmount        float64 `json:"total_amount"`         // 总金额（所有有效订单的总分成）
-	UnaccountedAmount  float64 `json:"unaccounted_amount"`   // 未计入金额
-	AccountedAmount    float64 `json:"accounted_amount"`     // 已计入金额
-	SettledAmount      float64 `json:"settled_amount"`        // 已结算金额
-	CancelledAmount    float64 `json:"cancelled_amount"`     // 取消计入金额
-	UnaccountedCount   int     `json:"unaccounted_count"`    // 未计入数量
-	AccountedCount     int     `json:"accounted_count"`       // 已计入数量
-	SettledCount       int     `json:"settled_count"`        // 已结算数量
-	CancelledCount     int     `json:"cancelled_count"`       // 取消计入数量
-	InvalidOrderCount  int     `json:"invalid_order_count"`  // 无效订单数量
+	TotalAmount       float64 `json:"total_amount"`        // 总金额（所有有效订单的总分成）
+	UnaccountedAmount float64 `json:"unaccounted_amount"`  // 未计入金额
+	AccountedAmount   float64 `json:"accounted_amount"`    // 已计入金额
+	SettledAmount     float64 `json:"settled_amount"`      // 已结算金额
+	CancelledAmount   float64 `json:"cancelled_amount"`    // 取消计入金额
+	UnaccountedCount  int     `json:"unaccounted_count"`   // 未计入数量
+	AccountedCount    int     `json:"accounted_count"`     // 已计入数量
+	SettledCount      int     `json:"settled_count"`       // 已结算数量
+	CancelledCount    int     `json:"cancelled_count"`     // 取消计入数量
+	InvalidOrderCount int     `json:"invalid_order_count"` // 无效订单数量
 }
 
 // GetSalesCommissionOverview 获取销售员的分成总览统计
@@ -1537,4 +1593,3 @@ func GetSalesCommissionOverview(employeeCode string, startDate, endDate *time.Ti
 
 	return &overview, nil
 }
-

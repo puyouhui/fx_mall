@@ -7,6 +7,14 @@ import 'package:employees_app/utils/coordinate_transform.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
 import 'package:employees_app/pages/order/sales_edit_order_page.dart';
+import 'package:employees_app/pages/order/order_preview_page.dart';
+import 'package:photo_view/photo_view.dart';
+import 'package:photo_view/photo_view_gallery.dart';
+import 'package:http/http.dart' as http;
+import 'package:gal/gal.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 
 /// 订单详情页（销售员）
 class OrderDetailPage extends StatefulWidget {
@@ -29,6 +37,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   Map<String, dynamic>? _salesCommission;
   Map<String, dynamic>? _deliveryFeeCalculation;
   Map<String, dynamic>? _paymentVerificationRequest; // 收款申请信息
+  Map<String, dynamic>? _deliveryRecord; // 配送记录（包含配送照片）
 
   // 地图相关
   final MapController _mapController = MapController();
@@ -76,6 +85,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
             resp.data!['sales_commission'] as Map<String, dynamic>?;
         _deliveryFeeCalculation =
             resp.data!['delivery_fee_calculation'] as Map<String, dynamic>?;
+        _deliveryRecord =
+            resp.data!['delivery_record'] as Map<String, dynamic>?;
         _loading = false;
       });
 
@@ -130,6 +141,11 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           fontWeight: FontWeight.w600,
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.description, color: Colors.white),
+            onPressed: _openPreview,
+            tooltip: '预览订单',
+          ),
           IconButton(
             icon: const Icon(Icons.share, color: Colors.white),
             onPressed: _shareToMiniApp,
@@ -197,6 +213,11 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
                             // 配送员费用
                             if (_deliveryFeeCalculation != null) ...[
                               _buildDeliveryFeeCard(),
+                              const SizedBox(height: 12),
+                            ],
+                            // 配送照片（已送达或已收款订单）
+                            if (_shouldShowDeliveryPhotos()) ...[
+                              _buildDeliveryPhotosCard(),
                               const SizedBox(height: 12),
                             ],
                             _buildOrderOptionsCard(),
@@ -587,6 +608,30 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     );
   }
 
+  /// 打开订单预览页面
+  void _openPreview() {
+    if (_order == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('订单信息加载中，请稍后再试'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => OrderPreviewPage(
+          order: _order!,
+          user: _user,
+          address: _address,
+          items: _items,
+        ),
+      ),
+    );
+  }
+
   /// 分享订单到小程序
   Future<void> _shareToMiniApp() async {
     if (_order == null) {
@@ -720,6 +765,14 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
             final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0.0;
             final image = (item['image'] as String?) ?? '';
 
+            // 改价信息
+            final originalUnitPrice = (item['original_unit_price'] as num?)
+                ?.toDouble();
+            final isPriceModified =
+                (item['is_price_modified'] as bool?) ?? false;
+            final priceModReason =
+                (item['price_modification_reason'] as String?);
+
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
               child: Row(
@@ -774,13 +827,32 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            Text(
-                              '¥${unitPrice.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF20CB6B),
-                              ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (isPriceModified &&
+                                    originalUnitPrice != null) ...[
+                                  Text(
+                                    '¥${originalUnitPrice.toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey[400],
+                                      decoration: TextDecoration.lineThrough,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                ],
+                                Text(
+                                  '¥${unitPrice.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: isPriceModified
+                                        ? const Color(0xFFFF5A5F)
+                                        : const Color(0xFF20CB6B),
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(width: 12),
                             Text(
@@ -801,6 +873,39 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
                             ),
                           ],
                         ),
+                        if (isPriceModified &&
+                            priceModReason != null &&
+                            priceModReason.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF5A5F).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.edit,
+                                  size: 10,
+                                  color: Color(0xFFFF5A5F),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '已改价：$priceModReason',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Color(0xFFFF5A5F),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -1170,6 +1275,18 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     final status = order['status']?.toString() ?? '';
     // 已送达状态的订单显示收款按钮
     return (status == 'delivered' || status == 'shipped') && status != 'paid';
+  }
+
+  bool _shouldShowDeliveryPhotos() {
+    final order = _order;
+    if (order == null || _deliveryRecord == null) return false;
+
+    final status = order['status']?.toString() ?? '';
+    // 已送达或已收款订单显示配送照片
+    return (status == 'delivered' ||
+        status == 'shipped' ||
+        status == 'paid' ||
+        status == 'completed');
   }
 
   /// 加载收款申请信息
@@ -2614,6 +2731,133 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     );
   }
 
+  /// 构建配送照片卡片
+  Widget _buildDeliveryPhotosCard() {
+    if (_deliveryRecord == null) {
+      return const SizedBox.shrink();
+    }
+
+    final productImageUrl =
+        _deliveryRecord!['product_image_url'] as String? ?? '';
+    final doorplateImageUrl =
+        _deliveryRecord!['doorplate_image_url'] as String? ?? '';
+
+    if (productImageUrl.isEmpty && doorplateImageUrl.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '配送完成照片',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF20253A),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              if (productImageUrl.isNotEmpty) ...[
+                Expanded(
+                  child: _buildDeliveryPhotoItem(
+                    '货物照片',
+                    productImageUrl,
+                    [
+                      productImageUrl,
+                      doorplateImageUrl,
+                    ].where((url) => url.isNotEmpty).toList(),
+                    0,
+                  ),
+                ),
+                if (doorplateImageUrl.isNotEmpty) const SizedBox(width: 12),
+              ],
+              if (doorplateImageUrl.isNotEmpty) ...[
+                Expanded(
+                  child: _buildDeliveryPhotoItem(
+                    '门牌照片',
+                    doorplateImageUrl,
+                    [
+                      productImageUrl,
+                      doorplateImageUrl,
+                    ].where((url) => url.isNotEmpty).toList(),
+                    productImageUrl.isNotEmpty ? 1 : 0,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeliveryPhotoItem(
+    String label,
+    String imageUrl,
+    List<String> allImages,
+    int initialIndex,
+  ) {
+    return GestureDetector(
+      onTap: () {
+        _openFullScreenImage(allImages, initialIndex);
+      },
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            height: 120,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5F6FA),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Image.network(
+              imageUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(
+                  Icons.image_not_supported,
+                  color: Color(0xFFB0B4C3),
+                  size: 32,
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF8C92A4)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openFullScreenImage(List<String> images, int initialIndex) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) =>
+            _FullScreenImagePage(images: images, initialIndex: initialIndex),
+      ),
+    );
+  }
+
   /// 构建配送员费用卡片
   Widget _buildDeliveryFeeCard() {
     if (_deliveryFeeCalculation == null) {
@@ -2728,6 +2972,215 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 全屏图片查看页面（简化版，用于配送照片）
+class _FullScreenImagePage extends StatefulWidget {
+  final List<String> images;
+  final int initialIndex;
+
+  const _FullScreenImagePage({
+    required this.images,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_FullScreenImagePage> createState() => _FullScreenImagePageState();
+}
+
+class _FullScreenImagePageState extends State<_FullScreenImagePage> {
+  late PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveImage(String imageUrl) async {
+    try {
+      // 显示加载提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('正在保存图片...'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+
+      // 请求相册权限
+      await Gal.requestAccess();
+
+      // 下载图片
+      final response = await http.get(Uri.parse(imageUrl));
+      if (response.statusCode == 200) {
+        // 直接保存到相册
+        await Gal.putImageBytes(response.bodyBytes);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('图片已保存到相册'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('图片下载失败')));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('保存失败: ${e.toString()}')));
+      }
+    }
+  }
+
+  Future<void> _shareImage(String imageUrl) async {
+    try {
+      // 显示加载提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('正在准备分享...'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+
+      // 下载图片
+      final response = await http.get(Uri.parse(imageUrl));
+      if (response.statusCode == 200) {
+        // 获取临时目录
+        final tempDir = await getTemporaryDirectory();
+        final fileName =
+            'delivery_photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final filePath = '${tempDir.path}/$fileName';
+        final file = File(filePath);
+
+        // 保存图片到临时文件
+        await file.writeAsBytes(response.bodyBytes);
+
+        // 使用系统分享功能
+        await Share.shareXFiles([XFile(filePath)], text: '配送照片');
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('分享成功'),
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('图片下载失败')));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('分享失败: ${e.toString()}')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          // 保存按钮
+          IconButton(
+            icon: const Icon(Icons.save_alt),
+            onPressed: () => _saveImage(widget.images[_currentIndex]),
+            tooltip: '保存图片',
+          ),
+          // 分享按钮
+          IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: () => _shareImage(widget.images[_currentIndex]),
+            tooltip: '分享图片',
+          ),
+        ],
+      ),
+      body: PhotoViewGallery.builder(
+        itemCount: widget.images.length,
+        pageController: _pageController,
+        builder: (context, index) {
+          return PhotoViewGalleryPageOptions(
+            imageProvider: NetworkImage(widget.images[index]),
+            minScale: PhotoViewComputedScale.contained,
+            maxScale: PhotoViewComputedScale.covered * 2,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                color: Colors.grey.shade200,
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.image_not_supported,
+                  size: 64,
+                  color: Colors.grey,
+                ),
+              );
+            },
+          );
+        },
+        scrollPhysics: const BouncingScrollPhysics(),
+        backgroundDecoration: const BoxDecoration(color: Colors.black),
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+      ),
+      bottomNavigationBar: widget.images.length > 1
+          ? Container(
+              color: Colors.black.withOpacity(0.5),
+              padding: EdgeInsets.only(
+                top: 16,
+                bottom: 16 + MediaQuery.of(context).padding.bottom,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  widget.images.length,
+                  (index) => Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _currentIndex == index
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.4),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          : null,
     );
   }
 }

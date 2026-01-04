@@ -47,16 +47,25 @@ type Order struct {
 
 // OrderItem 订单明细
 type OrderItem struct {
-	ID          int     `json:"id"`
-	OrderID     int     `json:"order_id"`
-	ProductID   int     `json:"product_id"`
-	ProductName string  `json:"product_name"`
-	SpecName    string  `json:"spec_name"`
-	Quantity    int     `json:"quantity"`
-	UnitPrice   float64 `json:"unit_price"` // 成交单价
-	Subtotal    float64 `json:"subtotal"`   // 小计
-	Image       string  `json:"image"`
-	IsPicked    bool    `json:"is_picked"` // 是否已取货
+	ID                      int     `json:"id"`
+	OrderID                 int     `json:"order_id"`
+	ProductID               int     `json:"product_id"`
+	ProductName             string  `json:"product_name"`
+	SpecName                string  `json:"spec_name"`
+	Quantity                int     `json:"quantity"`
+	UnitPrice               float64 `json:"unit_price"`                // 成交单价（改价后的价格）
+	Subtotal                float64 `json:"subtotal"`                  // 小计
+	Image                   string  `json:"image"`
+	IsPicked                bool    `json:"is_picked"`                 // 是否已取货
+	OriginalUnitPrice       *float64 `json:"original_unit_price,omitempty"` // 原始单价（从规格快照获取）
+	IsPriceModified         bool    `json:"is_price_modified"`         // 是否改价
+	PriceModificationReason *string `json:"price_modification_reason,omitempty"` // 改价原因
+}
+
+// PriceModificationInfo 改价信息
+type PriceModificationInfo struct {
+	UnitPrice float64 // 改价后的单价
+	Reason    string  // 改价原因
 }
 
 // OrderCreationOptions 创建订单时的附加参数
@@ -70,6 +79,7 @@ type OrderCreationOptions struct {
 	CouponDiscount      float64
 	IsUrgent            bool
 	UrgentFee           float64
+	PriceModifications  map[int]PriceModificationInfo // 改价映射（采购单项ID -> 改价信息）
 }
 
 // GenerateOrderNumber 生成订单编号
@@ -202,8 +212,9 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	orderItems := make([]OrderItem, 0, len(items))
 	itemStmt, err := tx.Prepare(`
 		INSERT INTO order_items (
-			order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image,
+			original_unit_price, is_price_modified, price_modification_reason
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return nil, nil, err
@@ -212,27 +223,61 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 		_ = itemStmt.Close()
 	}()
 
+	hasPriceModification := false
 	for _, it := range items {
-		// 根据用户类型计算价格，与配送费计算保持一致
-		var price float64
+		// 计算原始价格（从规格快照获取）
+		var originalPrice float64
 		if userType == "wholesale" {
-			price = it.SpecSnapshot.WholesalePrice
-			if price <= 0 {
-				price = it.SpecSnapshot.RetailPrice
+			originalPrice = it.SpecSnapshot.WholesalePrice
+			if originalPrice <= 0 {
+				originalPrice = it.SpecSnapshot.RetailPrice
 			}
 		} else {
-			price = it.SpecSnapshot.RetailPrice
-			if price <= 0 {
-				price = it.SpecSnapshot.WholesalePrice
+			originalPrice = it.SpecSnapshot.RetailPrice
+			if originalPrice <= 0 {
+				originalPrice = it.SpecSnapshot.WholesalePrice
 			}
 		}
-		if price <= 0 {
-			price = it.SpecSnapshot.Cost
+		if originalPrice <= 0 {
+			originalPrice = it.SpecSnapshot.Cost
 		}
-		if price < 0 {
-			price = 0
+		if originalPrice < 0 {
+			originalPrice = 0
 		}
+
+		// 检查是否有改价
+		var price float64
+		var isPriceModified bool
+		var priceModReason *string
+		if opts.PriceModifications != nil {
+			if mod, hasMod := opts.PriceModifications[it.ID]; hasMod {
+				price = mod.UnitPrice
+				if price < 0 {
+					price = 0
+				}
+				isPriceModified = price != originalPrice
+				if isPriceModified {
+					hasPriceModification = true
+					if mod.Reason != "" {
+						priceModReason = &mod.Reason
+					}
+				} else {
+					price = originalPrice
+				}
+			} else {
+				price = originalPrice
+			}
+		} else {
+			price = originalPrice
+		}
+
 		subtotal := price * float64(it.Quantity)
+
+		// 准备插入SQL，包含改价相关字段
+		var originalPricePtr *float64
+		if isPriceModified {
+			originalPricePtr = &originalPrice
+		}
 
 		if _, err = itemStmt.Exec(
 			orderID,
@@ -243,20 +288,34 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 			price,
 			subtotal,
 			it.ProductImage,
+			originalPricePtr,
+			boolToTinyInt(isPriceModified),
+			priceModReason,
 		); err != nil {
 			return nil, nil, err
 		}
 
 		orderItems = append(orderItems, OrderItem{
-			OrderID:     orderID,
-			ProductID:   it.ProductID,
-			ProductName: it.ProductName,
-			SpecName:    it.SpecName,
-			Quantity:    it.Quantity,
-			UnitPrice:   price,
-			Subtotal:    subtotal,
-			Image:       it.ProductImage,
+			OrderID:                 orderID,
+			ProductID:               it.ProductID,
+			ProductName:             it.ProductName,
+			SpecName:                it.SpecName,
+			Quantity:                it.Quantity,
+			UnitPrice:               price,
+			Subtotal:                subtotal,
+			Image:                   it.ProductImage,
+			OriginalUnitPrice:       originalPricePtr,
+			IsPriceModified:         isPriceModified,
+			PriceModificationReason: priceModReason,
 		})
+	}
+
+	// 如果订单包含改价商品，更新订单表的has_price_modification字段
+	if hasPriceModification {
+		_, err = tx.Exec(`UPDATE orders SET has_price_modification = 1 WHERE id = ?`, orderID)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	// 注意：不再在创建订单时清空采购单
@@ -568,7 +627,8 @@ func GetOrderItemsByOrderID(orderID int) ([]OrderItem, error) {
 	var items []OrderItem
 
 	query := `
-		SELECT id, order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image, is_picked
+		SELECT id, order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image, is_picked,
+		       original_unit_price, is_price_modified, price_modification_reason
 		FROM order_items WHERE order_id = ? ORDER BY id
 	`
 	rows, err := database.DB.Query(query, orderID)
@@ -580,14 +640,25 @@ func GetOrderItemsByOrderID(orderID int) ([]OrderItem, error) {
 	for rows.Next() {
 		var item OrderItem
 		var isPickedTinyInt int
+		var originalPrice sql.NullFloat64
+		var isPriceModifiedTinyInt int
+		var priceModReason sql.NullString
 		err := rows.Scan(
 			&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.SpecName,
 			&item.Quantity, &item.UnitPrice, &item.Subtotal, &item.Image, &isPickedTinyInt,
+			&originalPrice, &isPriceModifiedTinyInt, &priceModReason,
 		)
 		if err != nil {
 			return nil, err
 		}
 		item.IsPicked = isPickedTinyInt == 1
+		item.IsPriceModified = isPriceModifiedTinyInt == 1
+		if originalPrice.Valid {
+			item.OriginalUnitPrice = &originalPrice.Float64
+		}
+		if priceModReason.Valid && priceModReason.String != "" {
+			item.PriceModificationReason = &priceModReason.String
+		}
 		items = append(items, item)
 	}
 
@@ -982,6 +1053,93 @@ func GetOrderItemCountByOrderID(orderID int) (int, error) {
 		return 0, nil
 	}
 	return int(count.Int64), nil
+}
+
+// GetUncompletedOrdersBySalesCode 获取销售员名下客户的待完成订单列表（分页，收款之前的订单）
+// 包括：pending_delivery, pending, pending_pickup, delivering, delivered, shipped
+func GetUncompletedOrdersBySalesCode(employeeCode string, pageNum, pageSize int) ([]map[string]interface{}, int, error) {
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+
+	offset := (pageNum - 1) * pageSize
+
+	// 统计总数（排除已收款和已取消的订单）
+	var total int
+	countQuery := `
+		SELECT COUNT(*)
+		FROM orders o
+		JOIN mini_app_users u ON o.user_id = u.id
+		WHERE u.sales_code = ? AND o.status != 'paid' AND o.status != 'cancelled'
+	`
+	if err := database.DB.QueryRow(countQuery, employeeCode).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	// 查询分页数据
+	query := `
+		SELECT
+			o.id,
+			o.order_number,
+			o.status,
+			o.total_amount,
+			o.created_at,
+			o.is_urgent,
+			a.name AS store_name,
+			a.address,
+			a.phone AS contact_phone
+		FROM orders o
+		JOIN mini_app_users u ON o.user_id = u.id
+		LEFT JOIN mini_app_addresses a ON o.address_id = a.id
+		WHERE u.sales_code = ? AND o.status != 'paid' AND o.status != 'cancelled'
+		ORDER BY o.created_at DESC
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := database.DB.Query(query, employeeCode, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	orders := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var id int
+		var orderNumber string
+		var status string
+		var totalAmount float64
+		var createdAt time.Time
+		var isUrgentTinyInt int
+		var storeName sql.NullString
+		var address sql.NullString
+		var contactPhone sql.NullString
+
+		if err := rows.Scan(&id, &orderNumber, &status, &totalAmount, &createdAt, &isUrgentTinyInt, &storeName, &address, &contactPhone); err != nil {
+			return nil, 0, err
+		}
+
+		itemCount, _ := GetOrderItemCountByOrderID(id)
+
+		order := map[string]interface{}{
+			"id":            id,
+			"order_number":  orderNumber,
+			"status":        status,
+			"total_amount":  totalAmount,
+			"created_at":    createdAt,
+			"is_urgent":     isUrgentTinyInt == 1,
+			"store_name":    getStringValue(storeName),
+			"address":       getStringValue(address),
+			"contact_phone": getStringValue(contactPhone),
+			"item_count":    itemCount,
+		}
+
+		orders = append(orders, order)
+	}
+
+	return orders, total, nil
 }
 
 // GetOrderItemCountsByOrderIDs 批量获取订单商品数量

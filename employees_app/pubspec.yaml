@@ -69,6 +69,9 @@ dependencies:
   # URL启动器（拨打电话等）
   url_launcher: ^6.3.1
 
+  # 截图插件
+  screenshot: ^3.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

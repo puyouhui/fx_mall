@@ -1,9 +1,12 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"strconv"
+	"time"
 
+	"go_backend/internal/database"
 	"go_backend/internal/model"
 
 	"github.com/gin-gonic/gin"
@@ -39,8 +42,8 @@ func SubmitPaymentVerificationRequest(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": verificationReq,
+		"code":    200,
+		"data":    verificationReq,
 		"message": "提交成功，等待审核",
 	})
 }
@@ -81,22 +84,22 @@ func GetPaymentVerificationRequests(c *gin.Context) {
 	requestsList := make([]map[string]interface{}, 0, len(requests))
 	for _, req := range requests {
 		reqMap := map[string]interface{}{
-			"id":                 req.ID,
-			"order_id":           req.OrderID,
-			"order_number":       req.OrderNumber,
+			"id":                  req.ID,
+			"order_id":            req.OrderID,
+			"order_number":        req.OrderNumber,
 			"sales_employee_code": req.SalesEmployeeCode,
 			"sales_employee_name": req.SalesEmployeeName,
-			"customer_id":        req.CustomerID,
-			"customer_name":      req.CustomerName,
-			"order_amount":       req.OrderAmount,
-			"request_reason":     req.RequestReason,
-			"status":             req.Status,
-			"admin_id":           req.AdminID,
-			"admin_name":         req.AdminName,
+			"customer_id":         req.CustomerID,
+			"customer_name":       req.CustomerName,
+			"order_amount":        req.OrderAmount,
+			"request_reason":      req.RequestReason,
+			"status":              req.Status,
+			"admin_id":            req.AdminID,
+			"admin_name":          req.AdminName,
 			"reviewed_at":         req.ReviewedAt,
-			"review_remark":      req.ReviewRemark,
-			"created_at":         req.CreatedAt,
-			"updated_at":         req.UpdatedAt,
+			"review_remark":       req.ReviewRemark,
+			"created_at":          req.CreatedAt,
+			"updated_at":          req.UpdatedAt,
 		}
 		requestsList = append(requestsList, reqMap)
 	}
@@ -162,10 +165,59 @@ func ReviewPaymentVerificationRequest(c *gin.Context) {
 	message := "已拒绝"
 	if approved {
 		message = "审核通过，订单已标记为已收款"
+
+		// 获取订单ID，用于计算销售分成
+		verificationReq, err := model.GetPaymentVerificationRequestByID(req.RequestID)
+		if err == nil && verificationReq != nil {
+			orderID := verificationReq.OrderID
+			// 异步处理销售分成计算和推荐奖励（避免阻塞）
+			go func(orderID int) {
+				// 等待一下，确保订单状态和结算日期已更新
+				time.Sleep(100 * time.Millisecond)
+
+				// 重新获取订单信息，检查是否有结算日期
+				order, err := model.GetOrderByID(orderID)
+				if err != nil {
+					log.Printf("获取订单 %d 信息失败: %v", orderID, err)
+					return
+				}
+				if order == nil {
+					log.Printf("订单 %d 不存在", orderID)
+					return
+				}
+
+				// 如果订单有结算日期，计算销售分成
+				// 如果没有结算日期，设置结算日期为当前时间
+				if order.SettlementDate == nil {
+					now := time.Now()
+					_, err = database.DB.Exec("UPDATE orders SET settlement_date = ? WHERE id = ?", now, orderID)
+					if err != nil {
+						log.Printf("设置订单 %d 结算日期失败: %v", orderID, err)
+						return
+					}
+					// 更新订单对象的结算日期
+					order.SettlementDate = &now
+				}
+
+				// 计算销售分成
+				if err := model.ProcessOrderSettlement(orderID); err != nil {
+					log.Printf("处理订单 %d 的销售分成失败: %v", orderID, err)
+				} else {
+					log.Printf("订单 %d 的销售分成计算成功", orderID)
+				}
+
+				// 处理推荐奖励（订单完成付款后发放奖励给老用户）
+				if err := model.ProcessReferralReward(orderID); err != nil {
+					log.Printf("处理订单 %d 的推荐奖励失败: %v", orderID, err)
+				} else {
+					log.Printf("订单 %d 的推荐奖励处理完成", orderID)
+				}
+			}(orderID)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
+		"code":    200,
 		"message": message,
 	})
 }
@@ -193,36 +245,35 @@ func GetPaymentVerificationRequestByOrderID(c *gin.Context) {
 	if err != nil {
 		// 没有待审核的申请，返回null
 		c.JSON(http.StatusOK, gin.H{
-			"code": 200,
-			"data": nil,
+			"code":    200,
+			"data":    nil,
 			"message": "获取成功",
 		})
 		return
 	}
 
 	reqMap := map[string]interface{}{
-		"id":                 req.ID,
-		"order_id":           req.OrderID,
-		"order_number":       req.OrderNumber,
+		"id":                  req.ID,
+		"order_id":            req.OrderID,
+		"order_number":        req.OrderNumber,
 		"sales_employee_code": req.SalesEmployeeCode,
 		"sales_employee_name": req.SalesEmployeeName,
-		"customer_id":        req.CustomerID,
-		"customer_name":      req.CustomerName,
-		"order_amount":       req.OrderAmount,
-		"request_reason":     req.RequestReason,
-		"status":             req.Status,
-		"admin_id":           req.AdminID,
-		"admin_name":         req.AdminName,
+		"customer_id":         req.CustomerID,
+		"customer_name":       req.CustomerName,
+		"order_amount":        req.OrderAmount,
+		"request_reason":      req.RequestReason,
+		"status":              req.Status,
+		"admin_id":            req.AdminID,
+		"admin_name":          req.AdminName,
 		"reviewed_at":         req.ReviewedAt,
-		"review_remark":      req.ReviewRemark,
-		"created_at":         req.CreatedAt,
-		"updated_at":         req.UpdatedAt,
+		"review_remark":       req.ReviewRemark,
+		"created_at":          req.CreatedAt,
+		"updated_at":          req.UpdatedAt,
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": reqMap,
+		"code":    200,
+		"data":    reqMap,
 		"message": "获取成功",
 	})
 }
-

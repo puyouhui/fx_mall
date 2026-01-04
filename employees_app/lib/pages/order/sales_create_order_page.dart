@@ -36,6 +36,9 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
   List<dynamic>?
   _purchaseListBackup; // 用户原来的采购单备份（从GetSalesCustomerPurchaseList获取）
 
+  // 改价信息：采购单项ID -> {unit_price: 改价后的单价}
+  Map<int, Map<String, dynamic>> _priceModifications = {};
+
   List<dynamic> _coupons = []; // 客户优惠券列表
   Map<String, dynamic>? _selectedCoupon; // 选中的优惠券
 
@@ -211,7 +214,25 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
     final backup = (purchase['backup'] as List<dynamic>? ?? []);
 
     int? selectedAddressId;
-    if (addrList.isNotEmpty) {
+    // 如果已经有选中的地址，先检查该地址是否还在地址列表中
+    if (_selectedAddressId != null && addrList.isNotEmpty) {
+      bool addressExists = false;
+      for (final a in addrList) {
+        final m = a as Map<String, dynamic>;
+        if (m['id'] == _selectedAddressId) {
+          addressExists = true;
+          selectedAddressId = _selectedAddressId; // 保留用户之前选择的地址
+          break;
+        }
+      }
+      // 如果之前选中的地址不存在了，则重新选择
+      if (!addressExists) {
+        selectedAddressId = null; // 重置，下面会重新选择
+      }
+    }
+
+    // 如果没有选中的地址（或之前选中的地址已不存在），则选择默认地址
+    if (selectedAddressId == null && addrList.isNotEmpty) {
       // 优先选默认地址
       for (final a in addrList) {
         final m = a as Map<String, dynamic>;
@@ -242,9 +263,17 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       }
       _isLoading = false;
     });
-    // 加载配送员配送费预览
-    _loadRiderDeliveryFeePreview();
-    // 加载销售分润预览
+    // 加载配送员配送费预览，等待完成后再加载销售分润预览
+    // 因为销售分润预览需要配送成本（从配送员配送费预览中获取）
+    await _loadRiderDeliveryFeePreview();
+
+    // 如果有改价信息，需要重新计算汇总信息（使用改价后的价格）
+    // 因为后端返回的 summary 是基于原价计算的
+    if (_priceModifications.isNotEmpty) {
+      _recalculateSummary();
+    }
+
+    // 加载销售分润预览（确保配送员配送费预览已完成）
     _loadSalesCommissionPreview();
   }
 
@@ -274,6 +303,14 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       _isSubmitting = true;
     });
 
+    // 构建改价信息列表
+    final priceModifications = _priceModifications.entries.map((entry) {
+      return {
+        'purchase_list_item_id': entry.key,
+        'unit_price': entry.value['unit_price'],
+      };
+    }).toList();
+
     final body = <String, dynamic>{
       'user_id': _customerId,
       'address_id': _selectedAddressId,
@@ -288,6 +325,8 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       if (_selectedCoupon != null) 'coupon_id': _getCouponId(_selectedCoupon!),
       if (_purchaseListBackup != null)
         'purchase_list_backup': _purchaseListBackup, // 传入备份数据
+      if (priceModifications.isNotEmpty)
+        'price_modifications': priceModifications,
     };
 
     final resp = await Request.post<Map<String, dynamic>>(
@@ -610,9 +649,9 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       setState(() {
         _selectedAddressId = selectedId;
       });
-      // 更新配送员配送费预览
-      _loadRiderDeliveryFeePreview();
-      // 更新销售分润预览
+      // 更新配送员配送费预览，等待完成后再更新销售分润预览
+      await _loadRiderDeliveryFeePreview();
+      // 更新销售分润预览（确保配送员配送费预览已完成）
       _loadSalesCommissionPreview();
     }
   }
@@ -919,13 +958,13 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
           const SizedBox(width: 12),
           Switch(
             value: _isUrgent,
-            onChanged: (value) {
+            onChanged: (value) async {
               setState(() {
                 _isUrgent = value;
               });
-              // 更新配送员配送费预览
-              _loadRiderDeliveryFeePreview();
-              // 更新销售分润预览
+              // 更新配送员配送费预览，等待完成后再更新销售分润预览
+              await _loadRiderDeliveryFeePreview();
+              // 更新销售分润预览（确保配送员配送费预览已完成）
               _loadSalesCommissionPreview();
             },
             activeColor: const Color(0xFFFF6B6B),
@@ -1395,15 +1434,33 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
               final cost = (snapshot['cost'] as num?)?.toDouble() ?? 0.0;
 
               final userType = (_user?['user_type'] as String?) ?? 'retail';
-              double unitPrice;
+              // 计算原始价格
+              double originalUnitPrice;
               if (userType == 'wholesale') {
-                unitPrice = wholesalePrice > 0 ? wholesalePrice : retailPrice;
+                originalUnitPrice = wholesalePrice > 0
+                    ? wholesalePrice
+                    : retailPrice;
               } else {
-                unitPrice = retailPrice > 0 ? retailPrice : wholesalePrice;
+                originalUnitPrice = retailPrice > 0
+                    ? retailPrice
+                    : wholesalePrice;
               }
-              if (unitPrice <= 0) {
-                unitPrice = cost > 0 ? cost : 0.0;
+              if (originalUnitPrice <= 0) {
+                originalUnitPrice = cost > 0 ? cost : 0.0;
               }
+
+              // 检查是否有改价
+              double unitPrice = originalUnitPrice;
+              bool isPriceModified = false;
+              if (itemId != null && _priceModifications.containsKey(itemId)) {
+                final mod = _priceModifications[itemId]!;
+                final modifiedPrice = (mod['unit_price'] as num?)?.toDouble();
+                if (modifiedPrice != null && modifiedPrice >= 0) {
+                  unitPrice = modifiedPrice;
+                  isPriceModified = unitPrice != originalUnitPrice;
+                }
+              }
+
               final subtotal = unitPrice * qty;
               final image = (item['product_image'] as String?) ?? '';
 
@@ -1506,14 +1563,96 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
                                       ),
                                       const SizedBox(height: 4),
                                     ],
-                                    Text(
-                                      '¥${unitPrice.toStringAsFixed(2)}',
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF20CB6B),
-                                      ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (isPriceModified) ...[
+                                          Text(
+                                            '¥${originalUnitPrice.toStringAsFixed(2)}',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey[400],
+                                              decoration:
+                                                  TextDecoration.lineThrough,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                        ],
+                                        Text(
+                                          '¥${unitPrice.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: isPriceModified
+                                                ? const Color(0xFFFF5A5F)
+                                                : const Color(0xFF20CB6B),
+                                          ),
+                                        ),
+                                      ],
                                     ),
+                                    if (isPriceModified && itemId != null) ...[
+                                      const SizedBox(height: 2),
+                                      InkWell(
+                                        onTap: () => _modifyPrice(
+                                          itemId,
+                                          originalUnitPrice,
+                                          unitPrice,
+                                          cost,
+                                        ),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(
+                                              0xFFFF5A5F,
+                                            ).withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            '已改价',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Color(0xFFFF5A5F),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ] else if (itemId != null) ...[
+                                      const SizedBox(height: 2),
+                                      InkWell(
+                                        onTap: () => _modifyPrice(
+                                          itemId,
+                                          originalUnitPrice,
+                                          unitPrice,
+                                          cost,
+                                        ),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(
+                                              0xFF20CB6B,
+                                            ).withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            '改价',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Color(0xFF20CB6B),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -2321,9 +2460,9 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
         _items = data['items'] as List<dynamic>? ?? [];
         _summary = data['summary'] as Map<String, dynamic>?;
       });
-      // 更新配送员配送费预览
-      _loadRiderDeliveryFeePreview();
-      // 更新销售分润预览
+      // 更新配送员配送费预览，等待完成后再更新销售分润预览
+      await _loadRiderDeliveryFeePreview();
+      // 更新销售分润预览（确保配送员配送费预览已完成）
       _loadSalesCommissionPreview();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2349,10 +2488,12 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
       setState(() {
         _items = data['items'] as List<dynamic>? ?? [];
         _summary = data['summary'] as Map<String, dynamic>?;
+        // 删除改价信息（如果该商品被删除）
+        _priceModifications.remove(itemId);
       });
-      // 更新配送员配送费预览
-      _loadRiderDeliveryFeePreview();
-      // 更新销售分润预览
+      // 更新配送员配送费预览，等待完成后再更新销售分润预览
+      await _loadRiderDeliveryFeePreview();
+      // 更新销售分润预览（确保配送员配送费预览已完成）
       _loadSalesCommissionPreview();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2360,6 +2501,143 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
           content: Text(resp.message.isNotEmpty ? resp.message : '删除商品失败'),
         ),
       );
+    }
+  }
+
+  /// 改价对话框
+  Future<void> _modifyPrice(
+    int itemId,
+    double originalPrice,
+    double currentPrice,
+    double costPrice,
+  ) async {
+    final priceController = TextEditingController(
+      text: currentPrice.toStringAsFixed(2),
+    );
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        String? errorMessage;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('修改价格'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '原价：¥${originalPrice.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF8C92A4),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: priceController,
+                    decoration: const InputDecoration(
+                      labelText: '新价格',
+                      hintText: '请输入新价格',
+                      border: OutlineInputBorder(),
+                      prefixText: '¥',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    autofocus: true,
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      errorMessage!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFFF5A5F),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(false);
+                },
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final newPriceText = priceController.text.trim();
+
+                  if (newPriceText.isEmpty) {
+                    setDialogState(() {
+                      errorMessage = '请输入新价格';
+                    });
+                    return;
+                  }
+
+                  final newPrice = double.tryParse(newPriceText);
+                  if (newPrice == null || newPrice < 0) {
+                    setDialogState(() {
+                      errorMessage = '价格格式不正确';
+                    });
+                    return;
+                  }
+
+                  // 验证不能低于成本价
+                  if (costPrice > 0 && newPrice < costPrice) {
+                    setDialogState(() {
+                      errorMessage = '价格不能低于成本价';
+                    });
+                    return;
+                  }
+
+                  Navigator.of(dialogContext).pop(true);
+                },
+                child: const Text('确定'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    // 延迟 dispose，确保对话框完全关闭
+    await Future.delayed(const Duration(milliseconds: 150));
+    priceController.dispose();
+
+    if (result == true) {
+      final newPriceText = priceController.text.trim();
+      final newPrice = double.tryParse(newPriceText);
+
+      if (newPrice != null && newPrice >= 0) {
+        // 延迟更新状态，确保对话框完全关闭
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        if (mounted) {
+          setState(() {
+            if (newPrice == originalPrice) {
+              // 如果改回原价，删除改价信息
+              _priceModifications.remove(itemId);
+            } else {
+              // 保存改价信息
+              _priceModifications[itemId] = {'unit_price': newPrice};
+            }
+          });
+
+          // 重新计算配送费和销售提成，等待配送费预览完成后再计算销售分润
+          await _loadRiderDeliveryFeePreview();
+          // 更新销售分润预览（确保配送员配送费预览已完成）
+          _loadSalesCommissionPreview();
+          // 重新计算汇总信息（使用改价后的价格）
+          _recalculateSummary();
+        }
+      }
     }
   }
 
@@ -2779,6 +3057,122 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
     }
   }
 
+  /// 重新计算汇总信息（根据改价后的价格）
+  void _recalculateSummary() {
+    if (_items.isEmpty) {
+      setState(() {
+        _summary = null;
+      });
+      return;
+    }
+
+    // 计算商品总金额（使用改价后的价格）
+    double totalAmount = 0.0;
+    int totalQuantity = 0;
+
+    for (final raw in _items) {
+      final item = raw as Map<String, dynamic>;
+      final itemId = item['id'] as int?;
+      final qty = (item['quantity'] as int?) ?? 0;
+      final snapshot = item['spec_snapshot'] as Map<String, dynamic>? ?? {};
+      final retailPrice = (snapshot['retail_price'] as num?)?.toDouble() ?? 0.0;
+      final wholesalePrice =
+          (snapshot['wholesale_price'] as num?)?.toDouble() ?? 0.0;
+      final cost = (snapshot['cost'] as num?)?.toDouble() ?? 0.0;
+
+      final userType = (_user?['user_type'] as String?) ?? 'retail';
+      // 计算原始价格
+      double originalUnitPrice;
+      if (userType == 'wholesale') {
+        originalUnitPrice = wholesalePrice > 0 ? wholesalePrice : retailPrice;
+      } else {
+        originalUnitPrice = retailPrice > 0 ? retailPrice : wholesalePrice;
+      }
+      if (originalUnitPrice <= 0) {
+        originalUnitPrice = cost > 0 ? cost : 0.0;
+      }
+
+      // 检查是否有改价
+      double unitPrice = originalUnitPrice;
+      if (itemId != null && _priceModifications.containsKey(itemId)) {
+        final mod = _priceModifications[itemId]!;
+        final modifiedPrice = (mod['unit_price'] as num?)?.toDouble();
+        if (modifiedPrice != null && modifiedPrice >= 0) {
+          unitPrice = modifiedPrice;
+        }
+      }
+
+      totalAmount += unitPrice * qty;
+      totalQuantity += qty;
+    }
+
+    // 获取原有的配送费信息（从 _summary 中获取，如果没有则从后端重新获取）
+    final oldSummary = _summary ?? {};
+    final deliveryFee = (oldSummary['delivery_fee'] as num?)?.toDouble() ?? 0.0;
+    final freeShippingThreshold =
+        (oldSummary['free_shipping_threshold'] as num?)?.toDouble() ?? 0.0;
+    final isFreeShipping =
+        totalAmount >= freeShippingThreshold && freeShippingThreshold > 0;
+
+    // 更新汇总信息
+    setState(() {
+      _summary = {
+        ...oldSummary, // 先展开旧数据
+        'total_amount': totalAmount, // 然后覆盖为新计算的金额（改价后）
+        'delivery_fee': isFreeShipping ? 0.0 : deliveryFee,
+        'free_shipping_threshold': freeShippingThreshold,
+        'is_free_shipping': isFreeShipping,
+        'total_quantity': totalQuantity,
+      };
+    });
+
+    // 如果配送费需要重新计算（因为商品金额变化可能影响免配送费判断），重新获取
+    if (isFreeShipping != (oldSummary['is_free_shipping'] as bool? ?? false)) {
+      // 重新获取采购单数据以更新配送费
+      _reloadPurchaseListForSummary();
+    }
+  }
+
+  /// 重新加载采购单数据以更新汇总信息（仅用于更新配送费）
+  Future<void> _reloadPurchaseListForSummary() async {
+    if (_customerId == null) return;
+
+    try {
+      final purchaseResp = await Request.get<Map<String, dynamic>>(
+        '/employee/sales/customers/$_customerId/purchase-list',
+        queryParams: {'is_urgent': _isUrgent.toString()},
+        parser: (data) => data as Map<String, dynamic>,
+      );
+
+      if (!mounted) return;
+
+      if (purchaseResp.isSuccess && purchaseResp.data != null) {
+        final purchase = purchaseResp.data!;
+        final purchaseSummary = purchase['summary'] as Map<String, dynamic>?;
+
+        if (purchaseSummary != null) {
+          // 只更新配送费相关字段，商品金额使用前端计算的（改价后的）
+          final oldSummary = _summary ?? {};
+          final calculatedTotalAmount =
+              (oldSummary['total_amount'] as num?)?.toDouble() ?? 0.0;
+          final calculatedTotalQuantity =
+              (oldSummary['total_quantity'] as int?) ?? 0;
+
+          setState(() {
+            _summary = {
+              ...purchaseSummary,
+              'total_amount': calculatedTotalAmount, // 使用前端计算的商品金额（改价后）
+              'total_quantity': calculatedTotalQuantity, // 使用前端计算的数量
+            };
+          });
+        }
+      }
+    } catch (e) {
+      // 静默失败，不影响主流程
+      print('重新加载采购单汇总失败: $e');
+    }
+  }
+
   /// 加载配送员配送费预览
   Future<void> _loadRiderDeliveryFeePreview() async {
     if (_customerId == null || _items.isEmpty) {
@@ -2853,9 +3247,9 @@ class _SalesCreateOrderPageState extends State<SalesCreateOrderPage> {
           _items = items;
           _summary = summary;
         });
-        // 更新配送员配送费预览
-        _loadRiderDeliveryFeePreview();
-        // 更新销售分润预览
+        // 更新配送员配送费预览，等待完成后再更新销售分润预览
+        await _loadRiderDeliveryFeePreview();
+        // 更新销售分润预览（确保配送员配送费预览已完成）
         _loadSalesCommissionPreview();
       }
     } else {

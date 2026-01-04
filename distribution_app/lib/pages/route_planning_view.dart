@@ -112,9 +112,13 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 当应用从后台返回前台时，重新检查状态
+    // 当应用从后台返回前台时，重新检查状态并刷新路线
     if (state == AppLifecycleState.resumed) {
       _checkAndLoadPickupSuppliers();
+      // 如果已完成全部取货且有配送中订单，重新加载订单列表以刷新路线
+      if (_hasCompletedAllPickup && _userPosition != null) {
+        _loadDeliveringOrders();
+      }
     }
   }
 
@@ -829,6 +833,15 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
                     });
                   }
                 }
+                // 如果已完成全部取货且有配送中订单，触发 setState 以重新计算路线显示顺序
+                // 路线会根据新的配送员位置自动重新排序（在 build 方法中计算）
+                if (_hasCompletedAllPickup &&
+                    _deliveringOrders.isNotEmpty &&
+                    mounted) {
+                  setState(() {
+                    // 不需要修改数据，只是触发重新构建，路线会根据新位置自动重新排序
+                  });
+                }
               }
             },
             onError: (error) {
@@ -1090,8 +1103,9 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
               CurrentLocationLayer(
                 positionStream: _locationStreamController.stream,
               ),
-              // 配送路线（已完成取货时显示）- 按照后台排序顺序连接订单
-              // 注意：只连接未完成的订单，已送达订单只显示marker，不参与路线计算
+              // 配送路线（已完成取货时显示）- 根据配送员当前位置重新规划最近的待配送路线
+              // 注意：序号（route_sequence）保持不变，只是路线显示顺序根据距离重新规划
+              // 只连接未完成的订单，已送达订单只显示marker，不参与路线计算
               if (_hasCompletedAllPickup &&
                   _deliveringOrders.isNotEmpty &&
                   _userPosition != null)
@@ -1104,32 +1118,88 @@ class _RoutePlanningViewState extends State<RoutePlanningView>
                           _userPosition!.latitude,
                           _userPosition!.longitude,
                         ),
-                        // 依次连接各个未完成订单（按照 route_sequence 排序，订单列表已经排序）
-                        // 过滤掉已送达的订单（delivered 或 shipped）
-                        ..._deliveringOrders
-                            .where(
-                              (order) {
-                                final lat = order['latitude'] as num?;
-                                final lng = order['longitude'] as num?;
-                                if (lat == null || lng == null) return false;
-                                // 只包含未完成的订单
-                                final status = order['status'] as String? ?? '';
-                                return status != 'delivered' && status != 'shipped';
-                              },
-                            )
-                            .map((order) {
-                              final lat = (order['latitude'] as num?)
-                                  ?.toDouble();
-                              final lng = (order['longitude'] as num?)
-                                  ?.toDouble();
-                              if (lat == null || lng == null) return null;
-                              // 将GCJ-02坐标转换为WGS84坐标
-                              final wgs84Point =
-                                  CoordinateTransform.gcj02ToWgs84(lat, lng);
-                              return wgs84Point;
-                            })
-                            .where((p) => p != null)
-                            .cast<LatLng>(),
+                        // 根据配送员当前位置对未完成订单进行距离排序，然后显示路线
+                        // 序号（route_sequence）保持不变，只是路线显示顺序改变
+                        ...(() {
+                          // 获取所有未完成的订单
+                          final incompleteOrders = _deliveringOrders.where((
+                            order,
+                          ) {
+                            final lat = order['latitude'] as num?;
+                            final lng = order['longitude'] as num?;
+                            if (lat == null || lng == null) return false;
+                            // 只包含未完成的订单
+                            final status = order['status'] as String? ?? '';
+                            return status != 'delivered' && status != 'shipped';
+                          }).toList();
+
+                          // 如果只有一个或没有未完成订单，直接返回
+                          if (incompleteOrders.length <= 1) {
+                            return incompleteOrders
+                                .map((order) {
+                                  final lat = (order['latitude'] as num?)
+                                      ?.toDouble();
+                                  final lng = (order['longitude'] as num?)
+                                      ?.toDouble();
+                                  if (lat == null || lng == null) return null;
+                                  // 将GCJ-02坐标转换为WGS84坐标
+                                  final wgs84Point =
+                                      CoordinateTransform.gcj02ToWgs84(
+                                        lat,
+                                        lng,
+                                      );
+                                  return wgs84Point;
+                                })
+                                .where((p) => p != null)
+                                .cast<LatLng>();
+                          }
+
+                          // 根据配送员当前位置计算距离并排序
+                          final sortedOrders = List<Map<String, dynamic>>.from(
+                            incompleteOrders,
+                          );
+                          sortedOrders.sort((a, b) {
+                            final latA = (a['latitude'] as num?)?.toDouble();
+                            final lngA = (a['longitude'] as num?)?.toDouble();
+                            final latB = (b['latitude'] as num?)?.toDouble();
+                            final lngB = (b['longitude'] as num?)?.toDouble();
+
+                            if (latA == null || lngA == null) return 1;
+                            if (latB == null || lngB == null) return -1;
+
+                            // 计算到配送员位置的距离
+                            final distanceA = Geolocator.distanceBetween(
+                              _userPosition!.latitude,
+                              _userPosition!.longitude,
+                              latA,
+                              lngA,
+                            );
+                            final distanceB = Geolocator.distanceBetween(
+                              _userPosition!.latitude,
+                              _userPosition!.longitude,
+                              latB,
+                              lngB,
+                            );
+
+                            return distanceA.compareTo(distanceB);
+                          });
+
+                          // 返回排序后的坐标点
+                          return sortedOrders
+                              .map((order) {
+                                final lat = (order['latitude'] as num?)
+                                    ?.toDouble();
+                                final lng = (order['longitude'] as num?)
+                                    ?.toDouble();
+                                if (lat == null || lng == null) return null;
+                                // 将GCJ-02坐标转换为WGS84坐标
+                                final wgs84Point =
+                                    CoordinateTransform.gcj02ToWgs84(lat, lng);
+                                return wgs84Point;
+                              })
+                              .where((p) => p != null)
+                              .cast<LatLng>();
+                        })(),
                       ],
                       strokeWidth: 4,
                       color: const Color(0xFF20CB6B).withOpacity(0.7),

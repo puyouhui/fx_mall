@@ -253,7 +253,12 @@ func DeleteDeliveryFeeExclusion(id int) error {
 
 // CalculateDeliveryFee 根据采购单计算配送费用
 // userType: "wholesale" 表示批发客户，使用批发价；"retail" 或其他值表示零售客户，使用零售价
-func CalculateDeliveryFee(items []PurchaseListItem, userType string) (*DeliveryFeeSummary, error) {
+// priceOverrides: 可选的价格覆盖映射（采购单项ID -> 改价后的单价），用于销售员改价场景
+func CalculateDeliveryFee(items []PurchaseListItem, userType string, priceOverrides ...map[int]float64) (*DeliveryFeeSummary, error) {
+	var priceOverrideMap map[int]float64
+	if len(priceOverrides) > 0 && priceOverrides[0] != nil {
+		priceOverrideMap = priceOverrides[0]
+	}
 	summary := &DeliveryFeeSummary{
 		Tips:           []DeliveryFeeBlockingItem{},
 		BlockedItemIDs: []int{},
@@ -306,7 +311,17 @@ func CalculateDeliveryFee(items []PurchaseListItem, userType string) (*DeliveryF
 	for _, item := range items {
 		info := categoryInfo[item.ProductID]
 		summary.TotalQuantity += item.Quantity
-		amount := calculateItemAmount(item, userType)
+		// 如果有关键价格覆盖，使用覆盖价格；否则使用原始价格
+		var amount float64
+		if priceOverrideMap != nil {
+			if overridePrice, hasOverride := priceOverrideMap[item.ID]; hasOverride && overridePrice >= 0 {
+				amount = overridePrice * float64(item.Quantity)
+			} else {
+				amount = calculateItemAmount(item, userType)
+			}
+		} else {
+			amount = calculateItemAmount(item, userType)
+		}
 		summary.TotalAmount += amount
 
 		rule := pickDeliveryRule(item.ProductID, info, productRules, categoryRules)

@@ -369,8 +369,9 @@ func ListImages(category ...string) ([]map[string]interface{}, error) {
 	// 构建列表选项
 	listOptions := minio.ListObjectsOptions{
 		Recursive: true,
+		MaxKeys:   1000, // 限制每次最多返回1000个对象，避免一次性加载过多
 	}
-	
+
 	// 如果指定了目录分类，添加前缀过滤
 	if len(category) > 0 && category[0] != "" {
 		listOptions.Prefix = category[0] + "/"
@@ -407,7 +408,7 @@ func ListImages(category ...string) ([]map[string]interface{}, error) {
 		if isImage {
 			// 生成可访问的URL
 			imageURL := fmt.Sprintf("%s/%s/%s", cfg.BaseURL, cfg.Bucket, objectName)
-			
+
 			images = append(images, map[string]interface{}{
 				"name":      objectName,
 				"url":       imageURL,
@@ -418,6 +419,99 @@ func ListImages(category ...string) ([]map[string]interface{}, error) {
 	}
 
 	return images, nil
+}
+
+// ListImagesWithPagination 列出MinIO桶中的图片（支持分页，性能优化版本）
+// category: 目录分类，如 "products", "carousels", "others" 等，为空则列出所有
+// pageNum: 页码（从1开始）
+// pageSize: 每页数量
+// 返回: 图片列表, 总数, 错误
+// 注意：为了性能，这里采用单次遍历的方式，在遍历过程中统计总数并收集分页数据
+func ListImagesWithPagination(category string, pageNum, pageSize int) ([]map[string]interface{}, int, error) {
+	if minioClient == nil {
+		// 如果客户端未初始化，先初始化
+		if err := InitMinIO(); err != nil {
+			return nil, 0, fmt.Errorf("初始化MinIO客户端失败: %v", err)
+		}
+	}
+
+	cfg := config.Config.MinIO
+	ctx := context.Background()
+
+	// 图片扩展名
+	imageExtensions := map[string]bool{
+		".jpg":  true,
+		".jpeg": true,
+		".png":  true,
+		".gif":  true,
+		".webp": true,
+	}
+
+	// 构建列表选项
+	listOptions := minio.ListObjectsOptions{
+		Recursive: true,
+		MaxKeys:   1000, // 每次最多1000个对象，避免一次性加载过多
+	}
+
+	// 如果指定了目录分类，添加前缀过滤
+	if category != "" {
+		listOptions.Prefix = category + "/"
+	}
+
+	// 计算需要跳过的图片数量
+	skipCount := (pageNum - 1) * pageSize
+	collectedCount := 0
+	neededCount := pageSize
+
+	var total int
+	var paginatedImages []map[string]interface{}
+
+	// 列出对象（单次遍历，同时统计总数和收集分页数据）
+	objectCh := minioClient.ListObjects(ctx, cfg.Bucket, listOptions)
+
+	for object := range objectCh {
+		if object.Err != nil {
+			log.Printf("列出对象时出错: %v", object.Err)
+			continue
+		}
+
+		// 检查是否为图片文件
+		isImage := false
+		objectName := object.Key
+		for ext := range imageExtensions {
+			if len(objectName) >= len(ext) && objectName[len(objectName)-len(ext):] == ext {
+				isImage = true
+				break
+			}
+		}
+
+		if isImage {
+			total++ // 统计总数
+
+			// 如果还在跳过阶段，继续
+			if total <= skipCount {
+				continue
+			}
+
+			// 如果已经收集够了分页数据，继续遍历以获取总数，但不收集数据
+			if collectedCount >= neededCount {
+				continue
+			}
+
+			// 生成可访问的URL
+			imageURL := fmt.Sprintf("%s/%s/%s", cfg.BaseURL, cfg.Bucket, objectName)
+
+			paginatedImages = append(paginatedImages, map[string]interface{}{
+				"name":      objectName,
+				"url":       imageURL,
+				"size":      object.Size,
+				"updatedAt": object.LastModified.Format("2006-01-02 15:04:05"),
+			})
+			collectedCount++
+		}
+	}
+
+	return paginatedImages, total, nil
 }
 
 // BatchDeleteImages 批量删除图片
@@ -436,7 +530,7 @@ func BatchDeleteImages(imageURLs []string) error {
 	for _, imageURL := range imageURLs {
 		// 从URL中提取对象名称
 		objectName := extractObjectNameFromURL(imageURL, cfg.Endpoint, cfg.Bucket)
-		
+
 		// 如果URL格式不符合预期，尝试从完整URL中提取
 		if objectName == imageURL {
 			// 尝试从BaseURL格式中提取

@@ -988,6 +988,33 @@ func InitDB() error {
 			}
 		}
 
+		// 检查 order_items 表的改价相关字段
+		var originalUnitPriceExists int
+		checkOriginalUnitPriceQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'original_unit_price'`
+		if err := DB.QueryRow(checkOriginalUnitPriceQuery).Scan(&originalUnitPriceExists); err == nil && originalUnitPriceExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE order_items 
+				ADD COLUMN original_unit_price DECIMAL(10,2) DEFAULT NULL COMMENT '原始单价（从规格快照获取）' AFTER unit_price,
+				ADD COLUMN is_price_modified TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否改价' AFTER original_unit_price,
+				ADD COLUMN price_modification_reason VARCHAR(255) DEFAULT NULL COMMENT '改价原因' AFTER is_price_modified`); err != nil {
+				log.Printf("添加改价相关字段失败: %v", err)
+			} else {
+				log.Println("已添加改价相关字段到order_items表")
+			}
+		}
+
+		// 检查 orders 表的 has_price_modification 字段
+		var hasPriceModificationExists int
+		checkHasPriceModificationQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'has_price_modification'`
+		if err := DB.QueryRow(checkHasPriceModificationQuery).Scan(&hasPriceModificationExists); err == nil && hasPriceModificationExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN has_price_modification TINYINT(1) NOT NULL DEFAULT 0 COMMENT '订单是否包含改价商品' AFTER locked_at`); err != nil {
+				log.Printf("添加has_price_modification字段失败: %v", err)
+			} else {
+				log.Println("已添加has_price_modification字段到orders表")
+			}
+		}
+
 		// 检查并添加索引
 		// 检查 idx_is_urgent 索引
 		var idxIsUrgentExists int

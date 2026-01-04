@@ -97,7 +97,19 @@
           @click="toggleSelect(image.url)"
         >
           <div class="image-wrapper">
-            <img :src="image.url" :alt="image.name" class="image-preview" />
+            <!-- 优化：使用懒加载和占位符 -->
+            <img 
+              :data-src="image.url" 
+              :alt="image.name" 
+              class="image-preview lazy-image"
+              loading="lazy"
+              @load="handleImageLoad"
+              @error="handleImageError"
+            />
+            <!-- 加载占位符 -->
+            <div class="image-placeholder" v-if="!imageLoaded[image.url] || imageLoaded[image.url] === 'error'">
+              <el-icon class="loading-icon" v-if="imageLoaded[image.url] !== 'error'"><Loading /></el-icon>
+            </div>
             <div class="image-overlay">
               <el-checkbox
                 :model-value="selectedImages.includes(image.url)"
@@ -170,14 +182,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Search,
   Upload,
   Delete,
   Refresh,
-  ZoomIn
+  ZoomIn,
+  Loading,
+  Picture
 } from '@element-plus/icons-vue'
 import { getImageList, batchDeleteImages, uploadImage } from '../api/imageLibrary'
 
@@ -192,24 +206,98 @@ const total = ref(0)
 const selectedCategory = ref('') // 当前选择的目录
 const uploadCategory = ref('others') // 上传时选择的目录，默认为"其他图片"
 
+// 图片加载状态管理
+const imageLoaded = ref({})
+const imageObserver = ref(null)
+
 // 分页信息
 const pagination = reactive({
   pageNum: 1,
   pageSize: 30 // 每页30个（3行 x 10列）
 })
 
+// 图片懒加载处理
+const setupLazyLoading = () => {
+  // 清理旧的观察器
+  if (imageObserver.value) {
+    imageObserver.value.disconnect()
+  }
+
+  // 使用 Intersection Observer 实现更精确的懒加载
+  imageObserver.value = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target
+        const dataSrc = img.getAttribute('data-src')
+        if (dataSrc && !img.src) {
+          img.src = dataSrc
+          img.removeAttribute('data-src')
+        }
+        imageObserver.value.unobserve(img)
+      }
+    })
+  }, {
+    rootMargin: '50px' // 提前50px开始加载
+  })
+
+  // 观察所有懒加载图片
+  nextTick(() => {
+    const lazyImages = document.querySelectorAll('.lazy-image[data-src]')
+    lazyImages.forEach(img => {
+      imageObserver.value.observe(img)
+    })
+  })
+}
+
+// 图片加载成功
+const handleImageLoad = (event) => {
+  const img = event.target
+  const src = img.src || img.getAttribute('data-src')
+  if (src) {
+    imageLoaded.value[src] = true
+    img.classList.add('loaded')
+  }
+}
+
+// 图片加载失败
+const handleImageError = (event) => {
+  const img = event.target
+  const src = img.src || img.getAttribute('data-src')
+  if (src) {
+    // 标记为加载失败，显示错误状态
+    imageLoaded.value[src] = 'error'
+    const placeholder = img.nextElementSibling
+    if (placeholder && placeholder.classList.contains('image-placeholder')) {
+      placeholder.style.color = '#f56c6c'
+      // 使用 Vue 的方式更新内容
+      const icon = placeholder.querySelector('.loading-icon')
+      if (icon) {
+        icon.style.display = 'none'
+      }
+      const errorText = document.createElement('div')
+      errorText.style.cssText = 'font-size: 12px; margin-top: 5px; text-align: center;'
+      errorText.textContent = '加载失败'
+      placeholder.appendChild(errorText)
+    }
+  }
+}
+
 // 初始化数据
 const initData = async () => {
   loading.value = true
+  // 重置图片加载状态
+  imageLoaded.value = {}
+  
   try {
-    // 如果有搜索关键词，获取所有数据用于搜索
-    // 否则使用分页参数
+    // 优化：搜索时也使用合理的分页大小，避免一次性加载过多数据
+    // 由于后端已优化分页性能，我们可以使用较大的pageSize进行搜索，但限制在合理范围内
     let params = {}
     if (searchKeyword.value) {
-      // 搜索时获取所有数据（第一页，但pageSize很大）
+      // 搜索时使用较大的pageSize（但不超过500），以便在前端进行搜索过滤
+      // 如果搜索结果很多，用户可以通过分页查看更多结果
       params = {
         pageNum: 1,
-        pageSize: 10000 // 获取所有数据用于搜索
+        pageSize: 500 // 从10000减少到500，避免请求过大导致卡死
       }
     } else {
       params = {
@@ -246,6 +334,10 @@ const initData = async () => {
       images.value.sort((a, b) => {
         return new Date(b.updatedAt) - new Date(a.updatedAt)
       })
+      
+      // 设置懒加载
+      await nextTick()
+      setupLazyLoading()
     } else {
       ElMessage.error(response.message || '获取图片列表失败')
     }
@@ -519,6 +611,13 @@ const formatFileSize = (bytes) => {
 onMounted(() => {
   initData()
 })
+
+// 组件卸载时清理
+onUnmounted(() => {
+  if (imageObserver.value) {
+    imageObserver.value.disconnect()
+  }
+})
 </script>
 
 <style scoped>
@@ -555,6 +654,7 @@ onMounted(() => {
   grid-template-columns: repeat(10, 1fr); /* 每行10个 */
   gap: 15px;
   margin-top: 20px;
+  contain: layout style paint; /* 优化：减少重绘 */
 }
 
 @media (max-width: 1600px) {
@@ -588,6 +688,7 @@ onMounted(() => {
   cursor: pointer;
   transition: all 0.3s;
   background: #fff;
+  will-change: transform; /* 优化：提示浏览器优化 */
 }
 
 .image-item:hover {
@@ -615,6 +716,42 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.image-preview.loaded {
+  opacity: 1;
+}
+
+/* 加载占位符 */
+.image-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #f5f7fa;
+  color: #909399;
+  z-index: 1;
+}
+
+.loading-icon {
+  font-size: 24px;
+  animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .image-overlay {

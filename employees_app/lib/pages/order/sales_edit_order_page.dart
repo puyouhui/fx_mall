@@ -32,6 +32,9 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
   List<dynamic>?
   _purchaseListBackup; // 用户原来的采购单备份（从SyncOrderItemsToPurchaseList获取）
 
+  // 改价信息：采购单项ID -> {unit_price: 改价后的单价}
+  Map<int, Map<String, dynamic>> _priceModifications = {};
+
   List<dynamic> _coupons = [];
   Map<String, dynamic>? _selectedCoupon;
   double _urgentFee = 0.0; // 加急费用
@@ -112,6 +115,25 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
     final order = orderData['order'] as Map<String, dynamic>?;
     final user = orderData['user'] as Map<String, dynamic>?;
     final address = orderData['address'] as Map<String, dynamic>?;
+    final orderItems = orderData['order_items'] as List<dynamic>? ?? [];
+
+    // 从订单商品中提取改价信息，用于后续匹配采购单项
+    // 使用商品ID+规格名称作为键来匹配
+    final Map<String, Map<String, dynamic>> orderItemPriceMods = {};
+    for (final item in orderItems) {
+      final itemMap = item as Map<String, dynamic>;
+      final productId = itemMap['product_id'] as int?;
+      final specName = (itemMap['spec_name'] as String?) ?? '';
+      final isPriceModified = (itemMap['is_price_modified'] as bool?) ?? false;
+      final originalUnitPrice = (itemMap['original_unit_price'] as num?)
+          ?.toDouble();
+      final unitPrice = (itemMap['unit_price'] as num?)?.toDouble() ?? 0.0;
+
+      if (productId != null && isPriceModified && originalUnitPrice != null) {
+        final key = '$productId|$specName';
+        orderItemPriceMods[key] = {'unit_price': unitPrice};
+      }
+    }
 
     if (order == null || user == null) {
       setState(() {
@@ -315,6 +337,22 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
       }
     }
 
+    // 初始化改价信息：根据商品ID和规格名称匹配订单商品中的改价信息
+    final priceMods = <int, Map<String, dynamic>>{};
+    for (final purchaseItem in purchaseItems) {
+      final itemMap = purchaseItem as Map<String, dynamic>;
+      final itemId = itemMap['id'] as int?;
+      final productId = itemMap['product_id'] as int?;
+      final specName = (itemMap['spec_name'] as String?) ?? '';
+
+      if (itemId != null && productId != null) {
+        final key = '$productId|$specName';
+        if (orderItemPriceMods.containsKey(key)) {
+          priceMods[itemId] = orderItemPriceMods[key]!;
+        }
+      }
+    }
+
     setState(() {
       _user = user;
       _addresses = addrList;
@@ -325,6 +363,7 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
       _coupons = coupons;
       _selectedCoupon = selectedCoupon;
       _purchaseListBackup = backup; // 保存备份数据（用户进入修改订单页面时的原始采购单）
+      _priceModifications = priceMods; // 初始化改价信息
       _isLoading = false;
       _isLocked = true; // 订单已锁定
     });
@@ -385,6 +424,14 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
       _isSubmitting = true;
     });
 
+    // 构建改价信息列表
+    final priceModifications = _priceModifications.entries.map((entry) {
+      return {
+        'purchase_list_item_id': entry.key,
+        'unit_price': entry.value['unit_price'],
+      };
+    }).toList();
+
     final body = <String, dynamic>{
       'address_id': _selectedAddressId,
       'item_ids': <int>[], // 使用全部采购单商品
@@ -397,6 +444,8 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
       if (_selectedCoupon != null) 'coupon_id': _getCouponId(_selectedCoupon!),
       if (_purchaseListBackup != null)
         'purchase_list_backup': _purchaseListBackup, // 传入备份数据
+      if (priceModifications.isNotEmpty)
+        'price_modifications': priceModifications,
     };
 
     final resp = await Request.put<Map<String, dynamic>>(
@@ -955,6 +1004,8 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
           _items = (purchase['items'] as List<dynamic>? ?? []);
           _summary = purchaseSummary;
           _urgentFee = urgentFee;
+          // 删除改价信息（如果该商品被删除）
+          _priceModifications.remove(itemId);
         });
         // 刷新配送员配送费预览
         _loadRiderDeliveryFeePreview();
@@ -965,6 +1016,257 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
           content: Text(resp.message.isNotEmpty ? resp.message : '删除失败'),
         ),
       );
+    }
+  }
+
+  /// 改价对话框
+  Future<void> _modifyPrice(
+    int itemId,
+    double originalPrice,
+    double currentPrice,
+    double costPrice,
+  ) async {
+    final priceController = TextEditingController(
+      text: currentPrice.toStringAsFixed(2),
+    );
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        String? errorMessage;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('修改价格'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '原价：¥${originalPrice.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF8C92A4),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: priceController,
+                    decoration: const InputDecoration(
+                      labelText: '新价格',
+                      hintText: '请输入新价格',
+                      border: OutlineInputBorder(),
+                      prefixText: '¥',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    autofocus: true,
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      errorMessage!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFFF5A5F),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(false);
+                },
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final newPriceText = priceController.text.trim();
+
+                  if (newPriceText.isEmpty) {
+                    setDialogState(() {
+                      errorMessage = '请输入新价格';
+                    });
+                    return;
+                  }
+
+                  final newPrice = double.tryParse(newPriceText);
+                  if (newPrice == null || newPrice < 0) {
+                    setDialogState(() {
+                      errorMessage = '价格格式不正确';
+                    });
+                    return;
+                  }
+
+                  // 验证不能低于成本价
+                  if (costPrice > 0 && newPrice < costPrice) {
+                    setDialogState(() {
+                      errorMessage = '价格不能低于成本价';
+                    });
+                    return;
+                  }
+
+                  Navigator.of(dialogContext).pop(true);
+                },
+                child: const Text('确定'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    // 延迟 dispose，确保对话框完全关闭
+    await Future.delayed(const Duration(milliseconds: 150));
+    priceController.dispose();
+
+    if (result == true) {
+      final newPriceText = priceController.text.trim();
+      final newPrice = double.tryParse(newPriceText);
+
+      if (newPrice != null && newPrice >= 0) {
+        // 延迟更新状态，确保对话框完全关闭
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        if (mounted) {
+          setState(() {
+            if (newPrice == originalPrice) {
+              // 如果改回原价，删除改价信息
+              _priceModifications.remove(itemId);
+            } else {
+              // 保存改价信息
+              _priceModifications[itemId] = {'unit_price': newPrice};
+            }
+          });
+
+          // 重新计算配送费和销售提成
+          _loadRiderDeliveryFeePreview();
+          // 重新计算汇总信息（使用改价后的价格）
+          _recalculateSummary();
+        }
+      }
+    }
+  }
+
+  /// 重新计算汇总信息（根据改价后的价格）
+  void _recalculateSummary() {
+    if (_items.isEmpty) {
+      setState(() {
+        _summary = null;
+      });
+      return;
+    }
+
+    // 计算商品总金额（使用改价后的价格）
+    double totalAmount = 0.0;
+    int totalQuantity = 0;
+
+    for (final raw in _items) {
+      final item = raw as Map<String, dynamic>;
+      final itemId = item['id'] as int?;
+      final qty = (item['quantity'] as int?) ?? 0;
+      final snapshot = item['spec_snapshot'] as Map<String, dynamic>? ?? {};
+      final retailPrice = (snapshot['retail_price'] as num?)?.toDouble() ?? 0.0;
+      final wholesalePrice =
+          (snapshot['wholesale_price'] as num?)?.toDouble() ?? 0.0;
+      final cost = (snapshot['cost'] as num?)?.toDouble() ?? 0.0;
+
+      final userType = (_user?['user_type'] as String?) ?? 'retail';
+      // 计算原始价格
+      double originalUnitPrice;
+      if (userType == 'wholesale') {
+        originalUnitPrice = wholesalePrice > 0 ? wholesalePrice : retailPrice;
+      } else {
+        originalUnitPrice = retailPrice > 0 ? retailPrice : wholesalePrice;
+      }
+      if (originalUnitPrice <= 0) {
+        originalUnitPrice = cost > 0 ? cost : 0.0;
+      }
+
+      // 检查是否有改价
+      double unitPrice = originalUnitPrice;
+      if (itemId != null && _priceModifications.containsKey(itemId)) {
+        final mod = _priceModifications[itemId]!;
+        final modifiedPrice = (mod['unit_price'] as num?)?.toDouble();
+        if (modifiedPrice != null && modifiedPrice >= 0) {
+          unitPrice = modifiedPrice;
+        }
+      }
+
+      totalAmount += unitPrice * qty;
+      totalQuantity += qty;
+    }
+
+    // 获取原有的配送费信息（从 _summary 中获取，如果没有则从后端重新获取）
+    final oldSummary = _summary ?? {};
+    final deliveryFee = (oldSummary['delivery_fee'] as num?)?.toDouble() ?? 0.0;
+    final freeShippingThreshold =
+        (oldSummary['free_shipping_threshold'] as num?)?.toDouble() ?? 0.0;
+    final isFreeShipping =
+        totalAmount >= freeShippingThreshold && freeShippingThreshold > 0;
+
+    // 更新汇总信息
+    setState(() {
+      _summary = {
+        ...oldSummary, // 先展开旧数据
+        'total_amount': totalAmount, // 然后覆盖为新计算的金额（改价后）
+        'delivery_fee': isFreeShipping ? 0.0 : deliveryFee,
+        'free_shipping_threshold': freeShippingThreshold,
+        'is_free_shipping': isFreeShipping,
+        'total_quantity': totalQuantity,
+      };
+    });
+
+    // 如果配送费需要重新计算（因为商品金额变化可能影响免配送费判断），重新获取
+    if (isFreeShipping != (oldSummary['is_free_shipping'] as bool? ?? false)) {
+      // 重新获取采购单数据以更新配送费
+      _reloadPurchaseListForSummary();
+    }
+  }
+
+  /// 重新加载采购单数据以更新汇总信息（仅用于更新配送费）
+  Future<void> _reloadPurchaseListForSummary() async {
+    if (_customerId == null) return;
+
+    try {
+      final purchaseResp = await Request.get<Map<String, dynamic>>(
+        '/employee/sales/customers/$_customerId/purchase-list',
+        queryParams: {'is_urgent': _isUrgent.toString()},
+        parser: (data) => data as Map<String, dynamic>,
+      );
+
+      if (!mounted) return;
+
+      if (purchaseResp.isSuccess && purchaseResp.data != null) {
+        final purchase = purchaseResp.data!;
+        final purchaseSummary = purchase['summary'] as Map<String, dynamic>?;
+
+        if (purchaseSummary != null) {
+          // 只更新配送费相关字段，商品金额使用前端计算的（改价后的）
+          final oldSummary = _summary ?? {};
+          final calculatedTotalAmount =
+              (oldSummary['total_amount'] as num?)?.toDouble() ?? 0.0;
+          final calculatedTotalQuantity =
+              (oldSummary['total_quantity'] as int?) ?? 0;
+
+          setState(() {
+            _summary = {
+              ...purchaseSummary,
+              'total_amount': calculatedTotalAmount, // 使用前端计算的商品金额（改价后）
+              'total_quantity': calculatedTotalQuantity, // 使用前端计算的数量
+            };
+          });
+        }
+      }
+    } catch (e) {
+      // 静默失败，不影响主流程
+      print('重新加载采购单汇总失败: $e');
     }
   }
 
@@ -1123,15 +1425,33 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
               final cost = (snapshot['cost'] as num?)?.toDouble() ?? 0.0;
 
               final userType = (_user?['user_type'] as String?) ?? 'retail';
-              double unitPrice;
+              // 计算原始价格
+              double originalUnitPrice;
               if (userType == 'wholesale') {
-                unitPrice = wholesalePrice > 0 ? wholesalePrice : retailPrice;
+                originalUnitPrice = wholesalePrice > 0
+                    ? wholesalePrice
+                    : retailPrice;
               } else {
-                unitPrice = retailPrice > 0 ? retailPrice : wholesalePrice;
+                originalUnitPrice = retailPrice > 0
+                    ? retailPrice
+                    : wholesalePrice;
               }
-              if (unitPrice <= 0) {
-                unitPrice = cost > 0 ? cost : 0.0;
+              if (originalUnitPrice <= 0) {
+                originalUnitPrice = cost > 0 ? cost : 0.0;
               }
+
+              // 检查是否有改价
+              double unitPrice = originalUnitPrice;
+              bool isPriceModified = false;
+              if (itemId != null && _priceModifications.containsKey(itemId)) {
+                final mod = _priceModifications[itemId]!;
+                final modifiedPrice = (mod['unit_price'] as num?)?.toDouble();
+                if (modifiedPrice != null && modifiedPrice >= 0) {
+                  unitPrice = modifiedPrice;
+                  isPriceModified = unitPrice != originalUnitPrice;
+                }
+              }
+
               final subtotal = unitPrice * qty;
               final image = (item['product_image'] as String?) ?? '';
 
@@ -1233,14 +1553,96 @@ class _SalesEditOrderPageState extends State<SalesEditOrderPage>
                                       ),
                                       const SizedBox(height: 4),
                                     ],
-                                    Text(
-                                      '¥${unitPrice.toStringAsFixed(2)}',
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF20CB6B),
-                                      ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (isPriceModified) ...[
+                                          Text(
+                                            '¥${originalUnitPrice.toStringAsFixed(2)}',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey[400],
+                                              decoration:
+                                                  TextDecoration.lineThrough,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                        ],
+                                        Text(
+                                          '¥${unitPrice.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: isPriceModified
+                                                ? const Color(0xFFFF5A5F)
+                                                : const Color(0xFF20CB6B),
+                                          ),
+                                        ),
+                                      ],
                                     ),
+                                    if (isPriceModified && itemId != null) ...[
+                                      const SizedBox(height: 2),
+                                      InkWell(
+                                        onTap: () => _modifyPrice(
+                                          itemId,
+                                          originalUnitPrice,
+                                          unitPrice,
+                                          cost,
+                                        ),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(
+                                              0xFFFF5A5F,
+                                            ).withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            '已改价',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Color(0xFFFF5A5F),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ] else if (itemId != null) ...[
+                                      const SizedBox(height: 2),
+                                      InkWell(
+                                        onTap: () => _modifyPrice(
+                                          itemId,
+                                          originalUnitPrice,
+                                          unitPrice,
+                                          cost,
+                                        ),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(
+                                              0xFF20CB6B,
+                                            ).withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            '改价',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Color(0xFF20CB6B),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),

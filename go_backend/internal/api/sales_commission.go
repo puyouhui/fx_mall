@@ -59,9 +59,12 @@ func PreviewSalesCommission(c *gin.Context) {
 		return
 	}
 
-	// 判断是否新客户（如果有order_id，查询该订单之前是否有已结算订单）
+	// 判断是否新客户
+	// 如果没有order_id（开单预览时），需要检查该用户是否有其他已创建的订单
+	// 如果有order_id，使用IsNewCustomerOrder函数判断（会检查是否有其他订单）
 	isNewCustomer := false
 	if req.OrderID > 0 {
+		// 有订单ID，使用IsNewCustomerOrder函数判断（会检查是否有其他订单）
 		var err error
 		isNewCustomer, err = model.IsNewCustomerOrder(req.UserID, req.OrderID)
 		if err != nil {
@@ -69,11 +72,22 @@ func PreviewSalesCommission(c *gin.Context) {
 			isNewCustomer = false
 		}
 	} else {
-		// 没有order_id，查询该用户是否有已结算订单
-		// 如果没有已结算订单，则认为是新客户
-		hasSettledOrder, err := model.HasSettledOrder(req.UserID)
-		if err == nil && !hasSettledOrder {
+		// 没有order_id（开单预览时），需要检查该用户是否有其他已创建的订单
+		// 只要存在其他非取消状态的订单，就不应该是新客户
+		query := `
+			SELECT COUNT(*) 
+			FROM orders o
+			WHERE o.user_id = ?
+			  AND o.status != 'cancelled'
+		`
+		var count int
+		err := database.DB.QueryRow(query, req.UserID).Scan(&count)
+		if err == nil && count == 0 {
+			// 没有任何非取消状态的订单，是新客户
 			isNewCustomer = true
+		} else {
+			// 已有其他订单，不是新客户
+			isNewCustomer = false
 		}
 	}
 

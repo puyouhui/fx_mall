@@ -165,7 +165,7 @@ func GetSalesCustomerByCode(c *gin.Context) {
 	})
 }
 
-// GetMyPendingOrders 获取当前销售员名下客户的待配送订单列表（分页）
+// GetMyPendingOrders 获取当前销售员名下客户的待完成订单列表（分页，收款之前的订单）
 func GetMyPendingOrders(c *gin.Context) {
 	employee, ok := getEmployeeFromContext(c)
 	if !ok {
@@ -186,9 +186,10 @@ func GetMyPendingOrders(c *gin.Context) {
 		pageSize = 10
 	}
 
-	orders, total, err := model.GetPendingOrdersBySalesCode(employee.EmployeeCode, pageNum, pageSize)
+	// 使用 GetUncompletedOrdersBySalesCode 获取所有待完成订单（收款之前的）
+	orders, total, err := model.GetUncompletedOrdersBySalesCode(employee.EmployeeCode, pageNum, pageSize)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取待配送订单失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取待完成订单失败: " + err.Error()})
 		return
 	}
 
@@ -336,16 +337,22 @@ func GetSalesOrderDetail(c *gin.Context) {
 		"user_type":  user.UserType,
 	}
 
-	// 获取配送费计算结果（用于提取配送员费用）
+	// 获取配送费计算结果和订单利润（用于提取配送员费用和计算销售分成）
 	var deliveryFeeCalculation map[string]interface{}
 	var riderPayableFee float64
 	var deliveryFeeResult *model.DeliveryFeeCalculationResult
+	var orderProfit float64
 
 	var deliveryFeeCalcJSON sql.NullString
+	var orderProfitVal sql.NullFloat64
 	err = database.DB.QueryRow(`
-		SELECT delivery_fee_calculation
+		SELECT order_profit, delivery_fee_calculation
 		FROM orders WHERE id = ?
-	`, id).Scan(&deliveryFeeCalcJSON)
+	`, id).Scan(&orderProfitVal, &deliveryFeeCalcJSON)
+
+	if err == nil && orderProfitVal.Valid {
+		orderProfit = orderProfitVal.Float64
+	}
 
 	if err == nil && deliveryFeeCalcJSON.Valid && deliveryFeeCalcJSON.String != "" {
 		var result model.DeliveryFeeCalculationResult
@@ -365,15 +372,37 @@ func GetSalesOrderDetail(c *gin.Context) {
 		}
 	}
 
-	// 获取订单利润
-	var orderProfit float64
-	var orderProfitVal sql.NullFloat64
-	err = database.DB.QueryRow(`
-		SELECT order_profit
-		FROM orders WHERE id = ?
-	`, id).Scan(&orderProfitVal)
-	if err == nil && orderProfitVal.Valid {
-		orderProfit = orderProfitVal.Float64
+	// 如果订单利润或配送费计算结果为空，立即计算（确保销售分成预览能正确显示）
+	if !orderProfitVal.Valid || !deliveryFeeCalcJSON.Valid || deliveryFeeCalcJSON.String == "" {
+		// 同步计算，确保返回的数据是完整的
+		_ = model.UpdateOrderDeliveryInfo(id)
+		_ = model.CalculateAndStoreOrderProfit(id)
+		// 重新获取计算后的数据
+		err = database.DB.QueryRow(`
+			SELECT order_profit, delivery_fee_calculation
+			FROM orders WHERE id = ?
+		`, id).Scan(&orderProfitVal, &deliveryFeeCalcJSON)
+		if err == nil && orderProfitVal.Valid {
+			orderProfit = orderProfitVal.Float64
+		}
+		// 重新解析配送费计算结果
+		if err == nil && deliveryFeeCalcJSON.Valid && deliveryFeeCalcJSON.String != "" {
+			var result model.DeliveryFeeCalculationResult
+			if json.Unmarshal([]byte(deliveryFeeCalcJSON.String), &result) == nil {
+				deliveryFeeResult = &result
+				riderPayableFee = result.RiderPayableFee
+				deliveryFeeCalculation = map[string]interface{}{
+					"rider_payable_fee":   result.RiderPayableFee,
+					"base_fee":            result.BaseFee,
+					"isolated_fee":        result.IsolatedFee,
+					"item_fee":            result.ItemFee,
+					"urgent_fee":          result.UrgentFee,
+					"weather_fee":         result.WeatherFee,
+					"profit_share":        result.ProfitShare,
+					"total_platform_cost": result.TotalPlatformCost,
+				}
+			}
+		}
 	}
 
 	// 添加销售分成信息
@@ -381,10 +410,91 @@ func GetSalesOrderDetail(c *gin.Context) {
 	var salesCommission map[string]interface{}
 
 	if user.SalesCode != "" {
-		// 计算预览分成（所有订单都显示）
-		previewCommission := calculateSalesCommissionPreviewForSales(order, deliveryFeeResult, orderProfit, user.SalesCode)
-		if previewCommission != nil {
-			salesCommissionPreview = previewCommission
+		// 对于已收款订单，如果已有销售分成记录，优先从记录中读取新客状态
+		// 这样可以确保第一单的新客状态不会因为创建第二单而改变
+		var isNewCustomerForPreview bool
+		if order.Status == "paid" {
+			commissions, err := model.GetSalesCommissionsByOrderIDs([]int{id})
+			if err == nil && len(commissions) > 0 && commissions[0] != nil {
+				// 已有销售分成记录，使用记录中的新客状态
+				isNewCustomerForPreview = commissions[0].IsNewCustomerOrder
+			} else {
+				// 没有销售分成记录，重新判断
+				isNewCustomerForPreview, _ = model.IsNewCustomerOrder(order.UserID, order.ID)
+			}
+		} else {
+			// 未收款订单：检查是否有已计入分成的新客订单记录
+			// 如果有，说明该用户已经有新客订单，当前订单不是新客
+			query := `
+				SELECT COUNT(*) 
+				FROM sales_commissions sc
+				INNER JOIN orders o ON sc.order_id = o.id
+				WHERE sc.user_id = ?
+				  AND sc.order_id != ?
+				  AND sc.is_new_customer_order = 1
+				  AND sc.is_accounted = 1
+				  AND sc.is_accounted_cancelled = 0
+				  AND o.status != 'cancelled'
+			`
+			var count int
+			err := database.DB.QueryRow(query, order.UserID, order.ID).Scan(&count)
+			if err == nil && count > 0 {
+				// 已有新客订单记录，当前订单不是新客
+				isNewCustomerForPreview = false
+			} else {
+				// 没有新客订单记录，检查是否是第一个订单
+				// 检查该订单是否是该用户的第一个订单（基于订单ID，排除取消的）
+				checkQuery := `
+					SELECT COUNT(*) 
+					FROM orders o
+					WHERE o.user_id = ?
+					  AND o.id < ?
+					  AND o.status != 'cancelled'
+				`
+				var orderCount int
+				err = database.DB.QueryRow(checkQuery, order.UserID, order.ID).Scan(&orderCount)
+				if err == nil && orderCount == 0 {
+					// 这是第一个订单，是新客
+					isNewCustomerForPreview = true
+				} else {
+					// 不是第一个订单，不是新客
+					isNewCustomerForPreview = false
+				}
+			}
+		}
+
+		// 计算预览分成（使用确定的新客状态）
+		orderAmount := order.TotalAmount
+		goodsCost := order.GoodsAmount - orderProfit
+		deliveryCost := 0.0
+		if deliveryFeeResult != nil {
+			deliveryCost = deliveryFeeResult.TotalPlatformCost
+		}
+		currentMonth := time.Now().Format("2006-01")
+		monthTotalSales, _ := model.GetMonthlyTotalSales(user.SalesCode, currentMonth)
+		calcResult, err := model.CalculateSalesCommission(
+			user.SalesCode,
+			orderAmount,
+			goodsCost,
+			deliveryCost,
+			isNewCustomerForPreview,
+			monthTotalSales,
+		)
+		if err == nil {
+			salesCommissionPreview = map[string]interface{}{
+				"total_commission":      calcResult.TotalCommission,
+				"base_commission":       calcResult.BaseCommission,
+				"new_customer_bonus":    calcResult.NewCustomerBonus,
+				"tier_commission":       calcResult.TierCommission,
+				"tier_level":            calcResult.TierLevel,
+				"is_valid_order":        calcResult.IsValidOrder,
+				"is_new_customer_order": calcResult.IsNewCustomerOrder,
+				"is_preview":            true,
+				"order_profit":          orderProfit,
+				"order_amount":          orderAmount,
+				"goods_cost":            goodsCost,
+				"delivery_cost":         deliveryCost,
+			}
 		}
 
 		// 已收款订单：从数据库查询已计入的分成
@@ -432,6 +542,28 @@ func GetSalesOrderDetail(c *gin.Context) {
 	}
 	if salesCommission != nil {
 		result["sales_commission"] = salesCommission
+	}
+
+	// 如果订单状态是已送达或已收款，获取配送记录（包含配送照片）
+	if order.Status == "delivered" || order.Status == "shipped" || order.Status == "paid" || order.Status == "completed" {
+		deliveryRecord, err := model.GetDeliveryRecordByOrderID(id)
+		if err == nil && deliveryRecord != nil {
+			deliveryRecordData := map[string]interface{}{
+				"id":                     deliveryRecord.ID,
+				"order_id":               deliveryRecord.OrderID,
+				"delivery_employee_code": deliveryRecord.DeliveryEmployeeCode,
+				"completed_at":           deliveryRecord.CompletedAt,
+				"created_at":             deliveryRecord.CreatedAt,
+				"updated_at":             deliveryRecord.UpdatedAt,
+			}
+			if deliveryRecord.ProductImageURL != nil {
+				deliveryRecordData["product_image_url"] = *deliveryRecord.ProductImageURL
+			}
+			if deliveryRecord.DoorplateImageURL != nil {
+				deliveryRecordData["doorplate_image_url"] = *deliveryRecord.DoorplateImageURL
+			}
+			result["delivery_record"] = deliveryRecordData
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -747,6 +879,12 @@ func UpdateOrderForCustomer(c *gin.Context) {
 		return
 	}
 
+	type PriceModification struct {
+		PurchaseListItemID int     `json:"purchase_list_item_id"` // 采购单项ID
+		UnitPrice          float64 `json:"unit_price"`            // 改价后的单价
+		Reason             string  `json:"reason"`                // 改价原因
+	}
+
 	var req struct {
 		AddressID           int                      `json:"address_id" binding:"required"`
 		ItemIDs             []int                    `json:"item_ids"`              // 采购单项ID列表，为空则使用全部
@@ -758,6 +896,7 @@ func UpdateOrderForCustomer(c *gin.Context) {
 		RequirePhoneContact bool                     `json:"require_phone_contact"` // 配送时是否电话联系
 		IsUrgent            bool                     `json:"is_urgent"`             // 是否加急订单
 		PurchaseListBackup  []model.PurchaseListItem `json:"purchase_list_backup"`  // 用户原来的采购单备份（从 SyncOrderItemsToPurchaseList 获取）
+		PriceModifications  []PriceModification      `json:"price_modifications"`   // 改价信息列表（可选）
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -849,37 +988,31 @@ func UpdateOrderForCustomer(c *gin.Context) {
 		userType = "retail"
 	}
 
-	// 计算配送费
-	summary, err := model.CalculateDeliveryFee(items, userType)
+	// 构建改价映射表（采购单项ID -> 改价后的单价），用于配送费计算
+	priceOverrideMap := make(map[int]float64)
+	priceModMap := make(map[int]model.PriceModificationInfo)
+	for _, mod := range req.PriceModifications {
+		if mod.PurchaseListItemID > 0 && mod.UnitPrice >= 0 {
+			priceOverrideMap[mod.PurchaseListItemID] = mod.UnitPrice
+			priceModMap[mod.PurchaseListItemID] = model.PriceModificationInfo{
+				UnitPrice: mod.UnitPrice,
+				Reason:    mod.Reason,
+			}
+		}
+	}
+
+	// 计算配送费（使用改价后的价格）
+	summary, err := model.CalculateDeliveryFee(items, userType, priceOverrideMap)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "计算配送费失败: " + err.Error()})
 		return
 	}
 
-	// 计算订单金额和分类信息用于优惠券筛选
-	orderAmount := 0.0
+	// 计算订单金额（使用配送费计算中的TotalAmount，已应用改价）
+	orderAmount := summary.TotalAmount
 	categoryIDSet := make(map[int]struct{})
 	productIDs := make([]int, 0, len(items))
 	for _, item := range items {
-		var price float64
-		if userType == "wholesale" {
-			price = item.SpecSnapshot.WholesalePrice
-			if price <= 0 {
-				price = item.SpecSnapshot.RetailPrice
-			}
-		} else {
-			price = item.SpecSnapshot.RetailPrice
-			if price <= 0 {
-				price = item.SpecSnapshot.WholesalePrice
-			}
-		}
-		if price <= 0 {
-			price = item.SpecSnapshot.Cost
-		}
-		if price < 0 {
-			price = 0
-		}
-		orderAmount += price * float64(item.Quantity)
 		productIDs = append(productIDs, item.ProductID)
 	}
 
@@ -999,8 +1132,9 @@ func UpdateOrderForCustomer(c *gin.Context) {
 	// 插入新的订单商品
 	itemStmt, err := tx.Prepare(`
 		INSERT INTO order_items (
-			order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image,
+			original_unit_price, is_price_modified, price_modification_reason
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "准备插入订单商品失败: " + err.Error()})
@@ -1008,26 +1142,57 @@ func UpdateOrderForCustomer(c *gin.Context) {
 	}
 	defer itemStmt.Close()
 
+	hasPriceModification := false
 	for _, it := range items {
-		var price float64
+		// 计算原始价格
+		var originalPrice float64
 		if userType == "wholesale" {
-			price = it.SpecSnapshot.WholesalePrice
-			if price <= 0 {
-				price = it.SpecSnapshot.RetailPrice
+			originalPrice = it.SpecSnapshot.WholesalePrice
+			if originalPrice <= 0 {
+				originalPrice = it.SpecSnapshot.RetailPrice
 			}
 		} else {
-			price = it.SpecSnapshot.RetailPrice
-			if price <= 0 {
-				price = it.SpecSnapshot.WholesalePrice
+			originalPrice = it.SpecSnapshot.RetailPrice
+			if originalPrice <= 0 {
+				originalPrice = it.SpecSnapshot.WholesalePrice
 			}
 		}
-		if price <= 0 {
-			price = it.SpecSnapshot.Cost
+		if originalPrice <= 0 {
+			originalPrice = it.SpecSnapshot.Cost
 		}
-		if price < 0 {
-			price = 0
+		if originalPrice < 0 {
+			originalPrice = 0
 		}
+
+		// 检查是否有改价
+		var price float64
+		var isPriceModified bool
+		var priceModReason *string
+		if mod, hasMod := priceModMap[it.ID]; hasMod {
+			price = mod.UnitPrice
+			if price < 0 {
+				price = 0
+			}
+			isPriceModified = price != originalPrice
+			if isPriceModified {
+				hasPriceModification = true
+				if mod.Reason != "" {
+					priceModReason = &mod.Reason
+				}
+			} else {
+				price = originalPrice
+			}
+		} else {
+			price = originalPrice
+		}
+
 		subtotal := price * float64(it.Quantity)
+
+		// 准备插入数据
+		var originalPricePtr *float64
+		if isPriceModified {
+			originalPricePtr = &originalPrice
+		}
 
 		_, err = itemStmt.Exec(
 			id,
@@ -1038,9 +1203,21 @@ func UpdateOrderForCustomer(c *gin.Context) {
 			price,
 			subtotal,
 			it.ProductImage,
+			originalPricePtr,
+			boolToTinyInt(isPriceModified),
+			priceModReason,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "插入订单商品失败: " + err.Error()})
+			return
+		}
+	}
+
+	// 如果订单包含改价商品，更新订单表的has_price_modification字段
+	if hasPriceModification {
+		_, err = tx.Exec(`UPDATE orders SET has_price_modification = 1 WHERE id = ?`, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新订单改价标记失败: " + err.Error()})
 			return
 		}
 	}
@@ -1687,7 +1864,7 @@ func GetSalesCustomerOrders(c *gin.Context) {
 			"remark":                order.Remark,
 			"out_of_stock_strategy": order.OutOfStockStrategy,
 			"trust_receipt":         order.TrustReceipt,
-			"hide_price":           order.HidePrice,
+			"hide_price":            order.HidePrice,
 			"require_phone_contact": order.RequirePhoneContact,
 			"expected_delivery_at":  order.ExpectedDeliveryAt,
 			"created_at":            order.CreatedAt,
@@ -2170,6 +2347,12 @@ func CreateOrderForCustomer(c *gin.Context) {
 		return
 	}
 
+	type PriceModification struct {
+		PurchaseListItemID int     `json:"purchase_list_item_id"` // 采购单项ID
+		UnitPrice          float64 `json:"unit_price"`            // 改价后的单价
+		Reason             string  `json:"reason"`                // 改价原因
+	}
+
 	var req struct {
 		UserID              int                      `json:"user_id" binding:"required"`
 		AddressID           int                      `json:"address_id" binding:"required"`
@@ -2182,6 +2365,7 @@ func CreateOrderForCustomer(c *gin.Context) {
 		RequirePhoneContact bool                     `json:"require_phone_contact"` // 配送时是否电话联系
 		IsUrgent            bool                     `json:"is_urgent"`             // 是否加急订单
 		PurchaseListBackup  []model.PurchaseListItem `json:"purchase_list_backup"`  // 用户原来的采购单备份（从GetSalesCustomerPurchaseList获取，必须传入）
+		PriceModifications  []PriceModification      `json:"price_modifications"`   // 改价信息列表（可选）
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -2266,38 +2450,32 @@ func CreateOrderForCustomer(c *gin.Context) {
 		userType = "retail"
 	}
 
-	// 计算配送费
-	summary, err := model.CalculateDeliveryFee(items, userType)
+	// 构建改价映射表（采购单项ID -> 改价后的单价），用于配送费计算和订单金额计算
+	priceOverrideMap := make(map[int]float64)
+	priceModMap := make(map[int]model.PriceModificationInfo)
+	for _, mod := range req.PriceModifications {
+		if mod.PurchaseListItemID > 0 && mod.UnitPrice >= 0 {
+			priceOverrideMap[mod.PurchaseListItemID] = mod.UnitPrice
+			priceModMap[mod.PurchaseListItemID] = model.PriceModificationInfo{
+				UnitPrice: mod.UnitPrice,
+				Reason:    mod.Reason,
+			}
+		}
+	}
+
+	// 计算配送费（使用改价后的价格）
+	summary, err := model.CalculateDeliveryFee(items, userType, priceOverrideMap)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "计算配送费失败: " + err.Error()})
 		return
 	}
 
 	// 计算订单金额和分类信息用于优惠券筛选
-	orderAmount := 0.0
+	// 注意：如果商品有改价，使用改价后的价格；否则使用原始价格
+	orderAmount := summary.TotalAmount // 使用配送费计算中的TotalAmount（已应用改价）
 	categoryIDSet := make(map[int]struct{})
 	productIDs := make([]int, 0, len(items))
 	for _, item := range items {
-		// 根据用户类型计算商品金额
-		var price float64
-		if userType == "wholesale" {
-			price = item.SpecSnapshot.WholesalePrice
-			if price <= 0 {
-				price = item.SpecSnapshot.RetailPrice
-			}
-		} else {
-			price = item.SpecSnapshot.RetailPrice
-			if price <= 0 {
-				price = item.SpecSnapshot.WholesalePrice
-			}
-		}
-		if price <= 0 {
-			price = item.SpecSnapshot.Cost
-		}
-		if price < 0 {
-			price = 0
-		}
-		orderAmount += price * float64(item.Quantity)
 		productIDs = append(productIDs, item.ProductID)
 	}
 
@@ -2362,7 +2540,7 @@ func CreateOrderForCustomer(c *gin.Context) {
 		}
 	}
 
-	// 创建订单
+	// 创建订单（priceModMap已在上面构建）
 	options := model.OrderCreationOptions{
 		Remark:              req.Remark,
 		OutOfStockStrategy:  outOfStockStrategy,
@@ -2373,6 +2551,7 @@ func CreateOrderForCustomer(c *gin.Context) {
 		CouponDiscount:      couponDiscount,
 		IsUrgent:            req.IsUrgent,
 		UrgentFee:           urgentFee,
+		PriceModifications:  priceModMap,
 	}
 
 	// 创建订单（注意：CreateOrderFromPurchaseList 不再清空采购单）
@@ -2432,6 +2611,15 @@ func CreateOrderForCustomer(c *gin.Context) {
 			log.Printf("[CreateOrderForCustomer] 成功标记优惠券为已使用 (userCouponID=%d, orderID=%d)", req.CouponID, order.ID)
 		}
 	}
+
+	// 创建订单成功后，立即计算订单的配送费、利润等信息
+	// 这样在跳转到订单详情页时，销售分成预览才能正确显示
+	go func() {
+		// 异步计算，不阻塞订单创建响应
+		_ = model.UpdateOrderDeliveryInfo(order.ID)
+		_ = model.CalculateAndStoreOrderProfit(order.ID)
+		log.Printf("[CreateOrderForCustomer] 已触发订单利润和配送费计算 (orderID=%d)", order.ID)
+	}()
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,

@@ -548,10 +548,10 @@ class _OverviewTabState extends State<OverviewTab> {
 
               const SizedBox(height: 20),
 
-              // 待配送订单列表
+              // 待完成订单列表（收款之前的）
               if (isSales) ...[
                 const Text(
-                  '待配送订单',
+                  '待完成订单',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -569,7 +569,7 @@ class _OverviewTabState extends State<OverviewTab> {
                     ),
                     child: Center(
                       child: Text(
-                        _initialized ? '暂无待配送订单' : '加载中...',
+                        _initialized ? '暂无待完成订单' : '加载中...',
                         style: const TextStyle(
                           fontSize: 13,
                           color: Color(0xFF8C92A4),
@@ -626,11 +626,49 @@ class _OverviewTabState extends State<OverviewTab> {
   }
 }
 
-/// 待配送订单列表中的一行
+/// 待完成订单列表中的一行
 class OrderPreviewRow extends StatelessWidget {
   final Map<String, dynamic> order;
 
   const OrderPreviewRow({super.key, required this.order});
+
+  /// 获取订单状态文本和颜色
+  Map<String, dynamic> _getStatusInfo(String status) {
+    switch (status) {
+      case 'pending_delivery':
+      case 'pending':
+        return {
+          'text': '待配送',
+          'color': const Color(0xFFFFA940),
+          'bgColor': const Color(0xFFFFA940).withOpacity(0.1),
+        };
+      case 'pending_pickup':
+        return {
+          'text': '待取货',
+          'color': const Color(0xFF4C8DF6),
+          'bgColor': const Color(0xFF4C8DF6).withOpacity(0.1),
+        };
+      case 'delivering':
+        return {
+          'text': '配送中',
+          'color': const Color(0xFF4C8DF6),
+          'bgColor': const Color(0xFF4C8DF6).withOpacity(0.1),
+        };
+      case 'delivered':
+      case 'shipped':
+        return {
+          'text': '已送达',
+          'color': const Color(0xFF20CB6B),
+          'bgColor': const Color(0xFF20CB6B).withOpacity(0.1),
+        };
+      default:
+        return {
+          'text': status,
+          'color': const Color(0xFF8C92A4),
+          'bgColor': const Color(0xFF8C92A4).withOpacity(0.1),
+        };
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -640,6 +678,9 @@ class OrderPreviewRow extends StatelessWidget {
     final address = order['address'] as String? ?? '';
     final createdAtRaw = order['created_at']?.toString() ?? '';
     final isUrgent = (order['is_urgent'] as bool?) ?? false;
+    final status = order['status'] as String? ?? '';
+
+    final statusInfo = _getStatusInfo(status);
 
     String createdTimeText = createdAtRaw;
     if (createdAtRaw.isNotEmpty) {
@@ -695,12 +736,12 @@ class OrderPreviewRow extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: const Color(0xFFFFA940).withOpacity(0.1),
+                color: (statusInfo['bgColor'] as Color),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.local_shipping_outlined,
-                color: Color(0xFFFFA940),
+                color: statusInfo['color'] as Color,
                 size: 22,
               ),
             ),
@@ -709,7 +750,7 @@ class OrderPreviewRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 门店名称
+                  // 门店名称 + 状态标签
                   Row(
                     children: [
                       Expanded(
@@ -719,6 +760,25 @@ class OrderPreviewRow extends StatelessWidget {
                             fontSize: 17,
                             fontWeight: FontWeight.w600,
                             color: Color(0xFF20253A),
+                          ),
+                        ),
+                      ),
+                      // 订单状态标签（醒目显示）
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusInfo['color'] as Color,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          statusInfo['text'] as String,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
                           ),
                         ),
                       ),
