@@ -779,23 +779,31 @@ func CompleteDeliveryOrder(c *gin.Context) {
 	var productImageURL, doorplateImageURL *string
 
 	// 上传货物照片
-	if _, _, err := c.Request.FormFile("product_image"); err == nil {
+	if file, headers, err := c.Request.FormFile("product_image"); err == nil {
 		url, uploadErr := utils.UploadFileByFieldName("product_image", "delivery_product", c.Request, "delivery")
 		if uploadErr != nil {
+			file.Close()
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "上传货物照片失败: " + uploadErr.Error()})
 			return
 		}
 		productImageURL = &url
+		// 写入数据库索引
+		SaveImageIndex(url, "delivery", headers.Filename, headers.Size, headers.Header.Get("Content-Type"))
+		file.Close()
 	}
 
 	// 上传门牌照片
-	if _, _, err := c.Request.FormFile("doorplate_image"); err == nil {
+	if file, headers, err := c.Request.FormFile("doorplate_image"); err == nil {
 		url, uploadErr := utils.UploadFileByFieldName("doorplate_image", "delivery_doorplate", c.Request, "delivery")
 		if uploadErr != nil {
+			file.Close()
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "上传门牌照片失败: " + uploadErr.Error()})
 			return
 		}
 		doorplateImageURL = &url
+		// 写入数据库索引
+		SaveImageIndex(url, "delivery", headers.Filename, headers.Size, headers.Header.Get("Content-Type"))
+		file.Close()
 	}
 
 	// 开始事务

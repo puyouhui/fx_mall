@@ -1857,6 +1857,34 @@ func InitDB() error {
 			}
 		}
 
+		// 创建图片索引表（用于优化图库管理性能）
+		createImageIndexTableSQL := `
+		CREATE TABLE IF NOT EXISTS image_index (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    object_name VARCHAR(500) NOT NULL COMMENT 'MinIO对象名称（完整路径）',
+		    object_url VARCHAR(1000) NOT NULL COMMENT '图片访问URL',
+		    category VARCHAR(50) NOT NULL DEFAULT 'others' COMMENT '目录分类：products/carousels/categories/users/delivery/others/rich-content',
+		    file_name VARCHAR(255) NOT NULL COMMENT '文件名',
+		    file_size BIGINT NOT NULL DEFAULT 0 COMMENT '文件大小（字节）',
+		    file_type VARCHAR(20) NOT NULL DEFAULT 'image/jpeg' COMMENT '文件类型',
+		    width INT DEFAULT NULL COMMENT '图片宽度（像素）',
+		    height INT DEFAULT NULL COMMENT '图片高度（像素）',
+		    uploaded_at DATETIME NOT NULL COMMENT '上传时间',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    UNIQUE KEY uk_object_name (object_name),
+		    INDEX idx_category (category),
+		    INDEX idx_uploaded_at (uploaded_at),
+		    INDEX idx_category_uploaded (category, uploaded_at) COMMENT '复合索引：用于按分类和时间查询'
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='图片索引表（MinIO图片元数据）';
+		`
+
+		if _, err = DB.Exec(createImageIndexTableSQL); err != nil {
+			log.Printf("创建image_index表失败: %v", err)
+		} else {
+			log.Println("图片索引表初始化成功")
+		}
+
 		log.Println("所有表创建成功")
 	})
 

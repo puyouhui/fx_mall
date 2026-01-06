@@ -1680,6 +1680,9 @@ func UploadAddressAvatarByEmployee(c *gin.Context) {
 		return
 	}
 
+	// 写入数据库索引
+	SaveImageIndex(fileURL, "users", headers.Filename, headers.Size, headers.Header.Get("Content-Type"))
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "图片上传成功",

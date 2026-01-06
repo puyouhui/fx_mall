@@ -1159,6 +1159,9 @@ func UploadMiniAppUserAvatar(c *gin.Context) {
 		return
 	}
 
+	// 写入数据库索引
+	SaveImageIndex(fileURL, "users", headers.Filename, headers.Size, headers.Header.Get("Content-Type"))
+
 	// 更新用户头像
 	uniqueID := openID.(string)
 	if err := model.UpdateMiniAppUserAvatar(uniqueID, fileURL); err != nil {
@@ -1249,6 +1252,9 @@ func UploadMiniAppUserAvatarByAdmin(c *gin.Context) {
 		return
 	}
 
+	// 写入数据库索引
+	SaveImageIndex(fileURL, "users", headers.Filename, headers.Size, headers.Header.Get("Content-Type"))
+
 	// 更新用户头像
 	if err := model.UpdateMiniAppUserAvatar(user.UniqueID, fileURL); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新用户头像失败: " + err.Error()})
@@ -1314,6 +1320,9 @@ func UploadAddressAvatar(c *gin.Context) {
 		return
 	}
 
+	// 写入数据库索引
+	SaveImageIndex(fileURL, "users", headers.Filename, headers.Size, headers.Header.Get("Content-Type"))
+
 	// 只返回URL，不更新任何表
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
@@ -1367,6 +1376,9 @@ func UploadAddressAvatarByAdmin(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
 		return
 	}
+
+	// 写入数据库索引
+	SaveImageIndex(fileURL, "users", headers.Filename, headers.Size, headers.Header.Get("Content-Type"))
 
 	// 只返回URL，不更新任何表
 	c.JSON(http.StatusOK, gin.H{

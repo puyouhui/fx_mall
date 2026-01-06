@@ -98,10 +98,12 @@ func UploadFile(fileName string, reader *http.Request, category ...string) (stri
 	contentType := header.Header.Get("Content-Type")
 	readerToUpload := bytes.NewReader(buf.Bytes())
 	sizeToUpload := int64(buf.Len())
+	var compressedData []byte
+	var compressedSize int64
 
 	// 如果是图片，进行压缩和优化
 	if strings.HasPrefix(strings.ToLower(contentType), "image/") {
-		compressedData, compressedSize, err := compressImage(buf.Bytes(), fileName)
+		compressedData, compressedSize, err = compressImage(buf.Bytes(), fileName)
 		if err == nil && compressedSize > 0 {
 			readerToUpload = bytes.NewReader(compressedData)
 			sizeToUpload = compressedSize

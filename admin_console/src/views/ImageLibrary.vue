@@ -97,12 +97,13 @@
           @click="toggleSelect(image.url)"
         >
           <div class="image-wrapper">
-            <!-- 优化：使用懒加载和占位符 -->
+            <!-- 优化：使用懒加载和占位符，fetchpriority="low" 降低优先级，确保 API 请求优先 -->
             <img 
               :data-src="image.url" 
               :alt="image.name" 
               class="image-preview lazy-image"
               loading="lazy"
+              fetchpriority="low"
               @load="handleImageLoad"
               @error="handleImageError"
             />
@@ -182,8 +183,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { onBeforeRouteLeave } from 'vue-router'
 import {
   Search,
   Upload,
@@ -209,6 +211,12 @@ const uploadCategory = ref('others') // 上传时选择的目录，默认为"其
 // 图片加载状态管理
 const imageLoaded = ref({})
 const imageObserver = ref(null)
+// 图片加载控制器（用于取消加载）
+const imageControllers = ref(new Map())
+// 图片加载队列和并发控制
+const imageLoadQueue = ref([])
+const maxConcurrentLoads = 3 // 最多同时加载3张图片
+let activeLoads = 0
 
 // 分页信息
 const pagination = reactive({
@@ -216,12 +224,83 @@ const pagination = reactive({
   pageSize: 30 // 每页30个（3行 x 10列）
 })
 
+// 处理图片加载队列（使用 requestIdleCallback 优化，不阻塞主线程）
+const processImageQueue = () => {
+  // 如果已达到最大并发数或队列为空，返回
+  if (activeLoads >= maxConcurrentLoads || imageLoadQueue.value.length === 0) {
+    return
+  }
+
+  // 使用 requestIdleCallback 延迟加载，避免阻塞 API 请求
+  const scheduleLoad = (callback) => {
+    if (window.requestIdleCallback) {
+      window.requestIdleCallback(callback, { timeout: 100 })
+    } else {
+      // 降级到 setTimeout
+      setTimeout(callback, 0)
+    }
+  }
+
+  scheduleLoad(() => {
+    // 再次检查（可能在延迟期间发生了变化）
+    if (activeLoads >= maxConcurrentLoads || imageLoadQueue.value.length === 0) {
+      return
+    }
+
+    // 从队列中取出一个图片
+    const { img, dataSrc } = imageLoadQueue.value.shift()
+    activeLoads++
+
+    // 创建 AbortController 用于取消加载
+    const controller = new AbortController()
+    imageControllers.value.set(dataSrc, controller)
+
+    // 创建新的 Image 对象来预加载
+    const imageLoader = new Image()
+    
+    // 设置加载成功回调
+    imageLoader.onload = () => {
+      // 只有在控制器未被取消时才设置 src
+      if (!controller.signal.aborted && img.parentElement) {
+        img.src = dataSrc
+        img.removeAttribute('data-src')
+        handleImageLoad({ target: img })
+      }
+      activeLoads--
+      imageControllers.value.delete(dataSrc)
+      // 继续处理队列（延迟执行，避免阻塞）
+      setTimeout(processImageQueue, 0)
+    }
+
+    // 设置加载失败回调
+    imageLoader.onerror = () => {
+      if (!controller.signal.aborted && img.parentElement) {
+        handleImageError({ target: img })
+      }
+      activeLoads--
+      imageControllers.value.delete(dataSrc)
+      // 继续处理队列（延迟执行，避免阻塞）
+      setTimeout(processImageQueue, 0)
+    }
+
+    // 开始加载
+    imageLoader.src = dataSrc
+  })
+}
+
 // 图片懒加载处理
 const setupLazyLoading = () => {
-  // 清理旧的观察器
+  // 清理旧的观察器和所有正在加载的图片
   if (imageObserver.value) {
     imageObserver.value.disconnect()
   }
+  
+  // 取消所有正在加载的图片
+  cancelAllImageLoads()
+  
+  // 清空队列
+  imageLoadQueue.value = []
+  activeLoads = 0
 
   // 使用 Intersection Observer 实现更精确的懒加载
   imageObserver.value = new IntersectionObserver((entries) => {
@@ -230,8 +309,9 @@ const setupLazyLoading = () => {
         const img = entry.target
         const dataSrc = img.getAttribute('data-src')
         if (dataSrc && !img.src) {
-          img.src = dataSrc
-          img.removeAttribute('data-src')
+          // 不直接设置 src，而是加入队列
+          imageLoadQueue.value.push({ img, dataSrc })
+          processImageQueue()
         }
         imageObserver.value.unobserve(img)
       }
@@ -247,6 +327,14 @@ const setupLazyLoading = () => {
       imageObserver.value.observe(img)
     })
   })
+}
+
+// 取消所有正在加载的图片
+const cancelAllImageLoads = () => {
+  imageControllers.value.forEach((controller, src) => {
+    controller.abort()
+  })
+  imageControllers.value.clear()
 }
 
 // 图片加载成功
@@ -285,24 +373,28 @@ const handleImageError = (event) => {
 // 初始化数据
 const initData = async () => {
   loading.value = true
+  // 取消所有正在加载的图片
+  cancelAllImageLoads()
   // 重置图片加载状态
   imageLoaded.value = {}
   
   try {
-    // 优化：搜索时也使用合理的分页大小，避免一次性加载过多数据
-    // 由于后端已优化分页性能，我们可以使用较大的pageSize进行搜索，但限制在合理范围内
-    let params = {}
+    // 优化：统一使用分页，避免请求过大触发WAF拦截
+    // 搜索时也使用正常分页，后端支持分页搜索
+    let params = {
+      pageNum: pagination.pageNum,
+      pageSize: pagination.pageSize
+    }
+    
+    // 如果有搜索关键词，添加搜索参数（后端需要支持搜索功能）
+    // 如果后端不支持搜索，则在前端过滤（但需要先获取所有数据）
+    // 为了性能和安全，建议后端支持搜索参数
     if (searchKeyword.value) {
-      // 搜索时使用较大的pageSize（但不超过500），以便在前端进行搜索过滤
-      // 如果搜索结果很多，用户可以通过分页查看更多结果
+      // 暂时保留前端过滤逻辑，但使用正常分页
+      // TODO: 后端支持搜索参数后，可以改为后端搜索
       params = {
         pageNum: 1,
-        pageSize: 500 // 从10000减少到500，避免请求过大导致卡死
-      }
-    } else {
-      params = {
-        pageNum: pagination.pageNum,
-        pageSize: pagination.pageSize
+        pageSize: 200 // 搜索时使用稍大的pageSize，但不超过200，避免触发WAF
       }
     }
     
@@ -625,11 +717,30 @@ onMounted(() => {
   initData()
 })
 
-// 组件卸载时清理
-onUnmounted(() => {
+// 路由离开前清理
+onBeforeRouteLeave(() => {
+  // 取消所有正在加载的图片
+  cancelAllImageLoads()
+  // 断开观察器
   if (imageObserver.value) {
     imageObserver.value.disconnect()
   }
+  // 清空队列
+  imageLoadQueue.value = []
+  activeLoads = 0
+})
+
+// 组件卸载时清理
+onUnmounted(() => {
+  // 取消所有正在加载的图片
+  cancelAllImageLoads()
+  // 断开观察器
+  if (imageObserver.value) {
+    imageObserver.value.disconnect()
+  }
+  // 清空队列
+  imageLoadQueue.value = []
+  activeLoads = 0
 })
 </script>
 

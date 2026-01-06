@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"go_backend/internal/config"
 	"go_backend/internal/database"
 	"go_backend/internal/model"
 	"go_backend/internal/utils"
@@ -24,6 +25,51 @@ func successResponse(c *gin.Context, data interface{}, message string) {
 		message = "success"
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": data, "message": message})
+}
+
+// SaveImageIndex 保存图片索引到数据库（辅助函数，可导出供其他文件使用）
+func SaveImageIndex(fileURL string, category string, fileName string, fileSize int64, contentType string) {
+	cfg := config.Config.MinIO
+	baseURLPrefix := fmt.Sprintf("%s/%s/", cfg.BaseURL, cfg.Bucket)
+	var objectName string
+	if strings.HasPrefix(fileURL, baseURLPrefix) {
+		objectName = fileURL[len(baseURLPrefix):]
+	} else {
+		// 如果URL格式不符合预期，尝试从完整URL中提取
+		parts := strings.Split(fileURL, "/")
+		if len(parts) >= 3 {
+			objectName = strings.Join(parts[len(parts)-2:], "/")
+		} else {
+			objectName = parts[len(parts)-1]
+		}
+	}
+
+	// 提取文件名
+	if strings.Contains(objectName, "/") {
+		parts := strings.Split(objectName, "/")
+		fileName = parts[len(parts)-1]
+	}
+
+	// 创建图片索引记录
+	imgIndex := &model.ImageIndex{
+		ObjectName: objectName,
+		ObjectURL:  fileURL,
+		Category:   category,
+		FileName:   fileName,
+		FileSize:   fileSize,
+		FileType:   contentType,
+		UploadedAt: time.Now(),
+	}
+
+	// 写入数据库索引（失败不影响上传，只记录日志）
+	if err := model.CreateImageIndex(database.DB, imgIndex); err != nil {
+		// 如果是重复键错误，忽略（可能已存在）
+		if !strings.Contains(err.Error(), "Duplicate entry") {
+			log.Printf("写入图片索引失败: %v（图片已上传，但索引未记录）", err)
+		}
+	} else {
+		log.Printf("图片索引已写入数据库: %s", objectName)
+	}
 }
 
 // errorResponse 返回错误响应
@@ -593,7 +639,7 @@ func DeleteProduct(c *gin.Context) {
 }
 
 // ListImages 列出MinIO桶中的所有图片（支持分页和目录过滤）
-// 优化：使用分页功能，避免一次性加载所有图片导致性能问题
+// 优化：使用数据库索引查询，实现真正的分页，性能从O(n)提升到O(log n)
 func ListImages(c *gin.Context) {
 	// 解析分页参数
 	pageNum := 1
@@ -618,9 +664,8 @@ func ListImages(c *gin.Context) {
 	// 解析目录分类参数
 	category := strings.TrimSpace(c.Query("category"))
 
-	// 使用分页功能，避免一次性加载所有图片
-	// 这样可以显著提升性能，特别是当某个目录下有大量图片时
-	images, total, err := utils.ListImagesWithPagination(category, pageNum, pageSize)
+	// 从数据库查询（真正的分页，性能优化）
+	images, total, err := model.GetImageListWithPagination(database.DB, category, pageNum, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
@@ -661,6 +706,13 @@ func BatchDeleteImages(c *gin.Context) {
 		return
 	}
 
+	// 先删除数据库索引
+	if err := model.BatchDeleteImageIndex(database.DB, req.ImageURLs); err != nil {
+		log.Printf("删除图片索引失败: %v（继续删除MinIO文件）", err)
+		// 不返回错误，继续删除MinIO文件
+	}
+
+	// 再删除MinIO中的文件
 	err := utils.BatchDeleteImages(req.ImageURLs)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -679,13 +731,18 @@ func BatchDeleteImages(c *gin.Context) {
 // UploadProductImage 上传商品图片到MinIO
 func UploadProductImage(c *gin.Context) {
 	// 检查是否有文件上传
-	if _, headers, err := c.Request.FormFile("file"); err != nil {
+	file, headers, err := c.Request.FormFile("file")
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请选择要上传的图片: " + err.Error()})
 		return
-	} else if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
+	}
+	defer file.Close()
+
+	if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过5MB"})
 		return
-	} else if !isImageFile(headers.Filename) {
+	}
+	if !isImageFile(headers.Filename) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请上传JPG、PNG或GIF格式的图片"})
 		return
 	}
@@ -697,19 +754,27 @@ func UploadProductImage(c *gin.Context) {
 		return
 	}
 
+	// 写入数据库索引
+	SaveImageIndex(fileURL, "products", headers.Filename, headers.Size, headers.Header.Get("Content-Type"))
+
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": map[string]string{"imageUrl": fileURL}, "message": "图片上传成功"})
 }
 
 // UploadImageWithCategory 上传图片到MinIO（支持指定目录分类，用于图库管理）
 func UploadImageWithCategory(c *gin.Context) {
 	// 检查是否有文件上传
-	if _, headers, err := c.Request.FormFile("file"); err != nil {
+	file, headers, err := c.Request.FormFile("file")
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请选择要上传的图片: " + err.Error()})
 		return
-	} else if headers.Size > 10*1024*1024 { // 限制文件大小为10MB
+	}
+	defer file.Close()
+
+	if headers.Size > 10*1024*1024 { // 限制文件大小为10MB
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过10MB"})
 		return
-	} else if !isImageFile(headers.Filename) {
+	}
+	if !isImageFile(headers.Filename) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请上传JPG、PNG或GIF格式的图片"})
 		return
 	}
@@ -749,6 +814,9 @@ func UploadImageWithCategory(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
 		return
 	}
+
+	// 写入数据库索引
+	SaveImageIndex(fileURL, category, headers.Filename, headers.Size, headers.Header.Get("Content-Type"))
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": map[string]string{"imageUrl": fileURL}, "message": "图片上传成功"})
 }
@@ -1178,13 +1246,18 @@ func GetAllCarouselsForAdmin(c *gin.Context) {
 // UploadCarouselImage 上传轮播图图片到MinIO
 func UploadCarouselImage(c *gin.Context) {
 	// 检查是否有文件上传
-	if _, headers, err := c.Request.FormFile("file"); err != nil {
+	file, headers, err := c.Request.FormFile("file")
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请选择要上传的图片: " + err.Error()})
 		return
-	} else if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
+	}
+	defer file.Close()
+
+	if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过5MB"})
 		return
-	} else if !isImageFile(headers.Filename) {
+	}
+	if !isImageFile(headers.Filename) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请上传JPG、PNG或GIF格式的图片"})
 		return
 	}
@@ -1195,6 +1268,9 @@ func UploadCarouselImage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
 		return
 	}
+
+	// 写入数据库索引
+	SaveImageIndex(fileURL, "carousels", headers.Filename, headers.Size, headers.Header.Get("Content-Type"))
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": map[string]string{"imageUrl": fileURL}, "message": "图片上传成功"})
 }
@@ -1224,13 +1300,18 @@ func isImageFile(filename string) bool {
 // UploadCategoryImage 上传分类图标到MinIO
 func UploadCategoryImage(c *gin.Context) {
 	// 检查是否有文件上传
-	if _, headers, err := c.Request.FormFile("file"); err != nil {
+	file, headers, err := c.Request.FormFile("file")
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请选择要上传的图片: " + err.Error()})
 		return
-	} else if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
+	}
+	defer file.Close()
+
+	if headers.Size > 5*1024*1024 { // 限制文件大小为5MB
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "图片大小不能超过5MB"})
 		return
-	} else if !isImageFile(headers.Filename) {
+	}
+	if !isImageFile(headers.Filename) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请上传JPG、PNG或GIF格式的图片"})
 		return
 	}
@@ -1241,6 +1322,9 @@ func UploadCategoryImage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片上传失败: " + err.Error()})
 		return
 	}
+
+	// 写入数据库索引
+	SaveImageIndex(fileURL, "categories", headers.Filename, headers.Size, headers.Header.Get("Content-Type"))
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": map[string]string{"url": fileURL}, "message": "图片上传成功"})
 }
