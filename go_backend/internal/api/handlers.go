@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -546,6 +547,29 @@ func DeleteProduct(c *gin.Context) {
 
 	if product == nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "商品不存在"})
+		return
+	}
+
+	// 检查是否有未完成的订单使用该商品
+	var unfinishedOrderCount int
+	checkQuery := `
+		SELECT COUNT(DISTINCT o.id)
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		WHERE oi.product_id = ?
+		  AND o.status NOT IN ('paid', 'cancelled')
+	`
+	err = database.DB.QueryRow(checkQuery, productID).Scan(&unfinishedOrderCount)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "检查订单失败: " + err.Error()})
+		return
+	}
+
+	if unfinishedOrderCount > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": fmt.Sprintf("无法删除商品：该商品在 %d 个未完成订单中使用，请先完成或取消这些订单", unfinishedOrderCount),
+		})
 		return
 	}
 

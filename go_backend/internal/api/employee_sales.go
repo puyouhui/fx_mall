@@ -376,7 +376,7 @@ func GetSalesOrderDetail(c *gin.Context) {
 	if !orderProfitVal.Valid || !deliveryFeeCalcJSON.Valid || deliveryFeeCalcJSON.String == "" {
 		// 同步计算，确保返回的数据是完整的
 		_ = model.UpdateOrderDeliveryInfo(id)
-		_ = model.CalculateAndStoreOrderProfit(id)
+		_ = model.CalculateAndStoreOrderProfitWithRetry(id, 3)
 		// 重新获取计算后的数据
 		err = database.DB.QueryRow(`
 			SELECT order_profit, delivery_fee_calculation
@@ -1132,9 +1132,9 @@ func UpdateOrderForCustomer(c *gin.Context) {
 	// 插入新的订单商品
 	itemStmt, err := tx.Prepare(`
 		INSERT INTO order_items (
-			order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image,
+			order_id, product_id, product_name, spec_name, spec_snapshot, quantity, unit_price, subtotal, image,
 			original_unit_price, is_price_modified, price_modification_reason
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "准备插入订单商品失败: " + err.Error()})
@@ -1194,11 +1194,19 @@ func UpdateOrderForCustomer(c *gin.Context) {
 			originalPricePtr = &originalPrice
 		}
 
+		// 序列化规格快照为JSON
+		specSnapshotJSON, err := json.Marshal(it.SpecSnapshot)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "序列化规格快照失败: " + err.Error()})
+			return
+		}
+
 		_, err = itemStmt.Exec(
 			id,
 			it.ProductID,
 			it.ProductName,
 			it.SpecName,
+			string(specSnapshotJSON),
 			it.Quantity,
 			price,
 			subtotal,
@@ -1273,7 +1281,7 @@ func UpdateOrderForCustomer(c *gin.Context) {
 	// 异步重新计算配送费和利润
 	go func() {
 		_ = model.UpdateOrderDeliveryInfo(id)
-		_ = model.CalculateAndStoreOrderProfit(id)
+		_ = model.CalculateAndStoreOrderProfitWithRetry(id, 3)
 	}()
 
 	// 获取更新后的订单信息
@@ -2552,6 +2560,17 @@ func CreateOrderForCustomer(c *gin.Context) {
 		IsUrgent:            req.IsUrgent,
 		UrgentFee:           urgentFee,
 		PriceModifications:  priceModMap,
+		DeliveryFeeCouponID: 0,
+		AmountCouponID:      0,
+	}
+
+	// 设置优惠券ID（在事务内处理）
+	if selectedCoupon != nil && req.CouponID > 0 {
+		if selectedCoupon.Type == "delivery_fee" {
+			options.DeliveryFeeCouponID = req.CouponID
+		} else if selectedCoupon.Type == "amount" {
+			options.AmountCouponID = req.CouponID
+		}
 	}
 
 	// 创建订单（注意：CreateOrderFromPurchaseList 不再清空采购单）
@@ -2601,23 +2620,14 @@ func CreateOrderForCustomer(c *gin.Context) {
 		log.Printf("[CreateOrderForCustomer] 警告：备份数据为空，无法恢复采购单")
 	}
 
-	// 创建订单成功后，使用优惠券（标记为已使用并关联订单ID）
-	// 使用 user_coupon_id 精确更新，避免用户有多张相同优惠券时误更新
-	if selectedCoupon != nil && req.CouponID > 0 {
-		if err := model.UseCouponByUserCouponID(req.CouponID, order.ID); err != nil {
-			// 如果使用失败，记录错误但不影响订单创建
-			log.Printf("[CreateOrderForCustomer] 标记优惠券为已使用失败 (userCouponID=%d, orderID=%d): %v", req.CouponID, order.ID, err)
-		} else {
-			log.Printf("[CreateOrderForCustomer] 成功标记优惠券为已使用 (userCouponID=%d, orderID=%d)", req.CouponID, order.ID)
-		}
-	}
+	// 优惠券已在事务内处理，无需再次处理
 
 	// 创建订单成功后，立即计算订单的配送费、利润等信息
 	// 这样在跳转到订单详情页时，销售分成预览才能正确显示
 	go func() {
 		// 异步计算，不阻塞订单创建响应
 		_ = model.UpdateOrderDeliveryInfo(order.ID)
-		_ = model.CalculateAndStoreOrderProfit(order.ID)
+		_ = model.CalculateAndStoreOrderProfitWithRetry(order.ID, 3)
 		log.Printf("[CreateOrderForCustomer] 已触发订单利润和配送费计算 (orderID=%d)", order.ID)
 	}()
 

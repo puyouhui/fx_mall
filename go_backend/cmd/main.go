@@ -256,6 +256,7 @@ func main() {
 				protectedGroup.GET("/orders/:id", api.GetOrderByIDForAdmin)                   // 获取订单详情（后台管理）
 				protectedGroup.PUT("/orders/:id/status", api.UpdateOrderStatus)               // 更新订单状态（后台管理）
 				protectedGroup.GET("/orders/:id/delivery-fee", api.GetDeliveryFeeCalculation) // 获取配送费计算结果（管理员）
+				protectedGroup.POST("/orders/:id/recalculate-profit", api.RecalculateOrderProfit) // 强制重新计算订单利润（用于修复老订单）
 
 				// 配送记录管理
 				protectedGroup.GET("/delivery-records", api.GetAllDeliveryRecordsForAdmin)                     // 获取所有配送记录（后台管理）

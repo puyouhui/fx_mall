@@ -18,6 +18,9 @@ var (
 	DB *sql.DB
 	// 单例模式的锁
 	dbOnce sync.Once
+	// specSnapshotFieldExists 缓存 spec_snapshot 字段是否存在
+	specSnapshotFieldExists bool
+	specSnapshotFieldOnce   sync.Once
 )
 
 // InitDB 初始化数据库连接
@@ -1003,6 +1006,25 @@ func InitDB() error {
 			}
 		}
 
+		// 检查 order_items 表的 spec_snapshot 字段
+		var specSnapshotExists int
+		checkSpecSnapshotQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'spec_snapshot'`
+		if err := DB.QueryRow(checkSpecSnapshotQuery).Scan(&specSnapshotExists); err == nil {
+			// 缓存字段存在性结果
+			specSnapshotFieldExists = specSnapshotExists > 0
+			if specSnapshotExists == 0 {
+				if _, err = DB.Exec(`ALTER TABLE order_items 
+					ADD COLUMN spec_snapshot TEXT DEFAULT NULL COMMENT '规格快照（JSON，保存下单时的完整规格信息，包括成本价）' AFTER spec_name`); err != nil {
+					log.Printf("添加spec_snapshot字段失败: %v", err)
+				} else {
+					log.Println("已添加spec_snapshot字段到order_items表")
+					// 字段添加成功后，更新缓存
+					specSnapshotFieldExists = true
+				}
+			}
+		}
+
 		// 检查 orders 表的 has_price_modification 字段
 		var hasPriceModificationExists int
 		checkHasPriceModificationQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
@@ -1847,4 +1869,9 @@ func CloseDB() error {
 		return DB.Close()
 	}
 	return nil
+}
+
+// HasSpecSnapshotField 检查 order_items 表是否有 spec_snapshot 字段（使用缓存结果）
+func HasSpecSnapshotField() bool {
+	return specSnapshotFieldExists
 }

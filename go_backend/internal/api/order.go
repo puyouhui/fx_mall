@@ -193,6 +193,16 @@ func CreateOrderFromCart(c *gin.Context) {
 		CouponDiscount:      appliedCombination.TotalDiscount,
 		IsUrgent:            req.IsUrgent,
 		UrgentFee:           urgentFee,
+		DeliveryFeeCouponID: 0,
+		AmountCouponID:      0,
+	}
+
+	// 设置优惠券ID（在事务内处理）
+	if appliedCombination.DeliveryFeeCoupon != nil && appliedCombination.DeliveryFeeCoupon.UserCouponID > 0 {
+		options.DeliveryFeeCouponID = appliedCombination.DeliveryFeeCoupon.UserCouponID
+	}
+	if appliedCombination.AmountCoupon != nil && appliedCombination.AmountCoupon.UserCouponID > 0 {
+		options.AmountCouponID = appliedCombination.AmountCoupon.UserCouponID
 	}
 
 	order, orderItems, err := model.CreateOrderFromPurchaseList(user.ID, req.AddressID, items, summary, options, userType)
@@ -201,25 +211,7 @@ func CreateOrderFromCart(c *gin.Context) {
 		return
 	}
 
-	// 创建订单成功后，使用优惠券（标记为已使用并关联订单ID）
-	// 处理免配送费券（使用 UserCouponID 精确更新）
-	if appliedCombination.DeliveryFeeCoupon != nil && appliedCombination.DeliveryFeeCoupon.UserCouponID > 0 {
-		if err := model.UseCouponByUserCouponID(appliedCombination.DeliveryFeeCoupon.UserCouponID, order.ID); err != nil {
-			// 如果使用失败，记录错误但不影响订单创建
-			log.Printf("标记免配送费券为已使用失败 (用户优惠券ID: %d, 订单ID: %d): %v", appliedCombination.DeliveryFeeCoupon.UserCouponID, order.ID, err)
-		} else {
-			log.Printf("成功标记免配送费券为已使用 (用户优惠券ID: %d, 订单ID: %d)", appliedCombination.DeliveryFeeCoupon.UserCouponID, order.ID)
-		}
-	}
-	// 处理金额券（使用 UserCouponID 精确更新）
-	if appliedCombination.AmountCoupon != nil && appliedCombination.AmountCoupon.UserCouponID > 0 {
-		if err := model.UseCouponByUserCouponID(appliedCombination.AmountCoupon.UserCouponID, order.ID); err != nil {
-			// 如果使用失败，记录错误但不影响订单创建
-			log.Printf("标记金额券为已使用失败 (用户优惠券ID: %d, 订单ID: %d): %v", appliedCombination.AmountCoupon.UserCouponID, order.ID, err)
-		} else {
-			log.Printf("成功标记金额券为已使用 (用户优惠券ID: %d, 订单ID: %d)", appliedCombination.AmountCoupon.UserCouponID, order.ID)
-		}
-	}
+	// 优惠券已在事务内处理，无需再次处理
 
 	// 小程序用户自己下单后，删除已下单的商品（不备份，直接删除）
 	// 如果指定了 item_ids，只删除指定的商品；否则删除所有商品（因为使用了所有商品）

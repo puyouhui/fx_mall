@@ -710,19 +710,13 @@ func UseCoupon(userID, couponID, orderID int) error {
 	return tx.Commit()
 }
 
-// UseCouponByUserCouponID 使用优惠券（通过用户优惠券ID，更精确）
-func UseCouponByUserCouponID(userCouponID, orderID int) error {
-	tx, err := database.DB.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
+// UseCouponByUserCouponIDInTx 在事务内使用优惠券（通过用户优惠券ID，更精确）
+func UseCouponByUserCouponIDInTx(tx *sql.Tx, userCouponID, orderID int) error {
 	// 获取用户优惠券信息
 	var userID, couponID int
 	var status string
 	var expiresAt sql.NullTime
-	err = tx.QueryRow(`
+	err := tx.QueryRow(`
 		SELECT user_id, coupon_id, status, expires_at 
 		FROM user_coupons 
 		WHERE id = ?
@@ -777,6 +771,22 @@ func UseCouponByUserCouponID(userCouponID, orderID int) error {
 	// 更新优惠券使用计数
 	_, err = tx.Exec("UPDATE coupons SET used_count = used_count + 1, updated_at = NOW() WHERE id = ?", couponID)
 	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// UseCouponByUserCouponID 使用优惠券（通过用户优惠券ID，更精确）
+// 注意：此函数会创建新事务，如果需要在订单创建事务内处理，请使用 UseCouponByUserCouponIDInTx
+func UseCouponByUserCouponID(userCouponID, orderID int) error {
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := UseCouponByUserCouponIDInTx(tx, userCouponID, orderID); err != nil {
 		return err
 	}
 

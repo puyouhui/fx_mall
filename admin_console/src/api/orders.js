@@ -35,3 +35,14 @@ export const updateOrderStatus = async (id, status) => {
   }
 }
 
+// 强制重新计算订单利润
+export const recalculateOrderProfit = async (id) => {
+  try {
+    const res = await request.post(`/admin/orders/${id}/recalculate-profit`)
+    return res
+  } catch (error) {
+    console.error('重新计算订单利润失败:', error)
+    throw error
+  }
+}
+

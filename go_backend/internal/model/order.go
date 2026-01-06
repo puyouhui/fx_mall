@@ -2,6 +2,7 @@ package model
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -47,19 +48,20 @@ type Order struct {
 
 // OrderItem 订单明细
 type OrderItem struct {
-	ID                      int     `json:"id"`
-	OrderID                 int     `json:"order_id"`
-	ProductID               int     `json:"product_id"`
-	ProductName             string  `json:"product_name"`
-	SpecName                string  `json:"spec_name"`
-	Quantity                int     `json:"quantity"`
-	UnitPrice               float64 `json:"unit_price"`                // 成交单价（改价后的价格）
-	Subtotal                float64 `json:"subtotal"`                  // 小计
-	Image                   string  `json:"image"`
-	IsPicked                bool    `json:"is_picked"`                 // 是否已取货
-	OriginalUnitPrice       *float64 `json:"original_unit_price,omitempty"` // 原始单价（从规格快照获取）
-	IsPriceModified         bool    `json:"is_price_modified"`         // 是否改价
-	PriceModificationReason *string `json:"price_modification_reason,omitempty"` // 改价原因
+	ID                      int                  `json:"id"`
+	OrderID                 int                  `json:"order_id"`
+	ProductID               int                  `json:"product_id"`
+	ProductName             string               `json:"product_name"`
+	SpecName                string               `json:"spec_name"`
+	SpecSnapshot            *PurchaseSpecSnapshot `json:"spec_snapshot,omitempty"` // 规格快照（保存下单时的完整规格信息）
+	Quantity                int                  `json:"quantity"`
+	UnitPrice               float64              `json:"unit_price"`                // 成交单价（改价后的价格）
+	Subtotal                float64              `json:"subtotal"`                  // 小计
+	Image                   string               `json:"image"`
+	IsPicked                bool                 `json:"is_picked"`                 // 是否已取货
+	OriginalUnitPrice       *float64             `json:"original_unit_price,omitempty"` // 原始单价（从规格快照获取）
+	IsPriceModified         bool                 `json:"is_price_modified"`         // 是否改价
+	PriceModificationReason *string              `json:"price_modification_reason,omitempty"` // 改价原因
 }
 
 // PriceModificationInfo 改价信息
@@ -80,47 +82,27 @@ type OrderCreationOptions struct {
 	IsUrgent            bool
 	UrgentFee           float64
 	PriceModifications  map[int]PriceModificationInfo // 改价映射（采购单项ID -> 改价信息）
+	DeliveryFeeCouponID int                           // 免配送费券的用户优惠券ID（在事务内处理）
+	AmountCouponID      int                           // 金额券的用户优惠券ID（在事务内处理）
 }
 
 // GenerateOrderNumber 生成订单编号
-// 格式：YYYYMMDDHHmmss + 用户ID后3位（不足补0） + 随机数3位
-// 例如：20240101120000123456（20位）
-func GenerateOrderNumber(userID int) string {
+// 格式：YYYYMMDDHHmmss + 订单ID后4位（不足补0） + 随机数2位
+// 例如：20240101120000012345（20位）
+// 注意：此函数需要在获取订单ID后调用
+func GenerateOrderNumber(orderID int) string {
 	now := time.Now()
 	// 日期时间部分：YYYYMMDDHHmmss (14位)
 	timePart := now.Format("20060102150405")
 
-	// 用户ID后3位（不足补0）
-	userIDPart := fmt.Sprintf("%03d", userID%1000)
+	// 订单ID后4位（不足补0）
+	orderIDPart := fmt.Sprintf("%04d", orderID%10000)
 
-	// 随机数3位
+	// 随机数2位
 	rand.Seed(time.Now().UnixNano())
-	randomPart := fmt.Sprintf("%03d", rand.Intn(1000))
+	randomPart := fmt.Sprintf("%02d", rand.Intn(100))
 
-	return timePart + userIDPart + randomPart
-}
-
-// generateUniqueOrderNumber 生成唯一的订单编号（如果重复则重试）
-func generateUniqueOrderNumber(userID int, maxRetries int) (string, error) {
-	for i := 0; i < maxRetries; i++ {
-		orderNumber := GenerateOrderNumber(userID)
-
-		// 检查订单编号是否已存在
-		var exists int
-		err := database.DB.QueryRow("SELECT COUNT(*) FROM orders WHERE order_number = ?", orderNumber).Scan(&exists)
-		if err != nil {
-			return "", fmt.Errorf("检查订单编号失败: %v", err)
-		}
-
-		if exists == 0 {
-			return orderNumber, nil
-		}
-
-		// 如果重复，等待一小段时间后重试
-		time.Sleep(time.Millisecond * 10)
-	}
-
-	return "", fmt.Errorf("生成唯一订单编号失败，已重试 %d 次", maxRetries)
+	return timePart + orderIDPart + randomPart
 }
 
 // CreateOrderFromPurchaseList 从采购单创建订单（包含事务和明细落库）
@@ -169,12 +151,6 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 		totalAmount = 0
 	}
 
-	// 生成唯一的订单编号
-	orderNumber, err := generateUniqueOrderNumber(userID, 5)
-	if err != nil {
-		return nil, nil, fmt.Errorf("生成订单编号失败: %v", err)
-	}
-
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return nil, nil, err
@@ -186,15 +162,16 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 		}
 	}()
 
-	// 插入订单主表
+	// 先插入订单主表（不包含订单编号，使用NULL，兼容老数据）
+	// 注意：order_number字段在CREATE TABLE中没有NOT NULL约束，允许NULL值
 	res, err := tx.Exec(`
 		INSERT INTO orders (
 			order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount, coupon_discount, is_urgent, urgent_fee, total_amount,
 			remark, out_of_stock_strategy, trust_receipt, hide_price, require_phone_contact, expected_delivery_at,
 			created_at, updated_at
-		) VALUES (?, ?, ?, 'pending_delivery', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
+		) VALUES (NULL, ?, ?, 'pending_delivery', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
 	`,
-		orderNumber, userID, addressID,
+		userID, addressID,
 		goodsAmount, deliveryFee, pointsDiscount, couponDiscount, boolToTinyInt(isUrgent), urgentFee, totalAmount,
 		opts.Remark, outOfStockStrategy, boolToTinyInt(trustReceipt), boolToTinyInt(hidePrice), boolToTinyInt(requirePhoneContact),
 	)
@@ -208,13 +185,22 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	}
 	orderID := int(orderID64)
 
+	// 使用订单ID生成唯一的订单编号（包含订单ID后4位，确保唯一性）
+	orderNumber := GenerateOrderNumber(orderID)
+
+	// 更新订单编号
+	_, err = tx.Exec("UPDATE orders SET order_number = ? WHERE id = ?", orderNumber, orderID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("更新订单编号失败: %v", err)
+	}
+
 	// 插入订单明细
 	orderItems := make([]OrderItem, 0, len(items))
 	itemStmt, err := tx.Prepare(`
 		INSERT INTO order_items (
-			order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image,
+			order_id, product_id, product_name, spec_name, spec_snapshot, quantity, unit_price, subtotal, image,
 			original_unit_price, is_price_modified, price_modification_reason
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return nil, nil, err
@@ -279,11 +265,18 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 			originalPricePtr = &originalPrice
 		}
 
+		// 序列化规格快照为JSON
+		specSnapshotJSON, err := json.Marshal(it.SpecSnapshot)
+		if err != nil {
+			return nil, nil, fmt.Errorf("序列化规格快照失败: %v", err)
+		}
+
 		if _, err = itemStmt.Exec(
 			orderID,
 			it.ProductID,
 			it.ProductName,
 			it.SpecName,
+			string(specSnapshotJSON),
 			it.Quantity,
 			price,
 			subtotal,
@@ -300,6 +293,7 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 			ProductID:               it.ProductID,
 			ProductName:             it.ProductName,
 			SpecName:                it.SpecName,
+			SpecSnapshot:            &it.SpecSnapshot,
 			Quantity:                it.Quantity,
 			UnitPrice:               price,
 			Subtotal:                subtotal,
@@ -315,6 +309,20 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 		_, err = tx.Exec(`UPDATE orders SET has_price_modification = 1 WHERE id = ?`, orderID)
 		if err != nil {
 			return nil, nil, err
+		}
+	}
+
+	// 在事务内处理优惠券使用（确保订单创建和优惠券标记在同一事务中）
+	// 处理免配送费券
+	if opts.DeliveryFeeCouponID > 0 {
+		if err := UseCouponByUserCouponIDInTx(tx, opts.DeliveryFeeCouponID, orderID); err != nil {
+			return nil, nil, fmt.Errorf("使用免配送费券失败: %v", err)
+		}
+	}
+	// 处理金额券
+	if opts.AmountCouponID > 0 {
+		if err := UseCouponByUserCouponIDInTx(tx, opts.AmountCouponID, orderID); err != nil {
+			return nil, nil, fmt.Errorf("使用金额券失败: %v", err)
 		}
 	}
 
@@ -360,8 +368,8 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 		// 先更新订单的配送相关信息（孤立状态、天气信息等）
 		_ = UpdateOrderDeliveryInfo(orderID)
 
-		// 然后计算并存储配送费计算结果和利润
-		_ = CalculateAndStoreOrderProfit(orderID)
+		// 然后计算并存储配送费计算结果和利润（带重试机制）
+		_ = CalculateAndStoreOrderProfitWithRetry(orderID, 3)
 	}()
 
 	// 查询刚插入的订单记录
@@ -626,11 +634,26 @@ func GetOrderByID(id int) (*Order, error) {
 func GetOrderItemsByOrderID(orderID int) ([]OrderItem, error) {
 	var items []OrderItem
 
-	query := `
-		SELECT id, order_id, product_id, product_name, spec_name, quantity, unit_price, subtotal, image, is_picked,
-		       original_unit_price, is_price_modified, price_modification_reason
-		FROM order_items WHERE order_id = ? ORDER BY id
-	`
+	// 使用缓存的字段存在性结果（避免每次查询都检查）
+	hasSpecSnapshotField := database.HasSpecSnapshotField()
+
+	// 根据字段是否存在构建不同的查询
+	var query string
+	if hasSpecSnapshotField {
+		query = `
+			SELECT id, order_id, product_id, product_name, spec_name, spec_snapshot, quantity, unit_price, subtotal, image, is_picked,
+			       original_unit_price, is_price_modified, price_modification_reason
+			FROM order_items WHERE order_id = ? ORDER BY id
+		`
+	} else {
+		// 兼容老数据：如果字段不存在，不查询该字段
+		query = `
+			SELECT id, order_id, product_id, product_name, spec_name, NULL as spec_snapshot, quantity, unit_price, subtotal, image, is_picked,
+			       original_unit_price, is_price_modified, price_modification_reason
+			FROM order_items WHERE order_id = ? ORDER BY id
+		`
+	}
+
 	rows, err := database.DB.Query(query, orderID)
 	if err != nil {
 		return nil, err
@@ -643,8 +666,9 @@ func GetOrderItemsByOrderID(orderID int) ([]OrderItem, error) {
 		var originalPrice sql.NullFloat64
 		var isPriceModifiedTinyInt int
 		var priceModReason sql.NullString
+		var specSnapshotJSON sql.NullString
 		err := rows.Scan(
-			&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.SpecName,
+			&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.SpecName, &specSnapshotJSON,
 			&item.Quantity, &item.UnitPrice, &item.Subtotal, &item.Image, &isPickedTinyInt,
 			&originalPrice, &isPriceModifiedTinyInt, &priceModReason,
 		)
@@ -658,6 +682,13 @@ func GetOrderItemsByOrderID(orderID int) ([]OrderItem, error) {
 		}
 		if priceModReason.Valid && priceModReason.String != "" {
 			item.PriceModificationReason = &priceModReason.String
+		}
+		// 解析规格快照（如果存在）
+		if specSnapshotJSON.Valid && specSnapshotJSON.String != "" {
+			var snapshot PurchaseSpecSnapshot
+			if err := json.Unmarshal([]byte(specSnapshotJSON.String), &snapshot); err == nil {
+				item.SpecSnapshot = &snapshot
+			}
 		}
 		items = append(items, item)
 	}
@@ -1283,7 +1314,7 @@ func UpdateOrderStatus(orderID int, newStatus string) error {
 
 	// 更新订单状态后，重新计算配送费和利润（异步执行，避免阻塞）
 	go func() {
-		_ = CalculateAndStoreOrderProfit(orderID)
+		_ = CalculateAndStoreOrderProfitWithRetry(orderID, 3)
 	}()
 
 	return nil

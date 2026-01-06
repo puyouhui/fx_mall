@@ -573,10 +573,23 @@ const uploadFiles = async (files) => {
     // 显示最终结果
     if (successCount > 0 && failCount === 0) {
       ElMessage.success(`成功上传 ${successCount} 张图片`)
+      // 如果当前有分类筛选，且与上传分类不一致，自动切换到上传的分类
+      // 这样用户就能立即看到刚上传的图片
+      if (selectedCategory.value && selectedCategory.value !== uploadCategory.value) {
+        selectedCategory.value = uploadCategory.value
+      }
+      // 重置到第一页，确保能看到最新上传的图片
+      pagination.pageNum = 1
       // 刷新列表
       await initData()
     } else if (successCount > 0 && failCount > 0) {
       ElMessage.warning(`成功上传 ${successCount} 张，失败 ${failCount} 张`)
+      // 如果当前有分类筛选，且与上传分类不一致，自动切换到上传的分类
+      if (selectedCategory.value && selectedCategory.value !== uploadCategory.value) {
+        selectedCategory.value = uploadCategory.value
+      }
+      // 重置到第一页
+      pagination.pageNum = 1
       // 刷新列表
       await initData()
     } else {

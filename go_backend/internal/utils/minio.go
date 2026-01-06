@@ -8,6 +8,7 @@ import (
 	"image/jpeg"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -282,14 +283,14 @@ func compressImage(imageData []byte, fileName string) ([]byte, int64, error) {
 
 	if isDeliveryImage {
 		// 配送完成图片：极高压缩率，更小尺寸（节省存储空间）
-		maxWidth = 600  // 最大宽度600px（足够清晰，文件更小）
-		maxHeight = 600 // 最大高度600px
-		quality = 30    // 质量30（极高压缩率，文件更小，但仍可清晰识别货物和门牌）
+		maxWidth = 1920  // 最大宽度1920px
+		maxHeight = 1920 // 最大高度1920px
+		quality = 70     // 质量75（中等压缩率）
 	} else {
 		// 其他图片：中等压缩率
 		maxWidth = 1920  // 最大宽度1920px
 		maxHeight = 1920 // 最大高度1920px
-		quality = 75     // 质量75（中等压缩率）
+		quality = 70     // 质量75（中等压缩率）
 	}
 
 	// 如果图片尺寸超过限制，进行缩放
@@ -389,6 +390,15 @@ func ListImages(category ...string) ([]map[string]interface{}, error) {
 		".webp": true,
 	}
 
+	// 用于存储所有图片对象，以便排序
+	type imageInfo struct {
+		name      string
+		url       string
+		size      int64
+		updatedAt time.Time
+	}
+	var allImages []imageInfo
+
 	for object := range objectCh {
 		if object.Err != nil {
 			log.Printf("列出对象时出错: %v", object.Err)
@@ -409,13 +419,28 @@ func ListImages(category ...string) ([]map[string]interface{}, error) {
 			// 生成可访问的URL
 			imageURL := fmt.Sprintf("%s/%s/%s", cfg.BaseURL, cfg.Bucket, objectName)
 
-			images = append(images, map[string]interface{}{
-				"name":      objectName,
-				"url":       imageURL,
-				"size":      object.Size,
-				"updatedAt": object.LastModified.Format("2006-01-02 15:04:05"),
+			allImages = append(allImages, imageInfo{
+				name:      objectName,
+				url:       imageURL,
+				size:      object.Size,
+				updatedAt: object.LastModified,
 			})
 		}
+	}
+
+	// 按更新时间倒序排序（最新上传的在前）
+	sort.Slice(allImages, func(i, j int) bool {
+		return allImages[i].updatedAt.After(allImages[j].updatedAt)
+	})
+
+	// 转换为返回格式
+	for _, img := range allImages {
+		images = append(images, map[string]interface{}{
+			"name":      img.name,
+			"url":       img.url,
+			"size":      img.size,
+			"updatedAt": img.updatedAt.Format("2006-01-02 15:04:05"),
+		})
 	}
 
 	return images, nil
@@ -458,15 +483,16 @@ func ListImagesWithPagination(category string, pageNum, pageSize int) ([]map[str
 		listOptions.Prefix = category + "/"
 	}
 
-	// 计算需要跳过的图片数量
-	skipCount := (pageNum - 1) * pageSize
-	collectedCount := 0
-	neededCount := pageSize
+	// 用于存储所有图片对象，以便排序
+	type imageInfo struct {
+		name      string
+		url       string
+		size      int64
+		updatedAt time.Time
+	}
+	var allImages []imageInfo
 
-	var total int
-	var paginatedImages []map[string]interface{}
-
-	// 列出对象（单次遍历，同时统计总数和收集分页数据）
+	// 列出所有对象并收集图片
 	objectCh := minioClient.ListObjects(ctx, cfg.Bucket, listOptions)
 
 	for object := range objectCh {
@@ -486,28 +512,44 @@ func ListImagesWithPagination(category string, pageNum, pageSize int) ([]map[str
 		}
 
 		if isImage {
-			total++ // 统计总数
-
-			// 如果还在跳过阶段，继续
-			if total <= skipCount {
-				continue
-			}
-
-			// 如果已经收集够了分页数据，继续遍历以获取总数，但不收集数据
-			if collectedCount >= neededCount {
-				continue
-			}
-
 			// 生成可访问的URL
 			imageURL := fmt.Sprintf("%s/%s/%s", cfg.BaseURL, cfg.Bucket, objectName)
 
-			paginatedImages = append(paginatedImages, map[string]interface{}{
-				"name":      objectName,
-				"url":       imageURL,
-				"size":      object.Size,
-				"updatedAt": object.LastModified.Format("2006-01-02 15:04:05"),
+			allImages = append(allImages, imageInfo{
+				name:      objectName,
+				url:       imageURL,
+				size:      object.Size,
+				updatedAt: object.LastModified,
 			})
-			collectedCount++
+		}
+	}
+
+	// 按更新时间倒序排序（最新上传的在前）
+	sort.Slice(allImages, func(i, j int) bool {
+		return allImages[i].updatedAt.After(allImages[j].updatedAt)
+	})
+
+	// 计算总数
+	total := len(allImages)
+
+	// 计算分页
+	skipCount := (pageNum - 1) * pageSize
+	endIndex := skipCount + pageSize
+	if endIndex > total {
+		endIndex = total
+	}
+
+	// 提取分页数据
+	var paginatedImages []map[string]interface{}
+	if skipCount < total {
+		for i := skipCount; i < endIndex; i++ {
+			img := allImages[i]
+			paginatedImages = append(paginatedImages, map[string]interface{}{
+				"name":      img.name,
+				"url":       img.url,
+				"size":      img.size,
+				"updatedAt": img.updatedAt.Format("2006-01-02 15:04:05"),
+			})
 		}
 	}
 

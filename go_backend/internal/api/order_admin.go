@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -268,7 +269,7 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 
 					// 异步存储计算结果，下次查询时可以直接使用
 					go func() {
-						_ = model.CalculateAndStoreOrderProfit(order.ID)
+						_ = model.CalculateAndStoreOrderProfitWithRetry(order.ID, 3)
 					}()
 				}
 			}
@@ -497,7 +498,7 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 
 				// 异步存储计算结果，下次查询时可以直接使用
 				go func() {
-					_ = model.CalculateAndStoreOrderProfit(id)
+					_ = model.CalculateAndStoreOrderProfitWithRetry(id, 3)
 				}()
 			}
 		}
@@ -796,6 +797,216 @@ func isValidStatusTransition(currentStatus, newStatus string) bool {
 	}
 
 	return false
+}
+
+// RecalculateOrderProfit 强制重新计算订单利润（用于修复老订单）
+func RecalculateOrderProfit(c *gin.Context) {
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供订单ID"})
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
+		return
+	}
+
+	// 检查订单是否存在
+	order, err := model.GetOrderByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单失败: " + err.Error()})
+		return
+	}
+	if order == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
+		return
+	}
+
+	// 获取订单明细，用于诊断
+	items, err := model.GetOrderItemsByOrderID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单明细失败: " + err.Error()})
+		return
+	}
+
+	// 诊断信息：检查每个商品的成本计算情况
+	diagnosis := make([]map[string]interface{}, 0, len(items))
+	totalCost := 0.0
+	for _, item := range items {
+		itemInfo := map[string]interface{}{
+			"order_item_id": item.ID,
+			"product_id":    item.ProductID,
+			"product_name":  item.ProductName,
+			"spec_name":      item.SpecName,
+			"quantity":       item.Quantity,
+		}
+
+		var cost float64
+		var costSource string
+
+		// 优先从订单快照中获取成本
+		if item.SpecSnapshot != nil {
+			cost = item.SpecSnapshot.Cost
+			costSource = "快照"
+			itemInfo["has_snapshot"] = true
+			itemInfo["snapshot_cost"] = cost
+		} else {
+			itemInfo["has_snapshot"] = false
+			// 如果没有快照，从商品规格JSON中获取成本（兼容旧订单）
+			var specsJSON sql.NullString
+			err := database.DB.QueryRow(`SELECT specs FROM products WHERE id = ?`, item.ProductID).Scan(&specsJSON)
+			if err != nil {
+				itemInfo["error"] = "商品不存在或已删除: " + err.Error()
+				itemInfo["cost"] = 0
+				diagnosis = append(diagnosis, itemInfo)
+				continue
+			}
+
+			if !specsJSON.Valid {
+				itemInfo["error"] = "商品规格JSON为空"
+				itemInfo["cost"] = 0
+				diagnosis = append(diagnosis, itemInfo)
+				continue
+			}
+
+			// 解析规格JSON
+			var specs []struct {
+				Name           string  `json:"name"`
+				WholesalePrice float64 `json:"wholesale_price"`
+				RetailPrice    float64 `json:"retail_price"`
+				Cost           float64 `json:"cost"`
+			}
+			if err := json.Unmarshal([]byte(specsJSON.String), &specs); err != nil {
+				itemInfo["error"] = "解析规格JSON失败: " + err.Error()
+				itemInfo["cost"] = 0
+				diagnosis = append(diagnosis, itemInfo)
+				continue
+			}
+
+			itemInfo["available_specs"] = len(specs)
+			itemInfo["spec_names"] = make([]string, 0, len(specs))
+			for _, spec := range specs {
+				itemInfo["spec_names"] = append(itemInfo["spec_names"].([]string), spec.Name)
+			}
+
+			// 查找匹配的规格
+			matched := false
+			for _, spec := range specs {
+				if spec.Name == item.SpecName {
+					cost = spec.Cost
+					costSource = "规格匹配"
+					matched = true
+					itemInfo["matched_spec_name"] = spec.Name
+					break
+				}
+			}
+
+			// 如果没找到匹配的规格，使用第一个规格的成本价作为回退
+			if !matched && len(specs) > 0 {
+				cost = specs[0].Cost
+				costSource = "回退到第一个规格"
+				itemInfo["fallback_spec_name"] = specs[0].Name
+				itemInfo["warning"] = fmt.Sprintf("规格名称 '%s' 不匹配，使用第一个规格 '%s' 的成本", item.SpecName, specs[0].Name)
+			} else if !matched {
+				itemInfo["error"] = "未找到匹配的规格，且没有可用规格"
+				itemInfo["cost"] = 0
+				diagnosis = append(diagnosis, itemInfo)
+				continue
+			}
+		}
+
+		if cost < 0 {
+			cost = 0
+		}
+
+		itemCost := cost * float64(item.Quantity)
+		totalCost += itemCost
+
+		itemInfo["cost"] = cost
+		itemInfo["cost_source"] = costSource
+		itemInfo["item_cost"] = itemCost
+		diagnosis = append(diagnosis, itemInfo)
+	}
+
+	// 计算利润
+	profit := order.GoodsAmount - totalCost
+	if profit < 0 {
+		profit = 0
+	}
+
+	// 强制重新计算并存储（忽略已接单的限制）
+	calculator, err := model.NewDeliveryFeeCalculator(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":      500,
+			"message":   "创建计算器失败: " + err.Error(),
+			"diagnosis": diagnosis,
+		})
+		return
+	}
+
+	// 计算订单利润
+	calculatedProfit := calculator.CalculateOrderProfit()
+
+	// 强制重新计算配送费和利润（即使已接单也重新计算）
+	err = model.CalculateAndStoreOrderProfitWithCalculator(calculator, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":      500,
+			"message":   "重新计算失败: " + err.Error(),
+			"diagnosis": diagnosis,
+			"calculated_profit": calculatedProfit,
+			"total_cost":        totalCost,
+		})
+		return
+	}
+
+	// 重新获取订单，获取更新后的利润和净利润
+	var storedProfit, storedNetProfit sql.NullFloat64
+	err = database.DB.QueryRow(`
+		SELECT order_profit, net_profit
+		FROM orders WHERE id = ?
+	`, id).Scan(&storedProfit, &storedNetProfit)
+
+	if err == nil {
+		var profitVal, netProfitVal *float64
+		if storedProfit.Valid {
+			profit := storedProfit.Float64
+			profitVal = &profit
+		}
+		if storedNetProfit.Valid {
+			netProfit := storedNetProfit.Float64
+			netProfitVal = &netProfit
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "重新计算成功",
+			"data": map[string]interface{}{
+				"order_id":          id,
+				"goods_amount":      order.GoodsAmount,
+				"calculated_cost":   totalCost,
+				"calculated_profit": calculatedProfit,
+				"stored_profit":     profitVal,
+				"stored_net_profit": netProfitVal,
+			},
+			"diagnosis": diagnosis,
+		})
+	} else {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "重新计算完成，但获取更新后的订单失败: " + err.Error(),
+			"data": map[string]interface{}{
+				"order_id":          id,
+				"goods_amount":      order.GoodsAmount,
+				"calculated_cost":   totalCost,
+				"calculated_profit": calculatedProfit,
+			},
+			"diagnosis": diagnosis,
+		})
+	}
 }
 
 // calculateSalesCommissionPreview 计算销售分成预览（未收款订单）

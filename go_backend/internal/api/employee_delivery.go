@@ -1441,7 +1441,7 @@ func MarkItemsAsPicked(c *gin.Context) {
 						// 注意：由于 updateAffectedOrdersIsolatedStatus 是私有函数，我们需要通过 UpdateOrderDeliveryInfo 来触发
 						// 但实际上，由于 delivering 状态的订单不在查询范围内，所以不需要更新
 						// 这里我们只重新计算当前订单的配送费即可
-						_ = model.CalculateAndStoreOrderProfit(orderID)
+						_ = model.CalculateAndStoreOrderProfitWithRetry(orderID, 3)
 					}(orderID)
 
 					// 注意：非接单场景不触发路线重新计算，序号保持不变

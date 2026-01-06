@@ -8,6 +8,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"go_backend/internal/database"
 	"go_backend/internal/utils"
@@ -534,32 +535,43 @@ func (c *DeliveryFeeCalculator) calculateOrderProfit() float64 {
 	// 计算总成本
 	totalCost := 0.0
 	for _, item := range items {
-		// 从商品规格JSON中获取成本
-		var specsJSON sql.NullString
-		err := database.DB.QueryRow(`SELECT specs FROM products WHERE id = ?`, item.ProductID).Scan(&specsJSON)
-		if err != nil || !specsJSON.Valid {
-			continue
-		}
-
-		// 解析规格JSON
-		var specs []struct {
-			Name           string  `json:"name"`
-			WholesalePrice float64 `json:"wholesale_price"`
-			RetailPrice    float64 `json:"retail_price"`
-			Cost           float64 `json:"cost"`
-		}
-		if err := json.Unmarshal([]byte(specsJSON.String), &specs); err != nil {
-			continue
-		}
-
-		// 查找匹配的规格
 		var cost float64
-		for _, spec := range specs {
-			if spec.Name == item.SpecName {
-				cost = spec.Cost
-				break
+
+		// 优先从订单快照中获取成本（避免商品被修改或删除后无法获取成本）
+		if item.SpecSnapshot != nil {
+			cost = item.SpecSnapshot.Cost
+		} else {
+			// 如果没有快照，从商品规格JSON中获取成本（兼容旧订单）
+			var specsJSON sql.NullString
+			err := database.DB.QueryRow(`SELECT specs FROM products WHERE id = ?`, item.ProductID).Scan(&specsJSON)
+			if err != nil || !specsJSON.Valid {
+				continue
+			}
+
+			// 解析规格JSON
+			var specs []struct {
+				Name           string  `json:"name"`
+				WholesalePrice float64 `json:"wholesale_price"`
+				RetailPrice    float64 `json:"retail_price"`
+				Cost           float64 `json:"cost"`
+			}
+			if err := json.Unmarshal([]byte(specsJSON.String), &specs); err != nil {
+				continue
+			}
+
+			// 查找匹配的规格
+			for _, spec := range specs {
+				if spec.Name == item.SpecName {
+					cost = spec.Cost
+					break
+				}
+			}
+			// 如果没找到匹配的规格，使用第一个规格的成本价作为回退
+			if cost == 0 && len(specs) > 0 {
+				cost = specs[0].Cost
 			}
 		}
+
 		if cost < 0 {
 			cost = 0
 		}
@@ -710,7 +722,7 @@ func UpdateOrderDeliveryInfo(orderID int) error {
 		} else {
 			// 孤立状态更新成功后，重新计算并存储配送费
 			// 因为孤立状态改变会影响配送费金额（孤立补贴）
-			if err := CalculateAndStoreOrderProfit(affectedOrderID); err != nil {
+			if err := CalculateAndStoreOrderProfitWithRetry(affectedOrderID, 3); err != nil {
 				// 记录错误但不中断流程
 				log.Printf("[UpdateOrderDeliveryInfo] 重新计算订单 %d 的配送费失败: %v", affectedOrderID, err)
 			}
@@ -823,13 +835,44 @@ func updateAffectedOrdersIsolatedStatus(orderID int) error {
 			log.Printf("[updateAffectedOrdersIsolatedStatus] 更新订单 %d 的孤立状态失败: %v", affectedOrderID, err)
 		} else {
 			// 重新计算配送费
-			if err := CalculateAndStoreOrderProfit(affectedOrderID); err != nil {
+			if err := CalculateAndStoreOrderProfitWithRetry(affectedOrderID, 3); err != nil {
 				log.Printf("[updateAffectedOrdersIsolatedStatus] 重新计算订单 %d 的配送费失败: %v", affectedOrderID, err)
 			}
 		}
 	}
 
 	return nil
+}
+
+// CalculateAndStoreOrderProfitWithRetry 计算并存储订单的配送费计算结果和利润信息（带重试机制）
+func CalculateAndStoreOrderProfitWithRetry(orderID int, maxRetries int) error {
+	if maxRetries <= 0 {
+		maxRetries = 3 // 默认重试3次
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err := CalculateAndStoreOrderProfit(orderID)
+		if err == nil {
+			// 成功，记录重试次数（如果有重试）
+			if attempt > 0 {
+				log.Printf("[CalculateAndStoreOrderProfitWithRetry] 订单 %d 利润计算成功（重试 %d 次后）", orderID, attempt)
+			}
+			return nil
+		}
+
+		lastErr = err
+		// 如果不是最后一次尝试，等待后重试（指数退避）
+		if attempt < maxRetries-1 {
+			backoffTime := time.Duration(1<<uint(attempt)) * time.Second // 1s, 2s, 4s...
+			log.Printf("[CalculateAndStoreOrderProfitWithRetry] 订单 %d 利润计算失败（尝试 %d/%d）: %v，%v 后重试", orderID, attempt+1, maxRetries, err, backoffTime)
+			time.Sleep(backoffTime)
+		}
+	}
+
+	// 所有重试都失败，记录错误
+	log.Printf("[CalculateAndStoreOrderProfitWithRetry] 订单 %d 利润计算失败（已重试 %d 次）: %v", orderID, maxRetries, lastErr)
+	return fmt.Errorf("订单 %d 利润计算失败（已重试 %d 次）: %w", orderID, maxRetries, lastErr)
 }
 
 // CalculateAndStoreOrderProfit 计算并存储订单的配送费计算结果和利润信息

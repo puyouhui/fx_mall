@@ -165,29 +165,32 @@
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
-              <el-dropdown v-if="canShowStatusActions(scope.row.status)"
-                @command="(cmd) => handleStatusChange(scope.row.id, scope.row.status, cmd)" trigger="click"
+              <el-dropdown
+                @command="(cmd) => handleOrderAction(scope.row.id, scope.row.status, cmd)" trigger="click"
                 placement="bottom-end">
                 <el-button type="primary" link>
-                  状态操作
+                  操作
                   <el-icon style="margin-left: 4px;">
                     <ArrowDown />
                   </el-icon>
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item v-if="isPendingDelivery(scope.row.status)" command="delivering">
+                    <el-dropdown-item v-if="canShowStatusActions(scope.row.status) && isPendingDelivery(scope.row.status)" command="delivering">
                       开始配送
                     </el-dropdown-item>
-                    <el-dropdown-item v-if="scope.row.status === 'delivering'" command="delivered">
+                    <el-dropdown-item v-if="canShowStatusActions(scope.row.status) && scope.row.status === 'delivering'" command="delivered">
                       标记已送达
                     </el-dropdown-item>
-                    <el-dropdown-item v-if="scope.row.status === 'delivered' || scope.row.status === 'shipped'"
+                    <el-dropdown-item v-if="canShowStatusActions(scope.row.status) && (scope.row.status === 'delivered' || scope.row.status === 'shipped')"
                       command="paid">
                       标记已收款
                     </el-dropdown-item>
-                    <el-dropdown-item v-if="isPendingDelivery(scope.row.status)" command="cancelled" divided>
+                    <el-dropdown-item v-if="canShowStatusActions(scope.row.status) && isPendingDelivery(scope.row.status)" command="cancelled" divided>
                       取消订单
+                    </el-dropdown-item>
+                    <el-dropdown-item command="recalculate" divided>
+                      强制重新计算
                     </el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
@@ -729,7 +732,7 @@
 import { reactive, ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, QuestionFilled } from '@element-plus/icons-vue'
-import { getOrders, getOrderDetail, updateOrderStatus } from '../api/orders'
+import { getOrders, getOrderDetail, updateOrderStatus, recalculateOrderProfit } from '../api/orders'
 import { hiprint } from 'vue-plugin-hiprint'
 import { getPrinterAddress, getPrintOptions, isOnlineEnvironment } from '../utils/printer'
 
@@ -941,8 +944,15 @@ const isPendingDelivery = (status) => {
   return status === 'pending' || status === 'pending_delivery'
 }
 
-// 处理订单状态变更
-const handleStatusChange = async (orderId, currentStatus, newStatus) => {
+// 处理订单操作（包括状态变更和其他操作）
+const handleOrderAction = async (orderId, currentStatus, command) => {
+  // 如果是重新计算，调用重新计算函数
+  if (command === 'recalculate') {
+    await handleRecalculateProfit(orderId)
+    return
+  }
+
+  // 其他命令按状态变更处理
   const statusMap = {
     'delivering': '开始配送',
     'delivered': '标记已送达',
@@ -950,7 +960,7 @@ const handleStatusChange = async (orderId, currentStatus, newStatus) => {
     'cancelled': '取消订单'
   }
 
-  const actionName = statusMap[newStatus] || '更新状态'
+  const actionName = statusMap[command] || '更新状态'
 
   try {
     await ElMessageBox.confirm(
@@ -963,7 +973,7 @@ const handleStatusChange = async (orderId, currentStatus, newStatus) => {
       }
     )
 
-    const res = await updateOrderStatus(orderId, newStatus)
+    const res = await updateOrderStatus(orderId, command)
     if (res && res.code === 200) {
       ElMessage.success(`${actionName}成功`)
       // 重新加载订单列表
@@ -979,6 +989,49 @@ const handleStatusChange = async (orderId, currentStatus, newStatus) => {
     if (error !== 'cancel') {
       console.error('更新订单状态失败:', error)
       ElMessage.error(`${actionName}失败，请稍后再试`)
+    }
+  }
+}
+
+// 处理强制重新计算订单利润
+const handleRecalculateProfit = async (orderId) => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要强制重新计算订单利润吗？此操作会重新计算订单的成本和利润。',
+      '确认操作',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    ElMessage.info('正在重新计算，请稍候...')
+    const res = await recalculateOrderProfit(orderId)
+    if (res && res.code === 200) {
+      ElMessage.success('重新计算成功')
+      // 显示计算结果
+      if (res.data) {
+        const data = res.data
+        const message = `计算结果：\n商品总金额：¥${data.goods_amount}\n计算总成本：¥${data.calculated_cost}\n计算利润：¥${data.calculated_profit}\n存储利润：¥${data.stored_profit || 'N/A'}\n存储净利润：¥${data.stored_net_profit || 'N/A'}`
+        ElMessageBox.alert(message, '计算完成', {
+          confirmButtonText: '确定',
+          type: 'success'
+        })
+      }
+      // 重新加载订单列表
+      loadOrders()
+      // 如果详情对话框打开，也刷新详情
+      if (detailDialogVisible.value && orderDetail.value && orderDetail.value.order?.id === orderId) {
+        handleViewDetail(orderId)
+      }
+    } else {
+      ElMessage.error(res?.message || '重新计算失败')
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('重新计算订单利润失败:', error)
+      ElMessage.error('重新计算失败，请稍后再试')
     }
   }
 }

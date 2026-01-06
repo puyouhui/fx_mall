@@ -265,11 +265,33 @@
           <el-dialog v-model="showImageLibraryDialog" title="从图库选择图片" width="80%" center>
             <div class="image-library-dialog">
               <div class="dialog-toolbar">
+                <el-select
+                  v-model="selectedLibraryCategory"
+                  placeholder="选择目录"
+                  style="width: 150px; margin-right: 10px;"
+                  @change="handleLibraryCategoryChange"
+                  clearable
+                >
+                  <el-option label="全部" value="" />
+                  <el-option-group label="商品相关">
+                    <el-option label="商品图片" value="products" />
+                    <el-option label="轮播图" value="carousels" />
+                    <el-option label="分类图标" value="categories" />
+                  </el-option-group>
+                  <el-option-group label="用户和系统">
+                    <el-option label="用户相关" value="users" />
+                    <el-option label="配送相关" value="delivery" />
+                  </el-option-group>
+                  <el-option-group label="其他">
+                    <el-option label="其他图片" value="others" />
+                    <el-option label="富文本图片" value="rich-content" />
+                  </el-option-group>
+                </el-select>
                 <el-input
                   v-model="librarySearchKeyword"
                   placeholder="搜索图片"
                   :prefix-icon="Search"
-                  style="width: 300px;"
+                  style="width: 300px; margin-right: 10px;"
                   clearable
                 />
                 <el-button type="primary" @click="loadImageLibrary">
@@ -455,14 +477,61 @@ const libraryImages = ref([])
 const libraryLoading = ref(false)
 const librarySearchKeyword = ref('')
 const selectedLibraryImages = ref([])
+const selectedLibraryCategory = ref('') // 图库分类筛选
 
 // 过滤后的图库图片
 const filteredLibraryImages = computed(() => {
-  if (!librarySearchKeyword.value) {
-    return libraryImages.value
+  let filtered = libraryImages.value
+
+  // 按分类筛选
+  if (selectedLibraryCategory.value) {
+    // 这里需要根据图片的category字段进行筛选
+    // 如果图片对象有category字段，使用它；否则根据URL路径判断
+    filtered = filtered.filter(img => {
+      if (img.category) {
+        return img.category === selectedLibraryCategory.value
+      }
+      // 如果没有category字段，根据URL路径判断（兼容老数据）
+      const url = img.url || ''
+      if (selectedLibraryCategory.value === 'products') {
+        return url.includes('/products/')
+      } else if (selectedLibraryCategory.value === 'carousels') {
+        return url.includes('/carousels/')
+      } else if (selectedLibraryCategory.value === 'categories') {
+        return url.includes('/categories/')
+      } else if (selectedLibraryCategory.value === 'users') {
+        return url.includes('/users/')
+      } else if (selectedLibraryCategory.value === 'delivery') {
+        return url.includes('/delivery/')
+      } else if (selectedLibraryCategory.value === 'rich-content') {
+        return url.includes('/rich-content/')
+      } else if (selectedLibraryCategory.value === 'others') {
+        // 其他图片：不包含上述任何路径的图片
+        return !url.includes('/products/') && 
+               !url.includes('/carousels/') && 
+               !url.includes('/categories/') && 
+               !url.includes('/users/') && 
+               !url.includes('/delivery/') && 
+               !url.includes('/rich-content/')
+      }
+      return true
+    })
   }
-  const keyword = librarySearchKeyword.value.toLowerCase()
-  return libraryImages.value.filter(img => img.name.toLowerCase().includes(keyword))
+
+  // 按搜索关键词筛选
+  if (librarySearchKeyword.value) {
+    const keyword = librarySearchKeyword.value.toLowerCase()
+    filtered = filtered.filter(img => img.name.toLowerCase().includes(keyword))
+  }
+
+  // 按更新时间倒序排列（最新上传的在前）
+  filtered = [...filtered].sort((a, b) => {
+    const dateA = a.updatedAt ? new Date(a.updatedAt) : new Date(0)
+    const dateB = b.updatedAt ? new Date(b.updatedAt) : new Date(0)
+    return dateB - dateA
+  })
+
+  return filtered
 })
 
 // 表单验证规则
@@ -1288,12 +1357,24 @@ const uploadFiles = async (files) => {
 const loadImageLibrary = async () => {
   libraryLoading.value = true
   try {
-    const response = await getImageList()
+    // 构建请求参数
+    const params = {}
+    if (selectedLibraryCategory.value) {
+      params.category = selectedLibraryCategory.value
+    }
+    
+    const response = await getImageList(params)
     if (response.code === 200) {
       libraryImages.value = response.data || []
       // 过滤掉已经添加的图片
       const existingUrls = productForm.images.map(img => img.url)
       libraryImages.value = libraryImages.value.filter(img => !existingUrls.includes(img.url))
+      // 按更新时间倒序排列（最新上传的在前）
+      libraryImages.value.sort((a, b) => {
+        const dateA = a.updatedAt ? new Date(a.updatedAt) : new Date(0)
+        const dateB = b.updatedAt ? new Date(b.updatedAt) : new Date(0)
+        return dateB - dateA
+      })
     } else {
       ElMessage.error(response.message || '获取图片列表失败')
     }
@@ -1303,6 +1384,12 @@ const loadImageLibrary = async () => {
   } finally {
     libraryLoading.value = false
   }
+}
+
+// 处理图库分类变更
+const handleLibraryCategoryChange = () => {
+  librarySearchKeyword.value = ''
+  loadImageLibrary()
 }
 
 // 切换图库图片选择
@@ -1350,6 +1437,7 @@ const confirmSelectLibraryImages = () => {
   // 清空选择并关闭对话框
   selectedLibraryImages.value = []
   librarySearchKeyword.value = ''
+  selectedLibraryCategory.value = '' // 重置分类筛选
   showImageLibraryDialog.value = false
   ElMessage.success('图片已添加')
 }
@@ -1359,6 +1447,7 @@ watch(showImageLibraryDialog, (newVal) => {
   if (newVal) {
     selectedLibraryImages.value = []
     librarySearchKeyword.value = ''
+    selectedLibraryCategory.value = '' // 重置分类筛选
     loadImageLibrary()
   }
 })
