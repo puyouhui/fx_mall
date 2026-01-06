@@ -11,7 +11,7 @@ class Config {
   // ============================================
 
   // 真机调试（局域网 IP）
-  static const String devBaseUrl = 'https://mall.sscchh.com';
+  static const String devBaseUrl = 'http://192.168.1.3:8082';
 
   // Android 模拟器（访问宿主机）
   static const String emulatorBaseUrl = 'http://10.0.2.2:8082';
@@ -39,10 +39,20 @@ class Config {
     }
   }
 
-  // API 路径前缀（管理员使用 /api/mini/admin 接口）
-  static const String apiPrefix = '/api/mini';
+  // API 路径前缀
+  // 生产环境使用 /api_mall/mini（通过 Nginx 代理到后端的 /api/mini）
+  // 开发/模拟器环境使用 /api/mini（直接访问后端）
+  static String get apiPrefix {
+    switch (_env) {
+      case 'prod':
+        return '/api_mall/mini'; // 生产环境使用 Nginx 代理路径
+      case 'device':
+      case 'emulator':
+      default:
+        return '/api/mini'; // 开发环境直接访问后端
+    }
+  }
 
   // 完整的 API 基础 URL
   static String get apiBaseUrl => '$baseUrl$apiPrefix';
 }
-

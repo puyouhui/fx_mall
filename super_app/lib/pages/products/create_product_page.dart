@@ -107,9 +107,9 @@ class _CreateProductPageState extends State<CreateProductPage> {
           _isLoading = false;
         });
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(response.message)),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(response.message)));
         }
       }
     } catch (e) {
@@ -118,9 +118,9 @@ class _CreateProductPageState extends State<CreateProductPage> {
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载失败: ${e.toString()}')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('加载失败: ${e.toString()}')));
       }
     }
   }
@@ -184,17 +184,10 @@ class _CreateProductPageState extends State<CreateProductPage> {
     });
     _loadProducts(reset: true);
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true,
-      appBar: AppBar(
-        title: const Text('商品管理', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      extendBodyBehindAppBar: true,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -210,6 +203,16 @@ class _CreateProductPageState extends State<CreateProductPage> {
               // 搜索和分类筛选区域
               Container(
                 padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.95),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.03),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
                 child: Column(
                   children: [
                     // 搜索框
@@ -220,30 +223,55 @@ class _CreateProductPageState extends State<CreateProductPage> {
                             controller: _searchController,
                             decoration: InputDecoration(
                               hintText: '搜索商品名称',
+                              hintStyle: const TextStyle(
+                                color: Color(0xFF8C92A4),
+                                fontSize: 14,
+                              ),
                               filled: true,
                               fillColor: Colors.white,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
+                                borderSide: BorderSide(
+                                  color: Colors.grey.shade200,
+                                  width: 1,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Colors.grey.shade200,
+                                  width: 1,
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFF20CB6B),
+                                  width: 1.5,
+                                ),
                               ),
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 16,
-                                vertical: 12,
+                                vertical: 14,
                               ),
-                              prefixIcon: const Icon(Icons.search),
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: Color(0xFF8C92A4),
+                                size: 20,
+                              ),
                             ),
                             onSubmitted: (_) => _onSearch(),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         ElevatedButton(
                           onPressed: _onSearch,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: const Color(0xFF20253A),
+                            backgroundColor: const Color(0xFF20CB6B),
+                            foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 12,
+                              horizontal: 20,
+                              vertical: 14,
                             ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -252,7 +280,10 @@ class _CreateProductPageState extends State<CreateProductPage> {
                           ),
                           child: const Text(
                             '搜索',
-                            style: TextStyle(fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                       ],
@@ -267,6 +298,10 @@ class _CreateProductPageState extends State<CreateProductPage> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.grey.shade200,
+                                width: 1,
+                              ),
                             ),
                             child: DropdownButton<int?>(
                               value: _selectedParentCategoryId,
@@ -282,6 +317,7 @@ class _CreateProductPageState extends State<CreateProductPage> {
                               icon: const Icon(
                                 Icons.arrow_drop_down,
                                 color: Color(0xFF20CB6B),
+                                size: 24,
                               ),
                               dropdownColor: Colors.white,
                               style: const TextStyle(
@@ -299,7 +335,8 @@ class _CreateProductPageState extends State<CreateProductPage> {
                                 ),
                                 ..._categories.map((category) {
                                   final id = category['id'] as int;
-                                  final name = category['name'] as String? ?? '';
+                                  final name =
+                                      category['name'] as String? ?? '';
                                   return DropdownMenuItem<int?>(
                                     value: id,
                                     child: Text(
@@ -319,7 +356,7 @@ class _CreateProductPageState extends State<CreateProductPage> {
                         ),
                         if (_selectedParentCategoryId != null &&
                             _subCategories.isNotEmpty) ...[
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Container(
                               padding: const EdgeInsets.symmetric(
@@ -328,9 +365,14 @@ class _CreateProductPageState extends State<CreateProductPage> {
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.grey.shade200,
+                                  width: 1,
+                                ),
                               ),
                               child: DropdownButton<int?>(
-                                value: _selectedCategoryId ==
+                                value:
+                                    _selectedCategoryId ==
                                         _selectedParentCategoryId
                                     ? null
                                     : _selectedCategoryId,
@@ -346,6 +388,7 @@ class _CreateProductPageState extends State<CreateProductPage> {
                                 icon: const Icon(
                                   Icons.arrow_drop_down,
                                   color: Color(0xFF20CB6B),
+                                  size: 24,
                                 ),
                                 dropdownColor: Colors.white,
                                 style: const TextStyle(
@@ -401,53 +444,70 @@ class _CreateProductPageState extends State<CreateProductPage> {
                         ),
                       )
                     : _products.isEmpty
-                        ? Center(
-                            child: Text(
-                              _searchKeyword.isNotEmpty ||
-                                      _selectedCategoryId != null
-                                  ? '暂无商品'
-                                  : '暂无商品数据',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
+                    ? Container(
+                        decoration: const BoxDecoration(color: Colors.white),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.inventory_2_outlined,
+                                size: 64,
+                                color: Colors.grey.shade300,
                               ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _searchKeyword.isNotEmpty ||
+                                        _selectedCategoryId != null
+                                    ? '暂无商品'
+                                    : '暂无商品数据',
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : Container(
+                        decoration: const BoxDecoration(color: Colors.white),
+                        child: RefreshIndicator(
+                          onRefresh: () => _loadProducts(reset: true),
+                          color: const Color(0xFF20CB6B),
+                          child: ListView.builder(
+                            controller: _scrollController,
+                            padding: EdgeInsets.fromLTRB(
+                              16,
+                              16,
+                              16,
+                              16 + MediaQuery.of(context).padding.bottom,
                             ),
-                          )
-                        : RefreshIndicator(
-                            onRefresh: () => _loadProducts(reset: true),
-                            child: ListView.builder(
-                              controller: _scrollController,
-                              padding: EdgeInsets.fromLTRB(
-                                16,
-                                0,
-                                16,
-                                16 +
-                                    MediaQuery.of(context).padding.bottom,
-                              ),
-                              itemCount: _products.length + (_hasMore ? 1 : 0),
-                              itemBuilder: (context, index) {
-                                if (index == _products.length) {
-                                  return const Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 16),
-                                    child: Center(
-                                      child: SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                            Colors.white,
-                                          ),
-                                        ),
+                            itemCount: _products.length + (_hasMore ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (index == _products.length) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Color(0xFF20CB6B),
+                                            ),
                                       ),
                                     ),
-                                  );
-                                }
-                                return _buildProductCard(_products[index]);
-                              },
-                            ),
+                                  ),
+                                );
+                              }
+                              return _buildProductCard(_products[index]);
+                            },
                           ),
+                        ),
+                      ),
               ),
             ],
           ),
@@ -467,141 +527,181 @@ class _CreateProductPageState extends State<CreateProductPage> {
           ),
         );
       },
-      borderRadius: BorderRadius.circular(16),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 商品图片
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: imageUrl.isNotEmpty
-                  ? Image.network(
-                      imageUrl,
-                      width: 100,
-                      height: 100,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stack) {
-                        return Container(
-                          width: 100,
-                          height: 100,
-                          color: Colors.grey.shade200,
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            Icons.image_not_supported,
-                            size: 32,
-                            color: Colors.grey,
-                          ),
-                        );
-                      },
-                    )
-                  : Container(
-                      width: 100,
-                      height: 100,
-                      color: Colors.grey.shade200,
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.image_not_supported,
-                        size: 32,
-                        color: Colors.grey,
-                      ),
-                    ),
-            ),
-            const SizedBox(width: 12),
-            // 商品信息
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          product.name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF20253A),
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (product.isSpecial)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF5A5F).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            '精选',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Color(0xFFFF5A5F),
-                              fontWeight: FontWeight.w600,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 商品图片（方形）
+              Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F6FA),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200, width: 1),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: imageUrl.isNotEmpty
+                    ? Image.network(
+                        imageUrl,
+                        width: 110,
+                        height: 110,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stack) {
+                          return Container(
+                            width: 110,
+                            height: 110,
+                            color: const Color(0xFFF5F6FA),
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.image_not_supported,
+                              size: 36,
+                              color: Color(0xFFB0B4C3),
                             ),
+                          );
+                        },
+                      )
+                    : Container(
+                        width: 110,
+                        height: 110,
+                        color: const Color(0xFFF5F6FA),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.image_not_supported,
+                          size: 36,
+                          color: Color(0xFFB0B4C3),
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              // 商品信息
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    product.name,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF20253A),
+                                      height: 1.3,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (product.isSpecial) ...[
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(
+                                          0xFFFF5A5F,
+                                        ).withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text(
+                                        '精选',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Color(0xFFFF5A5F),
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (product.description != null &&
+                            product.description!.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            product.description!,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF8C92A4),
+                              height: 1.4,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF5F6FA),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '${product.specs.length}个规格',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF8C92A4),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          product.getPriceRange(),
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFFF5A5F),
                           ),
                         ),
-                    ],
-                  ),
-                  if (product.description != null &&
-                      product.description!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      product.description!,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF8C92A4),
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      ],
                     ),
                   ],
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Text(
-                        '${product.specs.length}个规格',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF8C92A4),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    product.getPriceRange(),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFFFF5A5F),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
-

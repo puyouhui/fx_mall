@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:super_app/api/suppliers_api.dart';
+import 'package:super_app/models/supplier_payment.dart';
+import 'package:super_app/pages/suppliers/supplier_payment_detail_page.dart';
 
 class SuppliersPage extends StatefulWidget {
   const SuppliersPage({super.key});
@@ -8,189 +11,284 @@ class SuppliersPage extends StatefulWidget {
 }
 
 class _SuppliersPageState extends State<SuppliersPage> {
+  List<SupplierPaymentStats> _statsList = [];
+  bool _isLoading = false;
+  int _currentPage = 1;
+  final int _pageSize = 20;
+  bool _hasMore = true;
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoading &&
+        _hasMore) {
+      _loadMoreStats();
+    }
+  }
+
+  Future<void> _loadStats({bool reset = false}) async {
+    if (_isLoading) return;
+
+    if (reset) {
+      setState(() {
+        _currentPage = 1;
+        _statsList = [];
+        _hasMore = true;
+      });
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final response = await SuppliersApi.getPaymentStats(
+        pageNum: _currentPage,
+        pageSize: _pageSize,
+      );
+
+      if (!mounted) return;
+
+      if (response.isSuccess && response.data != null) {
+        final newStats = response.data!;
+        setState(() {
+          if (reset) {
+            _statsList = newStats;
+          } else {
+            _statsList.addAll(newStats);
+          }
+          _hasMore = newStats.length >= _pageSize;
+          if (_hasMore && !reset) {
+            _currentPage++;
+          }
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(response.message)),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载失败: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadMoreStats() async {
+    if (!_hasMore || _isLoading) return;
+    await _loadStats(reset: false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: RefreshIndicator(
-        onRefresh: () async {
-          // TODO: 刷新供应商列表
-          await Future.delayed(const Duration(seconds: 1));
-        },
-        child: CustomScrollView(
-          slivers: [
-            // 顶部操作栏
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      '供应商管理',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF20253A),
-                      ),
+        onRefresh: () => _loadStats(reset: true),
+        child: _isLoading && _statsList.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : _statsList.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.business_outlined,
+                          size: 64,
+                          color: Colors.grey.shade300,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          '暂无供应商付款数据',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      onPressed: () {
-                        // TODO: 搜索供应商
-                      },
-                      icon: const Icon(Icons.search),
-                      tooltip: '搜索',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            
-            // 供应商列表
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    // TODO: 从API获取供应商列表
-                    return _buildSupplierCard(
-                      name: '供应商名称 ${index + 1}',
-                      contact: '联系人',
-                      phone: '13800138000',
-                      status: 'active',
-                    );
-                  },
-                  childCount: 0, // 暂时显示空列表
-                ),
-              ),
-            ),
-            
-            // 空状态
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.business_outlined,
-                      size: 64,
-                      color: Color(0xFF8C92A4),
-                    ),
-                    SizedBox(height: 16),
-                    Text(
-                      '暂无供应商',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Color(0xFF8C92A4),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    itemCount: _statsList.length + (_hasMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index >= _statsList.length) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Color(0xFF20CB6B),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
+                      final stats = _statsList[index];
+                      return _buildSupplierCard(stats);
+                    },
+                  ),
       ),
     );
   }
 
-  Widget _buildSupplierCard({
-    required String name,
-    required String contact,
-    required String phone,
-    required String status,
-  }) {
-    final isActive = status == 'active';
-    
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        leading: Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            color: isActive ? Colors.green[100] : Colors.grey[200],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isActive ? Colors.green : Colors.grey,
-              width: 2,
+  Widget _buildSupplierCard(SupplierPaymentStats stats) {
+    return InkWell(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => SupplierPaymentDetailPage(
+              supplierId: stats.supplierId,
+              supplierName: stats.supplierName,
             ),
           ),
-          child: Icon(
-            Icons.business,
-            color: isActive ? Colors.green : Colors.grey,
-          ),
-        ),
-        title: Text(
-          name,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text('联系人: $contact'),
-            Text('电话: $phone'),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
           ],
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: isActive
-                    ? Colors.green.withOpacity(0.1)
-                    : Colors.grey.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                isActive ? '正常' : '禁用',
-                style: TextStyle(
-                  color: isActive ? Colors.green : Colors.grey,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
+            // 供应商名称
+            Text(
+              stats.supplierName,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF20253A),
               ),
             ),
-            const SizedBox(width: 8),
-            PopupMenuButton(
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
+            const SizedBox(height: 12),
+            // 金额信息
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.edit, size: 20),
-                      SizedBox(width: 8),
-                      Text('编辑'),
+                      const Text(
+                        '应付款总额',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF8C92A4),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '¥${stats.totalAmount.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF20253A),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                PopupMenuItem(
-                  value: 'toggle',
-                  child: Row(
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        isActive ? Icons.block : Icons.check_circle,
-                        size: 20,
+                      const Text(
+                        '待付款',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF8C92A4),
+                        ),
                       ),
-                      const SizedBox(width: 8),
-                      Text(isActive ? '禁用' : '启用'),
+                      const SizedBox(height: 4),
+                      Text(
+                        '¥${stats.pendingAmount.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFFF6B6B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '已付款',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF8C92A4),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '¥${stats.paidAmount.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF20CB6B),
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ],
-              onSelected: (value) {
-                // TODO: 处理编辑/启用/禁用操作
-              },
+            ),
+            const SizedBox(height: 12),
+            // 订单数量和查看详情
+            Row(
+              children: [
+                Text(
+                  '订单数量: ${stats.orderCount}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF8C92A4),
+                  ),
+                ),
+                const Spacer(),
+                const Text(
+                  '查看详情 >',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF20CB6B),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-        onTap: () {
-          // TODO: 跳转到供应商详情
-        },
       ),
     );
   }

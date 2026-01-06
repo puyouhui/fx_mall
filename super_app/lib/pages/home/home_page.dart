@@ -72,6 +72,14 @@ class _HomePageState extends State<HomePage> {
                 }
               },
             ),
+          if (_currentIndex == 2)
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: '添加商品',
+              onPressed: () {
+                Navigator.of(context).pushNamed('/edit_product');
+              },
+            ),
         ],
       ),
       body: IndexedStack(

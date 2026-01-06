@@ -124,25 +124,25 @@
               <div class="specs-input-group">
                 <el-row :gutter="12" style="margin-bottom: 10px;">
                   <el-col :span="12">
-                    <el-input v-model="currentSpec.name" placeholder="规格名称（如：3瓶装）" />
+                    <el-input v-model="currentSpec.name" placeholder="规格名称 *（如：3瓶装）" />
                   </el-col>
                   <el-col :span="12">
-                    <el-input v-model="currentSpec.description" placeholder="规格描述（如：≈1.5元/瓶）" />
+                    <el-input v-model="currentSpec.description" placeholder="规格描述（可选，如：≈1.5元/瓶）" />
                   </el-col>
                 </el-row>
                 <el-row :gutter="12" style="margin-bottom: 10px;">
                   <el-col :span="8">
-                    <el-input-number v-model="currentSpec.cost" :min="0" :step="0.01" :precision="2" placeholder="成本"
+                    <el-input-number v-model="currentSpec.cost" :min="0.01" :step="0.01" :precision="2" placeholder="成本 *"
                       style="width: 100%;" />
-                    <!-- <div style="font-size: 12px; color: #909399; margin-top: 4px;">成本（用于计算利润）</div> -->
+                    <div style="font-size: 12px; color: #909399; margin-top: 4px;">成本（用于计算利润，必填）</div>
                   </el-col>
                   <el-col :span="8">
                     <el-input-number v-model="currentSpec.wholesalePrice" :min="0.01" :step="0.01" :precision="2"
-                      placeholder="批发价" style="width: 100%;" />
+                      placeholder="批发价 *" style="width: 100%;" />
                   </el-col>
                   <el-col :span="8">
                     <el-input-number v-model="currentSpec.retailPrice" :min="0.01" :step="0.01" :precision="2"
-                      placeholder="零售价" style="width: 100%;" />
+                      placeholder="零售价 *" style="width: 100%;" />
                   </el-col>
                 </el-row>
                 <el-row :gutter="12" style="margin-bottom: 10px;">
@@ -152,11 +152,11 @@
                       :min="0.01" 
                       :step="0.01" 
                       :precision="2"
-                      placeholder="配送计件数" 
+                      placeholder="配送计件数 *" 
                       style="width: 100%;" 
                     />
                     <div style="font-size: 12px; color: #909399; margin-top: 4px;">
-                      配送时按多少件计算（如：1包装=0.1，10包=1件；1件装=1.0）
+                      配送时按多少件计算（必填，如：1包装=0.1，10包=1件；1件装=1.0）
                     </div>
                   </el-col>
                 </el-row>
@@ -938,8 +938,33 @@ const handleDeleteProduct = async (id) => {
 
 // 添加规格
 const addSpec = () => {
-  if (!currentSpec.name || !currentSpec.wholesalePrice || currentSpec.wholesalePrice <= 0 || !currentSpec.retailPrice || currentSpec.retailPrice <= 0) {
-    ElMessage.warning('请输入规格名称、批发价和零售价')
+  // 验证规格名称（必填）
+  if (!currentSpec.name || currentSpec.name.trim() === '') {
+    ElMessage.warning('请输入规格名称')
+    return
+  }
+
+  // 验证成本价（必填且必须大于0）
+  if (currentSpec.cost === null || currentSpec.cost === undefined || currentSpec.cost <= 0) {
+    ElMessage.warning('请输入成本价（必须大于0）')
+    return
+  }
+
+  // 验证零售价（必填且必须大于0）
+  if (!currentSpec.retailPrice || currentSpec.retailPrice <= 0) {
+    ElMessage.warning('请输入零售价（必须大于0）')
+    return
+  }
+
+  // 验证批发价（必填且必须大于0）
+  if (!currentSpec.wholesalePrice || currentSpec.wholesalePrice <= 0) {
+    ElMessage.warning('请输入批发价（必须大于0）')
+    return
+  }
+
+  // 验证配送计件数（必填且必须大于0）
+  if (!currentSpec.deliveryCount || currentSpec.deliveryCount <= 0) {
+    ElMessage.warning('请输入配送计件数（必须大于0）')
     return
   }
 
@@ -956,11 +981,11 @@ const addSpec = () => {
   // 添加规格，使用正确的字段名
   productForm.specs.push({
     name: currentSpec.name,
-    cost: currentSpec.cost || 0, // 成本，默认为0
+    cost: currentSpec.cost, // 成本，已验证必须大于0
     wholesale_price: currentSpec.wholesalePrice,
     retail_price: currentSpec.retailPrice,
-    description: currentSpec.description || '',
-    delivery_count: currentSpec.deliveryCount || 1.0 // 配送计件数，默认1.0
+    description: currentSpec.description || '', // 描述为可选
+    delivery_count: currentSpec.deliveryCount // 配送计件数
   })
 
   // 清空当前输入
@@ -974,8 +999,33 @@ const updateSpec = () => {
     return
   }
 
-  if (!currentSpec.name || !currentSpec.wholesalePrice || currentSpec.wholesalePrice <= 0 || !currentSpec.retailPrice || currentSpec.retailPrice <= 0) {
-    ElMessage.warning('请输入规格名称、批发价和零售价')
+  // 验证规格名称（必填）
+  if (!currentSpec.name || currentSpec.name.trim() === '') {
+    ElMessage.warning('请输入规格名称')
+    return
+  }
+
+  // 验证成本价（必填且必须大于0）
+  if (currentSpec.cost === null || currentSpec.cost === undefined || currentSpec.cost <= 0) {
+    ElMessage.warning('请输入成本价（必须大于0）')
+    return
+  }
+
+  // 验证零售价（必填且必须大于0）
+  if (!currentSpec.retailPrice || currentSpec.retailPrice <= 0) {
+    ElMessage.warning('请输入零售价（必须大于0）')
+    return
+  }
+
+  // 验证批发价（必填且必须大于0）
+  if (!currentSpec.wholesalePrice || currentSpec.wholesalePrice <= 0) {
+    ElMessage.warning('请输入批发价（必须大于0）')
+    return
+  }
+
+  // 验证配送计件数（必填且必须大于0）
+  if (!currentSpec.deliveryCount || currentSpec.deliveryCount <= 0) {
+    ElMessage.warning('请输入配送计件数（必须大于0）')
     return
   }
 
@@ -992,11 +1042,11 @@ const updateSpec = () => {
   // 更新规格
   const spec = productForm.specs[editingSpecIndex.value]
   spec.name = currentSpec.name
-  spec.cost = currentSpec.cost || 0
+  spec.cost = currentSpec.cost // 成本，已验证必须大于0
   spec.wholesale_price = currentSpec.wholesalePrice
   spec.retail_price = currentSpec.retailPrice
-  spec.description = currentSpec.description || ''
-  spec.delivery_count = currentSpec.deliveryCount || 1.0 // 配送计件数，默认1.0
+  spec.description = currentSpec.description || '' // 描述为可选
+  spec.delivery_count = currentSpec.deliveryCount // 配送计件数
 
   // 清空编辑状态
   resetSpecForm()
@@ -1070,16 +1120,38 @@ const handleSubmit = async () => {
       return
     }
 
-    for (const spec of productForm.specs) {
-      const wholesalePrice = spec.wholesale_price || spec.wholesalePrice
-      const retailPrice = spec.retail_price || spec.retailPrice
-      if (!spec.name || !wholesalePrice || wholesalePrice <= 0 || !retailPrice || retailPrice <= 0) {
-        ElMessage.warning('所有规格都必须有名称、批发价和零售价')
+    // 验证所有规格数据（所有字段除了描述都是必填，且成本价必须大于0）
+    for (let i = 0; i < productForm.specs.length; i++) {
+      const spec = productForm.specs[i]
+      const name = spec.name || ''
+      const cost = spec.cost !== undefined && spec.cost !== null ? spec.cost : 0
+      const wholesalePrice = spec.wholesale_price || spec.wholesalePrice || 0
+      const retailPrice = spec.retail_price || spec.retailPrice || 0
+      const deliveryCount = spec.delivery_count || spec.deliveryCount || 0
+
+      if (!name || name.trim() === '') {
+        ElMessage.warning(`规格${i + 1}：请输入规格名称`)
         return
       }
-      // 确保成本字段存在（如果没有则设为0）
-      if (spec.cost === undefined || spec.cost === null) {
-        spec.cost = 0
+
+      if (cost <= 0) {
+        ElMessage.warning(`规格"${name}"：成本价必须大于0，当前值为${cost.toFixed(2)}`)
+        return
+      }
+
+      if (retailPrice <= 0) {
+        ElMessage.warning(`规格"${name}"：零售价必须大于0`)
+        return
+      }
+
+      if (wholesalePrice <= 0) {
+        ElMessage.warning(`规格"${name}"：批发价必须大于0`)
+        return
+      }
+
+      if (deliveryCount <= 0) {
+        ElMessage.warning(`规格"${name}"：配送计件数必须大于0`)
+        return
       }
     }
 

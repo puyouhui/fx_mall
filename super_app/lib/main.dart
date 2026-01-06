@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:super_app/pages/login/login_page.dart';
 import 'package:super_app/pages/home/home_page.dart';
+import 'package:super_app/pages/products/edit_product_page.dart';
+import 'package:super_app/pages/orders/order_detail_page.dart';
+import 'package:super_app/pages/suppliers/supplier_payment_detail_page.dart';
 import 'package:super_app/utils/storage.dart';
 import 'package:super_app/utils/request.dart';
 import 'package:super_app/api/auth_api.dart';
@@ -23,15 +26,31 @@ class MyApp extends StatelessWidget {
       title: '管理员应用',
       navigatorKey: navigatorKey,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF20CB6B),
-        ),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF20CB6B)),
         useMaterial3: true,
       ),
       home: const AuthWrapper(),
       routes: {
         '/login': (context) => const LoginPage(),
         '/home': (context) => const HomePage(),
+        '/edit_product': (context) {
+          final args = ModalRoute.of(context)?.settings.arguments;
+          final productId = args is int ? args : null;
+          return EditProductPage(productId: productId);
+        },
+        '/order_detail': (context) {
+          final args = ModalRoute.of(context)?.settings.arguments;
+          final orderId = args is int ? args : 0;
+          return OrderDetailPage(orderId: orderId);
+        },
+        '/supplier_payment_detail': (context) {
+          final args = ModalRoute.of(context)?.settings.arguments;
+          final supplierId = args is int ? args : 0;
+          return SupplierPaymentDetailPage(
+            supplierId: supplierId,
+            supplierName: '',
+          );
+        },
       },
     );
   }
@@ -102,11 +121,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return _isLoggedIn ? const HomePage() : const LoginPage();

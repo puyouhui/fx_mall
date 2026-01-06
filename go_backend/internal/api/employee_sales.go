@@ -2452,6 +2452,17 @@ func CreateOrderForCustomer(c *gin.Context) {
 		return
 	}
 
+	// 验证所有商品规格的成本价，如果成本为0则不允许下单
+	for _, item := range items {
+		if item.SpecSnapshot.Cost <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"code": 400,
+				"message": fmt.Sprintf("当前订单异常，不能下单，请联系管理员。商品[%s]的规格[%s]成本价为0", item.ProductName, item.SpecName),
+			})
+			return
+		}
+	}
+
 	// 获取用户类型
 	userType := user.UserType
 	if userType == "" || userType == "unknown" {

@@ -50,11 +50,28 @@ class Order {
   });
 
   factory Order.fromJson(Map<String, dynamic> json) {
+    // 安全解析日期
+    DateTime parseDateTime(dynamic value) {
+      if (value == null) {
+        return DateTime.now();
+      }
+      if (value is String) {
+        try {
+          return DateTime.parse(value);
+        } catch (e) {
+          return DateTime.now();
+        }
+      } else if (value is DateTime) {
+        return value;
+      }
+      return DateTime.now();
+    }
+
     return Order(
-      id: json['id'] as int,
+      id: (json['id'] as num?)?.toInt() ?? 0,
       orderNumber: json['order_number'] as String? ?? '',
-      userId: json['user_id'] as int? ?? 0,
-      addressId: json['address_id'] as int? ?? 0,
+      userId: (json['user_id'] as num?)?.toInt() ?? 0,
+      addressId: (json['address_id'] as num?)?.toInt() ?? 0,
       status: json['status'] as String? ?? '',
       goodsAmount: (json['goods_amount'] as num?)?.toDouble() ?? 0.0,
       deliveryFee: (json['delivery_fee'] as num?)?.toDouble() ?? 0.0,
@@ -68,9 +85,9 @@ class Order {
       trustReceipt: json['trust_receipt'] as bool? ?? false,
       hidePrice: json['hide_price'] as bool? ?? false,
       requirePhoneContact: json['require_phone_contact'] as bool? ?? false,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
-      itemCount: json['item_count'] as int?,
+      createdAt: parseDateTime(json['created_at']),
+      updatedAt: parseDateTime(json['updated_at']),
+      itemCount: (json['item_count'] as num?)?.toInt(),
       user: json['user'] as Map<String, dynamic>?,
       address: json['address'] as Map<String, dynamic>?,
       deliveryEmployee: json['delivery_employee'] as Map<String, dynamic>?,

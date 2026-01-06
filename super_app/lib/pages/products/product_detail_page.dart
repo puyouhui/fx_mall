@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:super_app/api/products_api.dart';
 import 'package:super_app/models/product.dart';
+import 'package:super_app/pages/products/edit_product_page.dart';
 
 /// 商品详情页面
 class ProductDetailPage extends StatefulWidget {
@@ -95,21 +96,69 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   )
                 : SafeArea(
                     bottom: false,
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // 商品图片轮播
-                          _buildImageCarousel(),
-                          // 商品信息
-                          _buildProductInfo(),
-                          // 商品规格
-                          _buildProductSpecs(),
-                          SizedBox(
-                            height: 16 + MediaQuery.of(context).padding.bottom,
+                    child: Stack(
+                      children: [
+                        SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // 商品图片轮播
+                              _buildImageCarousel(),
+                              // 商品信息
+                              _buildProductInfo(),
+                              // 商品规格
+                              _buildProductSpecs(),
+                              SizedBox(
+                                height: 80 + MediaQuery.of(context).padding.bottom,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                        // 底部编辑按钮
+                        Positioned(
+                          left: 16,
+                          right: 16,
+                          bottom: 16 + MediaQuery.of(context).padding.bottom,
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              final result = await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => EditProductPage(
+                                    productId: widget.productId,
+                                  ),
+                                ),
+                              );
+                              
+                              // 如果编辑成功，重新加载商品详情
+                              if (result == true && mounted) {
+                                _loadProductDetail();
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF20CB6B),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.edit, size: 20),
+                                SizedBox(width: 8),
+                                Text(
+                                  '编辑商品',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
       ),
