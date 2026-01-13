@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../api/order_api.dart';
 import '../utils/storage.dart';
 import 'package:map_launcher/map_launcher.dart';
+import 'pickup_preview_page.dart';
 
 /// 批量取货商品列表和操作页面
 class BatchPickupItemsView extends StatefulWidget {
@@ -391,6 +392,28 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
     }
   }
 
+  /// 打开预览页面
+  void _openPreview() {
+    if (_items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('暂无商品可预览'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => PickupPreviewPage(
+          supplierName: widget.supplierName,
+          items: _items,
+        ),
+      ),
+    );
+  }
+
   Future<void> _navigateToSupplier() async {
     if (widget.supplierLatitude == null || widget.supplierLongitude == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -469,6 +492,12 @@ class _BatchPickupItemsViewState extends State<BatchPickupItemsView> {
             fontWeight: FontWeight.w600,
           ),
           actions: [
+            // 预览按钮
+            IconButton(
+              icon: const Icon(Icons.preview, color: Colors.white),
+              onPressed: _items.isEmpty ? null : _openPreview,
+              tooltip: '预览',
+            ),
             // 复制按钮
             IconButton(
               icon: const Icon(Icons.copy, color: Colors.white),

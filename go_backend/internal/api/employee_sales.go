@@ -65,7 +65,34 @@ func GetSalesCustomers(c *gin.Context) {
 				userCode = uc
 			}
 
-			if contains(name, keyword) || contains(phone, keyword) || contains(userCode, keyword) {
+			// 检查客户基本信息
+			matched := contains(name, keyword) || contains(phone, keyword) || contains(userCode, keyword)
+
+			// 如果基本信息不匹配，检查默认地址信息
+			if !matched {
+				if defaultAddr, ok := customer["default_address"].(map[string]interface{}); ok && defaultAddr != nil {
+					addrName := ""
+					addrContact := ""
+					addrPhone := ""
+					addrText := ""
+					if n, ok := defaultAddr["name"].(string); ok {
+						addrName = n
+					}
+					if c, ok := defaultAddr["contact"].(string); ok {
+						addrContact = c
+					}
+					if p, ok := defaultAddr["phone"].(string); ok {
+						addrPhone = p
+					}
+					if a, ok := defaultAddr["address"].(string); ok {
+						addrText = a
+					}
+
+					matched = contains(addrName, keyword) || contains(addrContact, keyword) || contains(addrPhone, keyword) || contains(addrText, keyword)
+				}
+			}
+
+			if matched {
 				filtered = append(filtered, customer)
 			}
 		}
@@ -2459,7 +2486,7 @@ func CreateOrderForCustomer(c *gin.Context) {
 	for _, item := range items {
 		if item.SpecSnapshot.Cost <= 0 {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"code": 400,
+				"code":    400,
 				"message": fmt.Sprintf("当前订单异常，不能下单，请联系管理员。商品[%s]的规格[%s]成本价为0", item.ProductName, item.SpecName),
 			})
 			return

@@ -13,6 +13,7 @@ class OrderPreviewPage extends StatefulWidget {
   final Map<String, dynamic>? user;
   final Map<String, dynamic>? address;
   final List<dynamic> items;
+  final Map<String, dynamic>? deliveryRecord;
 
   const OrderPreviewPage({
     super.key,
@@ -20,6 +21,7 @@ class OrderPreviewPage extends StatefulWidget {
     this.user,
     this.address,
     required this.items,
+    this.deliveryRecord,
   });
 
   @override
@@ -154,7 +156,21 @@ class _OrderPreviewPageState extends State<OrderPreviewPage> {
     final order = widget.order;
     final address = widget.address ?? {};
     final orderNumber = order['order_number']?.toString() ?? '';
-    final createdAt = _formatDateTime(order['created_at']);
+    final status = order['status']?.toString() ?? '';
+    
+    // 判断是否已送达
+    final isDelivered = status == 'delivered' || 
+                        status == 'shipped' || 
+                        status == 'paid' || 
+                        status == 'completed';
+    
+    // 如果已送达且有配送记录，显示送达时间；否则显示下单时间
+    final timeLabel = isDelivered && widget.deliveryRecord != null 
+        ? '送达时间' 
+        : '下单时间';
+    final timeValue = isDelivered && widget.deliveryRecord != null
+        ? _formatDateTime(widget.deliveryRecord!['completed_at'])
+        : _formatDateTime(order['created_at']);
 
     final addrName = (address['name'] as String?) ?? '';
     final addrText = (address['address'] as String?) ?? '';
@@ -188,7 +204,7 @@ class _OrderPreviewPageState extends State<OrderPreviewPage> {
                 child: Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(4),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.05),
@@ -211,8 +227,8 @@ class _OrderPreviewPageState extends State<OrderPreviewPage> {
                             colors: [Color(0xFF20CB6B), Color(0xFF18B85A)],
                           ),
                           borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(12),
-                            topRight: Radius.circular(12),
+                            topLeft: Radius.circular(4),
+                            topRight: Radius.circular(4),
                           ),
                         ),
                         child: Column(
@@ -235,10 +251,10 @@ class _OrderPreviewPageState extends State<OrderPreviewPage> {
                                 ),
                               ),
                             ],
-                            if (createdAt.isNotEmpty) ...[
+                            if (timeValue.isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Text(
-                                '下单时间：$createdAt',
+                                '$timeLabel：$timeValue',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.white.withOpacity(0.8),

@@ -627,6 +627,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           user: _user,
           address: _address,
           items: _items,
+          deliveryRecord: _deliveryRecord,
         ),
       ),
     );

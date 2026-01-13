@@ -62,6 +62,12 @@ dependencies:
   # WebSocket客户端
   web_socket_channel: ^2.4.0
 
+  # 截图和分享功能
+  screenshot: ^3.0.0
+  share_plus: ^7.2.2
+  gal: ^1.7.0
+  path_provider: ^2.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -5,6 +5,7 @@ import 'package:employees_app/pages/customer/customer_detail_page.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 
 /// 我的客户列表页面（销售员）
 class CustomerListPage extends StatefulWidget {
@@ -28,16 +29,20 @@ class _CustomerListPageState extends State<CustomerListPage> {
   int _pageNum = 1;
   final int _pageSize = 20;
   String _keyword = '';
+  Timer? _searchDebounceTimer;
 
   @override
   void initState() {
     super.initState();
     _loadCustomers(reset: true);
     _scrollController.addListener(_onScroll);
+    _searchController.addListener(_onSearchTextChanged);
   }
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
+    _searchController.removeListener(_onSearchTextChanged);
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -120,8 +125,32 @@ class _CustomerListPageState extends State<CustomerListPage> {
     }
   }
 
+  void _onSearchTextChanged() {
+    // 防抖：取消之前的定时器
+    _searchDebounceTimer?.cancel();
+    
+    // 设置新的定时器，500毫秒后执行搜索
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        _keyword = _searchController.text.trim();
+        _loadCustomers(reset: true);
+      }
+    });
+    
+    // 触发UI更新以显示/隐藏清除按钮
+    setState(() {});
+  }
+
   void _onSearch() {
+    // 取消防抖定时器，立即搜索
+    _searchDebounceTimer?.cancel();
     _keyword = _searchController.text.trim();
+    _loadCustomers(reset: true);
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _keyword = '';
     _loadCustomers(reset: true);
   }
 
@@ -169,10 +198,20 @@ class _CustomerListPageState extends State<CustomerListPage> {
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: TextField(
                           controller: _searchController,
-                          decoration: const InputDecoration(
-                            hintText: '输入客户名称 / 电话 / 编号',
+                          decoration: InputDecoration(
+                            hintText: '输入客户名称 / 电话 / 编号 / 地址',
                             border: InputBorder.none,
-                            icon: Icon(Icons.search, color: Color(0xFF8C92A4)),
+                            icon: const Icon(Icons.search, color: Color(0xFF8C92A4)),
+                            suffixIcon: _searchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(
+                                      Icons.clear,
+                                      color: Color(0xFF8C92A4),
+                                      size: 20,
+                                    ),
+                                    onPressed: _clearSearch,
+                                  )
+                                : null,
                           ),
                           onSubmitted: (_) => _onSearch(),
                         ),

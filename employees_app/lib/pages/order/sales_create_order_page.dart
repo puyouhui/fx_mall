@@ -4315,15 +4315,53 @@ class AddressSelectionPage extends StatefulWidget {
 
 class _AddressSelectionPageState extends State<AddressSelectionPage> {
   int? _selectedAddressId;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _selectedAddressId = widget.selectedAddressId;
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      // 触发重建以更新过滤后的地址列表
+    });
+  }
+
+  /// 过滤地址列表
+  List<dynamic> _getFilteredAddresses() {
+    final keyword = _searchController.text.trim().toLowerCase();
+    if (keyword.isEmpty) {
+      return widget.addresses;
+    }
+
+    return widget.addresses.where((raw) {
+      final addr = raw as Map<String, dynamic>;
+      final name = ((addr['name'] as String?) ?? '').toLowerCase();
+      final address = ((addr['address'] as String?) ?? '').toLowerCase();
+      final contact = ((addr['contact'] as String?) ?? '').toLowerCase();
+      final phone = ((addr['phone'] as String?) ?? '').toLowerCase();
+
+      return name.contains(keyword) ||
+          address.contains(keyword) ||
+          contact.contains(keyword) ||
+          phone.contains(keyword);
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final filteredAddresses = _getFilteredAddresses();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('选择收货地址'),
@@ -4385,156 +4423,278 @@ class _AddressSelectionPageState extends State<AddressSelectionPage> {
                     ),
                   ),
                 )
-              : ListView(
-                  padding: const EdgeInsets.all(16),
+              : Column(
                   children: [
-                    ...widget.addresses.map((raw) {
-                      final addr = raw as Map<String, dynamic>;
-                      final id = addr['id'] as int?;
-                      final name = (addr['name'] as String?) ?? '收货地址';
-                      final text = (addr['address'] as String?) ?? '';
-                      final contact = (addr['contact'] as String?) ?? '';
-                      final phone = (addr['phone'] as String?) ?? '';
-                      final isDefault = (addr['is_default'] as bool?) ?? false;
-
-                      if (id == null) return const SizedBox.shrink();
-
-                      final isSelected = _selectedAddressId == id;
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isSelected
-                                ? const Color(0xFF20CB6B)
-                                : const Color(0xFFE5E7F0),
-                            width: isSelected ? 2 : 1,
+                    // 搜索框
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: InkWell(
-                          onTap: () {
-                            setState(() {
-                              _selectedAddressId = id;
-                            });
-                            Navigator.of(context).pop<Map<String, dynamic>>({
-                              'id': id,
-                              'address': addr,
-                            });
-                          },
-                          borderRadius: BorderRadius.circular(16),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // 选中图标
-                                Container(
-                                  width: 24,
-                                  height: 24,
-                                  margin: const EdgeInsets.only(right: 12),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? const Color(0xFF20CB6B)
-                                          : const Color(0xFFE5E7F0),
-                                      width: 2,
-                                    ),
-                                    color: isSelected
-                                        ? const Color(0xFF20CB6B)
-                                        : Colors.transparent,
+                        ],
+                      ),
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: '搜索地址、联系人、电话',
+                          hintStyle: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF8C92A4),
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            color: Color(0xFF8C92A4),
+                            size: 20,
+                          ),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(
+                                    Icons.clear,
+                                    color: Color(0xFF8C92A4),
+                                    size: 20,
                                   ),
-                                  child: isSelected
-                                      ? const Icon(
-                                          Icons.check,
-                                          size: 16,
-                                          color: Colors.white,
-                                        )
-                                      : null,
+                                  onPressed: () {
+                                    _searchController.clear();
+                                  },
+                                )
+                              : null,
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF20253A),
+                        ),
+                      ),
+                    ),
+                    // 地址列表
+                    Expanded(
+                      child: filteredAddresses.isEmpty
+                          ? Center(
+                              child: Container(
+                                margin: const EdgeInsets.all(16),
+                                padding: const EdgeInsets.all(24),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
-                                // 地址信息
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              name,
-                                              style: const TextStyle(
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.w600,
-                                                color: Color(0xFF20253A),
-                                              ),
-                                            ),
-                                          ),
-                                          if (isDefault)
-                                            Container(
-                                              margin: const EdgeInsets.only(
-                                                left: 6,
-                                              ),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 6,
-                                                    vertical: 2,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: const Color(
-                                                  0xFF20CB6B,
-                                                ).withOpacity(0.08),
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                              ),
-                                              child: const Text(
-                                                '默认',
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: Color(0xFF20CB6B),
-                                                ),
-                                              ),
-                                            ),
-                                        ],
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.search_off,
+                                      size: 64,
+                                      color: Color(0xFF8C92A4),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    const Text(
+                                      '没有找到匹配的地址',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF20253A),
                                       ),
-                                      const SizedBox(height: 6),
-                                      if (text.isNotEmpty)
-                                        Text(
-                                          text,
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            color: Color(0xFF40475C),
-                                          ),
-                                        ),
-                                      if (contact.isNotEmpty ||
-                                          phone.isNotEmpty) ...[
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '$contact  $phone',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Color(0xFF8C92A4),
-                                          ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      '请尝试其他关键词搜索',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFF8C92A4),
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : ListView(
+                              padding: const EdgeInsets.all(16),
+                              children: [
+                                ...filteredAddresses.map((raw) {
+                                  final addr = raw as Map<String, dynamic>;
+                                  final id = addr['id'] as int?;
+                                  final name =
+                                      (addr['name'] as String?) ?? '收货地址';
+                                  final text =
+                                      (addr['address'] as String?) ?? '';
+                                  final contact =
+                                      (addr['contact'] as String?) ?? '';
+                                  final phone =
+                                      (addr['phone'] as String?) ?? '';
+                                  final isDefault =
+                                      (addr['is_default'] as bool?) ?? false;
+
+                                  if (id == null)
+                                    return const SizedBox.shrink();
+
+                                  final isSelected = _selectedAddressId == id;
+
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? const Color(0xFF20CB6B)
+                                            : const Color(0xFFE5E7F0),
+                                        width: isSelected ? 2 : 1,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.04),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
                                         ),
                                       ],
-                                    ],
-                                  ),
-                                ),
+                                    ),
+                                    child: InkWell(
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedAddressId = id;
+                                        });
+                                        Navigator.of(
+                                          context,
+                                        ).pop<Map<String, dynamic>>({
+                                          'id': id,
+                                          'address': addr,
+                                        });
+                                      },
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            // 选中图标
+                                            Container(
+                                              width: 24,
+                                              height: 24,
+                                              margin: const EdgeInsets.only(
+                                                right: 12,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: isSelected
+                                                      ? const Color(0xFF20CB6B)
+                                                      : const Color(0xFFE5E7F0),
+                                                  width: 2,
+                                                ),
+                                                color: isSelected
+                                                    ? const Color(0xFF20CB6B)
+                                                    : Colors.transparent,
+                                              ),
+                                              child: isSelected
+                                                  ? const Icon(
+                                                      Icons.check,
+                                                      size: 16,
+                                                      color: Colors.white,
+                                                    )
+                                                  : null,
+                                            ),
+                                            // 地址信息
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          name,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 15,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                color: Color(
+                                                                  0xFF20253A,
+                                                                ),
+                                                              ),
+                                                        ),
+                                                      ),
+                                                      if (isDefault)
+                                                        Container(
+                                                          margin:
+                                                              const EdgeInsets.only(
+                                                                left: 6,
+                                                              ),
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 6,
+                                                                vertical: 2,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            color: const Color(
+                                                              0xFF20CB6B,
+                                                            ).withOpacity(0.08),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  10,
+                                                                ),
+                                                          ),
+                                                          child: const Text(
+                                                            '默认',
+                                                            style: TextStyle(
+                                                              fontSize: 10,
+                                                              color: Color(
+                                                                0xFF20CB6B,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  if (text.isNotEmpty)
+                                                    Text(
+                                                      text,
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                        color: Color(
+                                                          0xFF40475C,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  if (contact.isNotEmpty ||
+                                                      phone.isNotEmpty) ...[
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      '$contact  $phone',
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                        color: Color(
+                                                          0xFF8C92A4,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
                               ],
                             ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                    ),
                   ],
                 ),
         ),
