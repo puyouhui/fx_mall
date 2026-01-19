@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -238,6 +239,45 @@ func UpdateCategory(c *gin.Context) {
 	}
 
 	successResponse(c, category, "更新成功")
+}
+
+// BatchUpdateCategorySort 批量更新分类排序
+func BatchUpdateCategorySort(c *gin.Context) {
+	var request struct {
+		Items []struct {
+			ID   int `json:"id"`
+			Sort int `json:"sort"`
+		} `json:"items"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		badRequestResponse(c, "请求参数错误: "+err.Error())
+		return
+	}
+
+	if len(request.Items) == 0 {
+		badRequestResponse(c, "排序数据不能为空")
+		return
+	}
+
+	items := make([]struct {
+		ID   int
+		Sort int
+	}, len(request.Items))
+	for i, item := range request.Items {
+		items[i] = struct {
+			ID   int
+			Sort int
+		}{ID: item.ID, Sort: item.Sort}
+	}
+
+	if err := model.BatchUpdateCategorySort(items); err != nil {
+		log.Printf("批量更新分类排序失败: %v", err)
+		internalErrorResponse(c, "批量更新分类排序失败: "+err.Error())
+		return
+	}
+
+	successResponse(c, nil, "排序更新成功")
 }
 
 // DeleteCategory 删除分类
@@ -951,6 +991,145 @@ func GetProductsByCategory(c *gin.Context) {
 	}
 
 	successResponse(c, result, "")
+}
+
+// BatchUpdateProductSort 批量更新商品排序
+func BatchUpdateProductSort(c *gin.Context) {
+	var request struct {
+		Items []struct {
+			ID   int `json:"id"`
+			Sort int `json:"sort"`
+		} `json:"items"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		badRequestResponse(c, "请求参数错误: "+err.Error())
+		return
+	}
+
+	if len(request.Items) == 0 {
+		badRequestResponse(c, "排序数据不能为空")
+		return
+	}
+
+	items := make([]struct {
+		ID   int
+		Sort int
+	}, len(request.Items))
+	for i, item := range request.Items {
+		items[i] = struct {
+			ID   int
+			Sort int
+		}{ID: item.ID, Sort: item.Sort}
+	}
+
+	if err := model.BatchUpdateProductSort(items); err != nil {
+		log.Printf("批量更新商品排序失败: %v", err)
+		internalErrorResponse(c, "批量更新商品排序失败: "+err.Error())
+		return
+	}
+
+	successResponse(c, nil, "排序更新成功")
+}
+
+// GetAllSpecialProductsForAdmin 获取所有精选商品（用于管理后台排序）
+func GetAllSpecialProductsForAdmin(c *gin.Context) {
+	query := `SELECT id, name, description, original_price, price, category_id, is_special, 
+			  images, specs, status, COALESCE(special_sort, 0) as special_sort, 
+			  created_at, updated_at 
+			  FROM products 
+			  WHERE is_special = 1 AND status = 1 
+			  ORDER BY COALESCE(special_sort, 0) ASC, created_at DESC`
+	
+	rows, err := database.DB.Query(query)
+	if err != nil {
+		log.Printf("获取精选商品列表失败: %v", err)
+		internalErrorResponse(c, "获取精选商品列表失败: "+err.Error())
+		return
+	}
+	defer rows.Close()
+
+	var products []model.Product
+	for rows.Next() {
+		var product model.Product
+		var imagesJSON, specsJSON string
+		var dbPrice, dbOriginalPrice sql.NullFloat64
+
+		if err := rows.Scan(&product.ID, &product.Name, &product.Description, 
+			&dbOriginalPrice, &dbPrice, &product.CategoryID, &product.IsSpecial, 
+			&imagesJSON, &specsJSON, &product.Status, &product.SpecialSort, 
+			&product.CreatedAt, &product.UpdatedAt); err != nil {
+			log.Printf("解析精选商品数据失败: %v", err)
+			internalErrorResponse(c, "解析精选商品数据失败: "+err.Error())
+			return
+		}
+
+		// 处理价格字段
+		if dbPrice.Valid {
+			product.Price = dbPrice.Float64
+		}
+		if dbOriginalPrice.Valid {
+			product.OriginalPrice = dbOriginalPrice.Float64
+		}
+
+		// 解析JSON字符串到切片
+		if err := json.Unmarshal([]byte(imagesJSON), &product.Images); err != nil {
+			product.Images = []string{}
+		}
+
+		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
+			product.Specs = []model.Spec{}
+		}
+
+		products = append(products, product)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("遍历精选商品数据失败: %v", err)
+		internalErrorResponse(c, "遍历精选商品数据失败: "+err.Error())
+		return
+	}
+
+	successResponse(c, products, "获取成功")
+}
+
+// BatchUpdateSpecialProductSort 批量更新精选商品排序
+func BatchUpdateSpecialProductSort(c *gin.Context) {
+	var request struct {
+		Items []struct {
+			ID          int `json:"id"`
+			SpecialSort int `json:"special_sort"`
+		} `json:"items"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		badRequestResponse(c, "请求参数错误: "+err.Error())
+		return
+	}
+
+	if len(request.Items) == 0 {
+		badRequestResponse(c, "排序数据不能为空")
+		return
+	}
+
+	items := make([]struct {
+		ID          int
+		SpecialSort int
+	}, len(request.Items))
+	for i, item := range request.Items {
+		items[i] = struct {
+			ID          int
+			SpecialSort int
+		}{ID: item.ID, SpecialSort: item.SpecialSort}
+	}
+
+	if err := model.BatchUpdateSpecialProductSort(items); err != nil {
+		log.Printf("批量更新精选商品排序失败: %v", err)
+		internalErrorResponse(c, "批量更新精选商品排序失败: "+err.Error())
+		return
+	}
+
+	successResponse(c, nil, "更新排序成功")
 }
 
 // GetProductDetail 获取商品详情

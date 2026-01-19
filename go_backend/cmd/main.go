@@ -113,6 +113,11 @@ func main() {
 			miniAppProtectedGroup.DELETE("/favorites/product/:productId", api.DeleteFavoriteByProductID) // 删除收藏（通过商品ID）
 			miniAppProtectedGroup.GET("/favorites/check", api.CheckFavorite)                             // 检查商品是否已收藏
 
+			// 拉新用户接口
+			miniAppProtectedGroup.GET("/referrals", api.GetMiniAppReferralUsers)          // 获取我拉取的用户列表
+			miniAppProtectedGroup.GET("/referrals/stats", api.GetMiniAppReferralStats)    // 获取拉新统计数据
+			miniAppProtectedGroup.GET("/referrals/activity-info", api.GetMiniAppReferralActivityInfo) // 获取活动说明
+
 			// 积分接口
 			miniAppProtectedGroup.GET("/points/logs", api.GetPointsLogs) // 获取用户积分明细列表
 		}
@@ -156,11 +161,12 @@ func main() {
 				protectedGroup.GET("/settings/websocket", api.GetWebSocketConfig) // 获取WebSocket配置
 
 				// 分类管理接口
-				protectedGroup.GET("/categories", api.GetAllCategoriesForAdmin)    // 获取所有商品分类（后台管理）
-				protectedGroup.POST("/categories", api.CreateCategory)             // 创建新的商品分类
-				protectedGroup.PUT("/categories/:id", api.UpdateCategory)          // 根据分类ID更新商品分类信息
-				protectedGroup.DELETE("/categories/:id", api.DeleteCategory)       // 根据分类ID删除商品分类
-				protectedGroup.POST("/categories/upload", api.UploadCategoryImage) // 上传分类图标
+				protectedGroup.GET("/categories", api.GetAllCategoriesForAdmin)          // 获取所有商品分类（后台管理）
+				protectedGroup.POST("/categories", api.CreateCategory)                   // 创建新的商品分类
+				protectedGroup.PUT("/categories/:id", api.UpdateCategory)                // 根据分类ID更新商品分类信息
+				protectedGroup.DELETE("/categories/:id", api.DeleteCategory)             // 根据分类ID删除商品分类
+				protectedGroup.POST("/categories/upload", api.UploadCategoryImage)       // 上传分类图标
+				protectedGroup.PUT("/categories/sort", api.BatchUpdateCategorySort)      // 批量更新分类排序
 
 				// 轮播图管理接口
 				protectedGroup.GET("/carousels", api.GetAllCarouselsForAdmin)     // 获取所有轮播图（管理后台用）
@@ -203,6 +209,9 @@ func main() {
 				protectedGroup.PUT("/products/:id", api.UpdateProduct)                      // 更新商品
 				protectedGroup.PUT("/products/:id/special", api.UpdateProductSpecialStatus) // 更新商品精选状态
 				protectedGroup.DELETE("/products/:id", api.DeleteProduct)                   // 删除商品
+				protectedGroup.PUT("/products/sort", api.BatchUpdateProductSort)            // 批量更新商品排序
+				protectedGroup.GET("/special-products", api.GetAllSpecialProductsForAdmin)  // 获取所有精选商品（管理后台）
+				protectedGroup.PUT("/special-products/sort", api.BatchUpdateSpecialProductSort) // 批量更新精选商品排序
 
 				// 供应商管理接口
 				protectedGroup.GET("/suppliers", api.GetAllSuppliers)       // 获取所有供应商

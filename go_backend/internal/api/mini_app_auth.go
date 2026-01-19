@@ -1809,3 +1809,111 @@ func ReverseGeocode(c *gin.Context) {
 		"data":    result,
 	})
 }
+
+// GetMiniAppReferralUsers 获取当前用户的拉新用户列表（小程序端）
+func GetMiniAppReferralUsers(c *gin.Context) {
+	// 从中间件设置的上下文中获取 openID
+	openID, exists := c.Get("openID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
+		return
+	}
+
+	uniqueID := openID.(string)
+	user, err := model.GetMiniAppUserByUniqueID(uniqueID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
+		return
+	}
+
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	// 获取分页参数
+	pageNum := parseQueryInt(c, "page_num", 1)
+	pageSize := parseQueryInt(c, "page_size", 10)
+
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	// 获取拉新用户列表
+	users, total, err := model.GetReferralUsersWithOrderStatus(user.ID, pageNum, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取拉新用户列表失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "获取成功",
+		"data": gin.H{
+			"list":  users,
+			"total": total,
+		},
+	})
+}
+
+// GetMiniAppReferralStats 获取当前用户的拉新统计数据（小程序端）
+func GetMiniAppReferralStats(c *gin.Context) {
+	// 从中间件设置的上下文中获取 openID
+	openID, exists := c.Get("openID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "缺少身份凭证"})
+		return
+	}
+
+	uniqueID := openID.(string)
+	user, err := model.GetMiniAppUserByUniqueID(uniqueID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户信息失败: " + err.Error()})
+		return
+	}
+
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	// 获取统计数据
+	stats, err := model.GetReferralStats(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取统计数据失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "获取成功",
+		"data":    stats,
+	})
+}
+
+// GetMiniAppReferralActivityInfo 获取拉新活动说明（小程序端）
+func GetMiniAppReferralActivityInfo(c *gin.Context) {
+	// 返回活动说明（可以从数据库或配置文件读取，这里先返回默认值）
+	activityInfo := map[string]interface{}{
+		"rules": []string{
+			"分享小程序给好友，邀请他们注册成为新用户",
+			"好友通过您的分享链接注册后，将显示在您的拉新列表中",
+			"当好友完成首次下单后，您将获得相应奖励",
+			"拉新奖励以实际活动规则为准",
+		},
+		"title": "分享有礼活动",
+		"description": "邀请好友注册下单，即可获得丰厚奖励",
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "获取成功",
+		"data":    activityInfo,
+	})
+}

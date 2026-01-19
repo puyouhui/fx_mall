@@ -691,6 +691,124 @@ func GetMiniAppUsersByReferrerID(referrerID int) ([]MiniAppUser, error) {
 	return users, nil
 }
 
+// GetReferralUsersWithOrderStatus 根据分享者ID获取被拉取的新用户列表（带订单状态和分页）
+func GetReferralUsersWithOrderStatus(referrerID int, pageNum, pageSize int) ([]map[string]interface{}, int, error) {
+	// 计算偏移量
+	offset := (pageNum - 1) * pageSize
+	if offset < 0 {
+		offset = 0
+	}
+
+	// 查询总数
+	var total int
+	countQuery := `SELECT COUNT(*) FROM mini_app_users WHERE referrer_id = ?`
+	err := database.DB.QueryRow(countQuery, referrerID).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 查询用户列表，并检查是否已下单
+	query := `
+		SELECT 
+			u.id, u.unique_id, u.user_code, u.name, u.avatar, u.phone, 
+			u.created_at, u.updated_at,
+			MIN(o.created_at) as first_order_at,
+			CASE WHEN COUNT(o.id) > 0 THEN 1 ELSE 0 END as has_ordered
+		FROM mini_app_users u
+		LEFT JOIN orders o ON u.id = o.user_id AND o.status != 'cancelled'
+		WHERE u.referrer_id = ?
+		GROUP BY u.id, u.unique_id, u.user_code, u.name, u.avatar, u.phone, u.created_at, u.updated_at
+		ORDER BY u.created_at DESC
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := database.DB.Query(query, referrerID, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	users := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var (
+			id                          int
+			uniqueID, userCode, name    string
+			avatar, phone               sql.NullString
+			createdAt, updatedAt        time.Time
+			firstOrderAt                sql.NullTime
+			hasOrdered                  int
+		)
+
+		if err := rows.Scan(
+			&id,
+			&uniqueID,
+			&userCode,
+			&name,
+			&avatar,
+			&phone,
+			&createdAt,
+			&updatedAt,
+			&firstOrderAt,
+			&hasOrdered,
+		); err != nil {
+			continue
+		}
+
+		userData := map[string]interface{}{
+			"id":          id,
+			"unique_id":   uniqueID,
+			"user_code":   userCode,
+			"name":        name,
+			"avatar":      nullString(avatar),
+			"phone":       nullString(phone),
+			"registered_at": createdAt.Format("2006-01-02 15:04:05"),
+			"has_ordered": hasOrdered == 1,
+		}
+
+		if firstOrderAt.Valid {
+			userData["first_order_at"] = firstOrderAt.Time.Format("2006-01-02 15:04:05")
+		}
+
+		users = append(users, userData)
+	}
+
+	return users, total, nil
+}
+
+// GetReferralStats 获取拉新统计数据
+func GetReferralStats(referrerID int) (map[string]interface{}, error) {
+	// 总拉新数
+	var totalReferrals int
+	err := database.DB.QueryRow(`SELECT COUNT(*) FROM mini_app_users WHERE referrer_id = ?`, referrerID).Scan(&totalReferrals)
+	if err != nil {
+		return nil, err
+	}
+
+	// 已下单数（有非取消订单的用户）
+	var orderedReferrals int
+	err = database.DB.QueryRow(`
+		SELECT COUNT(DISTINCT u.id)
+		FROM mini_app_users u
+		INNER JOIN orders o ON u.id = o.user_id
+		WHERE u.referrer_id = ? AND o.status != 'cancelled'
+	`, referrerID).Scan(&orderedReferrals)
+	if err != nil {
+		orderedReferrals = 0 // 如果查询失败，设为0
+	}
+
+	// 待下单数
+	pendingReferrals := totalReferrals - orderedReferrals
+	if pendingReferrals < 0 {
+		pendingReferrals = 0
+	}
+
+	return map[string]interface{}{
+		"total_referrals":   totalReferrals,
+		"ordered_referrals": orderedReferrals,
+		"pending_referrals": pendingReferrals,
+	}, nil
+}
+
 // GetMiniAppUsersByIDs 批量获取用户信息
 func GetMiniAppUsersByIDs(ids []int) (map[int]*MiniAppUser, error) {
 	if len(ids) == 0 {

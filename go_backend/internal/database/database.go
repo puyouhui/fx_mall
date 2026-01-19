@@ -299,6 +299,28 @@ func InitDB() error {
 			return
 		}
 
+		// 检查并添加products表的sort字段（如果不存在）
+		checkSortColumnSQL := `
+		SELECT COUNT(*) FROM information_schema.COLUMNS 
+		WHERE TABLE_SCHEMA = DATABASE() 
+		AND TABLE_NAME = 'products' 
+		AND COLUMN_NAME = 'sort'
+		`
+		var sortColumnExists int
+		err = DB.QueryRow(checkSortColumnSQL).Scan(&sortColumnExists)
+		if err == nil && sortColumnExists == 0 {
+			alterProductsTableSQL := `
+			ALTER TABLE products ADD COLUMN sort INT DEFAULT 0 COMMENT '排序（越小越靠前）' AFTER status,
+			ADD INDEX idx_category_sort (category_id, sort)
+			`
+			_, err = DB.Exec(alterProductsTableSQL)
+			if err != nil {
+				log.Printf("为products表添加sort字段失败: %v", err)
+			} else {
+				log.Println("已为products表添加sort字段")
+			}
+		}
+
 		// 创建配送费基础设置表
 		createDeliveryFeeSettingsTableSQL := `
 		CREATE TABLE IF NOT EXISTS delivery_fee_settings (
@@ -441,6 +463,48 @@ func InitDB() error {
 					return
 				}
 				log.Println("已将original_price字段修改为可空")
+			}
+
+			// 检查并添加special_sort字段（如果不存在）
+			var specialSortExists int
+			err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'products' AND column_name = 'special_sort'", cfg.DBName).Scan(&specialSortExists)
+			if err == nil && specialSortExists == 0 {
+				_, err = DB.Exec("ALTER TABLE products ADD COLUMN special_sort INT DEFAULT 0 COMMENT '精选商品排序（越小越靠前）' AFTER sort")
+				if err != nil {
+					log.Printf("添加special_sort字段失败: %v", err)
+				} else {
+					log.Println("已添加special_sort字段到products表")
+					// 为现有的精选商品初始化排序值
+					// 先设置变量，再更新
+					_, err = DB.Exec("SET @row_number = 0")
+					if err != nil {
+						log.Printf("设置变量失败: %v", err)
+					} else {
+						_, err = DB.Exec(`
+							UPDATE products 
+							SET special_sort = (@row_number := @row_number + 1)
+							WHERE is_special = 1
+							ORDER BY created_at DESC
+						`)
+						if err != nil {
+							log.Printf("初始化special_sort值失败: %v", err)
+						} else {
+							log.Println("已为现有精选商品初始化special_sort值")
+						}
+					}
+				}
+			}
+
+			// 添加索引（如果不存在）
+			var indexExists int
+			err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = ? AND table_name = 'products' AND index_name = 'idx_special_sort'", cfg.DBName).Scan(&indexExists)
+			if err == nil && indexExists == 0 {
+				_, err = DB.Exec("CREATE INDEX idx_special_sort ON products(special_sort)")
+				if err != nil {
+					log.Printf("创建special_sort索引失败: %v", err)
+				} else {
+					log.Println("已创建special_sort索引")
+				}
 			}
 		}
 

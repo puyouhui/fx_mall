@@ -34,6 +34,8 @@ type Product struct {
 	Images        []string  `json:"images"`                // 商品图片
 	Specs         []Spec    `json:"specs"`                 // 商品规格
 	Status        int       `json:"status"`
+	Sort          int       `json:"sort"`         // 分类内排序（越小越靠前）
+	SpecialSort   int       `json:"special_sort"` // 精选商品排序（越小越靠前）
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 
@@ -54,8 +56,14 @@ func GetSpecialProductsWithPagination(pageNum, pageSize int) ([]Product, int, er
 		return nil, 0, err
 	}
 
-	// 获取分页数据
-	query := "SELECT id, name, description, original_price, price, category_id, is_special, images, specs, status, created_at, updated_at FROM products WHERE is_special = 1 AND status = 1 ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	// 获取分页数据，按 special_sort 排序
+	query := `SELECT id, name, description, original_price, price, category_id, is_special, 
+			  images, specs, status, COALESCE(special_sort, 0) as special_sort, 
+			  created_at, updated_at 
+			  FROM products 
+			  WHERE is_special = 1 AND status = 1 
+			  ORDER BY COALESCE(special_sort, 0) ASC, created_at DESC 
+			  LIMIT ? OFFSET ?`
 	rows, err := database.DB.Query(query, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -67,7 +75,7 @@ func GetSpecialProductsWithPagination(pageNum, pageSize int) ([]Product, int, er
 		var imagesJSON, specsJSON string
 		var dbPrice, dbOriginalPrice sql.NullFloat64 // 使用可空类型
 
-		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &dbOriginalPrice, &dbPrice, &product.CategoryID, &product.IsSpecial, &imagesJSON, &specsJSON, &product.Status, &product.CreatedAt, &product.UpdatedAt); err != nil {
+		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &dbOriginalPrice, &dbPrice, &product.CategoryID, &product.IsSpecial, &imagesJSON, &specsJSON, &product.Status, &product.SpecialSort, &product.CreatedAt, &product.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 
@@ -509,12 +517,12 @@ func GetProductsByCategoryWithPagination(categoryID, pageNum, pageSize int) ([]P
 		}
 
 		countQuery = "SELECT COUNT(*) FROM products WHERE category_id IN (" + placeholders + ") AND status = 1"
-		query = "SELECT id, name, description, original_price, price, category_id, supplier_id, is_special, images, specs, status, created_at, updated_at FROM products WHERE category_id IN (" + placeholders + ") AND status = 1 ORDER BY created_at DESC LIMIT ? OFFSET ?"
+		query = "SELECT id, name, description, original_price, price, category_id, supplier_id, is_special, images, specs, status, COALESCE(sort, 0) as sort, created_at, updated_at FROM products WHERE category_id IN (" + placeholders + ") AND status = 1 ORDER BY COALESCE(sort, 0) ASC, created_at DESC LIMIT ? OFFSET ?"
 		args = append(args, pageSize, offset)
 	} else {
 		// 如果是二级分类，直接查询该分类的商品
 		countQuery = "SELECT COUNT(*) FROM products WHERE category_id = ? AND status = 1"
-		query = "SELECT id, name, description, original_price, price, category_id, supplier_id, is_special, images, specs, status, created_at, updated_at FROM products WHERE category_id = ? AND status = 1 ORDER BY created_at DESC LIMIT ? OFFSET ?"
+		query = "SELECT id, name, description, original_price, price, category_id, supplier_id, is_special, images, specs, status, COALESCE(sort, 0) as sort, created_at, updated_at FROM products WHERE category_id = ? AND status = 1 ORDER BY COALESCE(sort, 0) ASC, created_at DESC LIMIT ? OFFSET ?"
 		args = []interface{}{categoryID, pageSize, offset}
 	}
 
@@ -536,8 +544,13 @@ func GetProductsByCategoryWithPagination(categoryID, pageNum, pageSize int) ([]P
 		var dbPrice, dbOriginalPrice sql.NullFloat64 // 使用可空类型
 		var dbSupplierID sql.NullInt64
 
-		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &dbOriginalPrice, &dbPrice, &product.CategoryID, &dbSupplierID, &product.IsSpecial, &imagesJSON, &specsJSON, &product.Status, &product.CreatedAt, &product.UpdatedAt); err != nil {
+		var dbSort sql.NullInt64
+		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &dbOriginalPrice, &dbPrice, &product.CategoryID, &dbSupplierID, &product.IsSpecial, &imagesJSON, &specsJSON, &product.Status, &dbSort, &product.CreatedAt, &product.UpdatedAt); err != nil {
 			return nil, 0, err
+		}
+		
+		if dbSort.Valid {
+			product.Sort = int(dbSort.Int64)
 		}
 
 		// 处理可空字段
@@ -567,6 +580,60 @@ func GetProductsByCategoryWithPagination(categoryID, pageNum, pageSize int) ([]P
 	}
 
 	return products, total, nil
+}
+
+// BatchUpdateProductSort 批量更新商品排序
+func BatchUpdateProductSort(items []struct {
+	ID   int
+	Sort int
+}) error {
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("UPDATE products SET sort = ?, updated_at = NOW() WHERE id = ?")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, item := range items {
+		_, err = stmt.Exec(item.Sort, item.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// BatchUpdateSpecialProductSort 批量更新精选商品排序
+func BatchUpdateSpecialProductSort(items []struct {
+	ID          int
+	SpecialSort int
+}) error {
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("UPDATE products SET special_sort = ?, updated_at = NOW() WHERE id = ? AND is_special = 1")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, item := range items {
+		_, err = stmt.Exec(item.SpecialSort, item.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 // GetProductsByCategoryID 根据分类ID获取商品（兼容旧版本）
@@ -618,7 +685,13 @@ func GetProductsByCategoryID(categoryID int) ([]Product, error) {
 func GetSpecialProducts() ([]Product, error) {
 	var products []Product
 
-	query := "SELECT id, name, description, original_price, price, category_id, is_special, images, specs, status, created_at, updated_at FROM products WHERE is_special = 1 AND status = 1 ORDER BY id DESC LIMIT 10"
+	query := `SELECT id, name, description, original_price, price, category_id, is_special, 
+			  images, specs, status, COALESCE(special_sort, 0) as special_sort, 
+			  created_at, updated_at 
+			  FROM products 
+			  WHERE is_special = 1 AND status = 1 
+			  ORDER BY COALESCE(special_sort, 0) ASC, created_at DESC 
+			  LIMIT 10`
 	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, err
@@ -630,7 +703,7 @@ func GetSpecialProducts() ([]Product, error) {
 		var imagesJSON, specsJSON string
 		var dbPrice, dbOriginalPrice sql.NullFloat64 // 使用可空类型
 
-		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &dbOriginalPrice, &dbPrice, &product.CategoryID, &product.IsSpecial, &imagesJSON, &specsJSON, &product.Status, &product.CreatedAt, &product.UpdatedAt); err != nil {
+		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &dbOriginalPrice, &dbPrice, &product.CategoryID, &product.IsSpecial, &imagesJSON, &specsJSON, &product.Status, &product.SpecialSort, &product.CreatedAt, &product.UpdatedAt); err != nil {
 			return nil, err
 		}
 

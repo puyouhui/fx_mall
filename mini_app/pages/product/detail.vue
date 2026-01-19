@@ -111,14 +111,14 @@
 						<text class="faq-question-icon">•</text>
 						<text class="faq-question-text">什么时候送到？</text>
 					</view>
-					<text class="faq-answer">我们的配送时间是早上8:00 - 21:00，如您需要加急，请联系您的客户经理，无法指定时间送达，望您谅解。</text>
+					<text class="faq-answer">我们的配送时间是早上8:00 - 20:00，如您需要加急，请联系您的客户经理，无法指定时间送达，望您谅解。</text>
 				</view>
 				<view class="faq-item">
 					<view class="faq-question">
 						<text class="faq-question-icon">•</text>
 						<text class="faq-question-text">今日购买的商品什么时候送到？</text>
 					</view>
-					<text class="faq-answer">每个区域配送到达时间不同，昆明主城区每日多次配送，若下单后当日无法送达，您的客户经理会与您取得联系！</text>
+					<text class="faq-answer">每个区域配送到达时间不同，昆明主城区每日多次配送，会尽快和同路订单一起配送，若下单后当日无法送达，您的客户经理会与您取得联系！</text>
 				</view>
 				<view class="faq-item">
 					<view class="faq-question">

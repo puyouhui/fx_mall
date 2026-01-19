@@ -41,7 +41,7 @@
 			<view class="feature-tags">
 				<view class="tag-item">
 					<image src="/static/icon/coin.png" class="tag-icon"></image>
-					<text class="tag-text">价格实惠</text>
+					<text class="tag-text">价格透明</text>
 				</view>
 				<view class="tag-item">
 					<image src="/static/icon/coin1.png" class="tag-icon"></image>

@@ -2,6 +2,7 @@ package model
 
 import (
 	"database/sql"
+	"sort"
 	"time"
 
 	"go_backend/internal/database"
@@ -50,6 +51,7 @@ func GetAllCategories() ([]map[string]interface{}, error) {
 			"id":         category.ID,
 			"name":       category.Name,
 			"parent_id":  category.ParentID,
+			"sort":       category.Sort,
 			"status":     category.Status,
 			"created_at": category.CreatedAt,
 			"updated_at": category.UpdatedAt,
@@ -73,7 +75,64 @@ func GetAllCategories() ([]map[string]interface{}, error) {
 		}
 	}
 
+	// 对一级分类按sort排序
+	sortCategories(rootCategories)
+	// 对每个一级分类的子分类按sort排序
+	for _, rootCat := range rootCategories {
+		if children, ok := rootCat["children"].([]map[string]interface{}); ok {
+			sortCategories(children)
+		}
+	}
+
 	return rootCategories, nil
+}
+
+// sortCategories 对分类切片按sort字段排序
+func sortCategories(categories []map[string]interface{}) {
+	sort.Slice(categories, func(i, j int) bool {
+		sortI, okI := categories[i]["sort"].(int)
+		sortJ, okJ := categories[j]["sort"].(int)
+		if !okI {
+			sortI = 0
+		}
+		if !okJ {
+			sortJ = 0
+		}
+		if sortI != sortJ {
+			return sortI < sortJ
+		}
+		// 如果sort相同，按ID排序
+		idI, _ := categories[i]["id"].(int)
+		idJ, _ := categories[j]["id"].(int)
+		return idI < idJ
+	})
+}
+
+// BatchUpdateCategorySort 批量更新分类排序
+func BatchUpdateCategorySort(items []struct {
+	ID   int
+	Sort int
+}) error {
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("UPDATE categories SET sort = ?, updated_at = NOW() WHERE id = ?")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, item := range items {
+		_, err = stmt.Exec(item.Sort, item.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 // GetCategoryByID 根据ID获取分类
@@ -109,11 +168,10 @@ func CreateCategory(category *Category) error {
 	return nil
 }
 
-// UpdateCategory 更新分类，不处理排序字段
+// UpdateCategory 更新分类，支持排序字段
 func UpdateCategory(category *Category) error {
-	// 不处理排序字段
-	query := "UPDATE categories SET name = ?, parent_id = ?, status = ?, icon = ?, updated_at = NOW() WHERE id = ?"
-	_, err := database.DB.Exec(query, category.Name, category.ParentID, category.Status, category.Icon, category.ID)
+	query := "UPDATE categories SET name = ?, parent_id = ?, sort = ?, status = ?, icon = ?, updated_at = NOW() WHERE id = ?"
+	_, err := database.DB.Exec(query, category.Name, category.ParentID, category.Sort, category.Status, category.Icon, category.ID)
 	return err
 }
 

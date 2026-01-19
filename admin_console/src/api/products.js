@@ -124,3 +124,20 @@ export const deleteProduct = async (id) => {
     throw error
   }
 }
+
+// 根据分类ID获取商品列表
+export const getProductsByCategory = async (categoryId, pageNum = 1, pageSize = 10) => {
+  try {
+    const { data } = await request.get('/products/category', {
+      params: {
+        categoryId,
+        pageNum,
+        pageSize
+      }
+    })
+    return data
+  } catch (error) {
+    console.error('获取分类商品失败:', error)
+    throw error
+  }
+}

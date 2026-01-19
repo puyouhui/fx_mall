@@ -64,6 +64,12 @@
             </el-icon>
             <span>热门搜索</span>
           </el-menu-item>
+          <el-menu-item index="/sort-management">
+            <el-icon>
+              <Sort />
+            </el-icon>
+            <span>排序管理</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <!-- 订单管理 -->
@@ -317,7 +323,8 @@ import {
   Search,
   Clock,
   Delete,
-  Close
+  Close,
+  Sort
 } from '@element-plus/icons-vue'
 import { logout, getAdminInfo } from '../api/auth'
 import { ElMessage } from 'element-plus'

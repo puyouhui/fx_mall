@@ -170,6 +170,7 @@ export default {
         // { name: '我的账单', icon: 'wallet', iconPath: '/static/icon/bills.png', path: '/pages/bill/bill', color: '#20CB6B' },
         { name: '发票抬头', icon: 'paperplane', iconPath: '/static/icon/invoice.png', path: '/pages/invoice/invoice', color: '#20CB6B' },
         { name: '新品需求', icon: 'star', iconPath: '/static/icon/new.png', path: '/pages/product-request/product-request', color: '#20CB6B' },
+        { name: '分享有礼', icon: 'person-add', iconPath: '/static/icon/referral.png', path: '/pages/referral/referral', color: '#20CB6B' },
         { name: '客服与帮助', icon: 'chatbubble', iconPath: '/static/icon/customer_service.png', path: '/pages/customer-service/customer-service', color: '#20CB6B' },
         { name: '系统设置', icon: 'gear', iconPath: '/static/icon/set.png', path: '/pages/settings/settings', color: '#20CB6B' },
         { name: '供应商合作', icon: 'shop', iconPath: '/static/icon/suppliers.png', path: '/pages/supplier/supplier', color: '#20CB6B' },
@@ -727,7 +728,7 @@ export default {
   align-items: center;
   gap: 8rpx;
   font-size: 24rpx;
-  padding: 0;
+  padding: 0 10rpx;
   border-radius: 20rpx;
   background-color: #E8F8F0;
   color: #20CB6B;

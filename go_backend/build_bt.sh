@@ -43,8 +43,8 @@ elif [ "$1" == "help" ] || [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
     exit 0
 fi
 
-# 生成日期编号（年月日格式：YYYYMMDD）
-DATE_TAG=$(date +"%Y%m%d")
+# 生成日期编号（年月日时分格式：YYYYMMDDHHmm）
+DATE_TAG=$(date +"%Y%m%d%H%M")
 OUT_BIN="${OUT_DIR}/${APP_NAME}_${GOOS}_${GOARCH}_${DATE_TAG}"
 
 echo "==> Building ${APP_NAME} for ${GOOS}/${GOARCH} (date: ${DATE_TAG}) ..."
@@ -72,9 +72,9 @@ if [ $? -eq 0 ]; then
     echo "      - If server is ARM64, rebuild with: ./build_bt.sh arm64"
     echo ""
     echo "==> File naming:"
-    echo "   Format: ${APP_NAME}_${GOOS}_${GOARCH}_YYYYMMDD"
+    echo "   Format: ${APP_NAME}_${GOOS}_${GOARCH}_YYYYMMDDHHmm"
     echo "   Example: ${OUT_BIN}"
-    echo "   This allows easy rollback by date"
+    echo "   This allows easy rollback by date and time"
 else
     echo "==> Build failed!"
     exit 1

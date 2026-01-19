@@ -214,6 +214,14 @@ const routes = [
         meta: {
           title: '图库管理'
         }
+      },
+      {
+        path: 'sort-management',
+        name: 'SortManagement',
+        component: () => import('../views/SortManagement.vue'),
+        meta: {
+          title: '排序管理'
+        }
       }
     ]
   },

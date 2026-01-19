@@ -23,9 +23,9 @@ if "%1"=="arm64" (
     set GOARCH=arm64
 )
 
-REM 生成日期编号（年月日格式：YYYYMMDD）
+REM 生成日期编号（年月日时分格式：YYYYMMDDHHmm）
 for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set datetime=%%I
-set DATE_TAG=%datetime:~0,8%
+set DATE_TAG=%datetime:~0,12%
 set OUT_BIN=%OUT_DIR%\%APP_NAME%_%GOOS%_%GOARCH%_%DATE_TAG%
 
 echo ==^> Building %APP_NAME% for %GOOS%/%GOARCH% (date: %DATE_TAG%) ...
@@ -41,9 +41,9 @@ if %ERRORLEVEL% EQU 0 (
     echo ==^> Tip: After uploading to server, set executable permission: chmod +x %APP_NAME%_%GOOS%_%GOARCH%_%DATE_TAG%
     echo.
     echo ==^> File naming:
-    echo    Format: %APP_NAME%_%GOOS%_%GOARCH%_YYYYMMDD
+    echo    Format: %APP_NAME%_%GOOS%_%GOARCH%_YYYYMMDDHHmm
     echo    Example: %OUT_BIN%
-    echo    This allows easy rollback by date
+    echo    This allows easy rollback by date and time
 ) else (
     echo ==^> Build failed!
     exit /b 1
