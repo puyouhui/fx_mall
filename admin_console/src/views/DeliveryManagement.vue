@@ -730,7 +730,7 @@ const printOrderTicket = async (orderData) => {
     }
 
     // 订单标题
-    const title = hidePrice ? "云鹿进货（环保票）" : "云鹿进货"
+    const title = hidePrice ? "橙心选（环保票）" : "橙心选"
     panel.addPrintText({
       options: {
         width: 220,
@@ -1078,7 +1078,7 @@ const printOrderTicket = async (orderData) => {
         width: 220,
         top: currentTop,
         left: 0,
-        title: "微信搜索\"云鹿进货\"小程序，",
+        title: "微信搜索\"橙心选\"小程序，",
         textAlign: "center",
         fontSize: 11
       },

@@ -1228,7 +1228,7 @@ const executePrint = async (orderData) => {
     }
 
     // 订单标题：根据是否环保小票显示不同标题
-    const title = hidePrice ? "云鹿进货（环保票）" : "云鹿进货"
+    const title = hidePrice ? "橙心选（环保票）" : "橙心选"
     panel.addPrintText({
       options: {
         width: 220, // 尝试更大的值以占满 80mm 宽度
@@ -1576,7 +1576,7 @@ const executePrint = async (orderData) => {
         width: 220, // 尝试更大的值以占满 80mm 宽度
         top: currentTop,
         left: 0,
-        title: "微信搜索“云鹿进货”小程序，",
+        title: "微信搜索“橙心选”小程序，",
         textAlign: "center", // 居中对齐
         fontSize: 11
       },
@@ -1716,14 +1716,14 @@ const handlePrintMaterial = async (orderData) => {
 
       let currentTop = 5
 
-      // 标题：买一次性用品, 云鹿更方便!
+      // 标题：买一次性用品,橙心选更方便!
       panel.addPrintText({
         options: {
           width: 170,
           height: 20,
           top: currentTop,
           left: 0,
-          title: '买一次性用品, 云鹿更方便!',
+          title: '橙心选，进货更方便, 生意大“橙”功!',
           textAlign: 'center',
           fontSize: 12,
           fontWeight: 'bold'

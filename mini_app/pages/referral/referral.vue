@@ -11,7 +11,7 @@
             <uni-icons type="left" size="20" color="#fff"></uni-icons>
           </view>
           <view class="navbar-title">
-            <text class="navbar-title-text">推荐用户</text>
+            <text class="navbar-title-text">推荐朋友</text>
           </view>
           <view class="navbar-right"></view>
         </view>
@@ -32,12 +32,12 @@
         <view class="stats-divider"></view>
         <view class="stats-item">
           <text class="stats-value">{{ stats.orderedReferrals || 0 }}</text>
-          <text class="stats-label">已下单</text>
+          <text class="stats-label">已下单好友</text>
         </view>
         <view class="stats-divider"></view>
         <view class="stats-item">
           <text class="stats-value">{{ stats.pendingReferrals || 0 }}</text>
-          <text class="stats-label">待下单</text>
+          <text class="stats-label">待下单好友</text>
         </view>
       </view>
 
@@ -146,10 +146,12 @@ export default {
         pendingReferrals: 0
       },
       activityRules: [
-        '分享小程序给好友，邀请他们注册成为新用户',
-        '好友通过您的分享链接注册后，将显示在您的推荐列表中',
-        '当好友完成首次下单后，您将获得相应奖励',
-        '推荐奖励以实际活动规则为准'
+        '活动时间：即日起至2026年6月30日',
+        '邀请好友通过您的分享链接注册并完成首次下单',
+        '好友完成首次下单后，您将获得5元现金奖励（线下发放）',
+        '奖励形式三选一：5元现金（线下发放）、5元无门槛抵扣券、抽纸一提（3包装）',
+        '奖励将在好友首次下单后7个工作日内发放，如选择实物奖励，会再您下次进货时赠送！',
+        '活动最终解释权归平台所有'
       ],
       pageNum: 1,
       pageSize: 10,
