@@ -48,8 +48,8 @@ var Config = struct {
 func InitConfig() {
 	// 设置默认配置
 	Config.Server.Port = 8082
-	Config.Server.ReadTimeout = 5 * time.Second
-	Config.Server.WriteTimeout = 5 * time.Second
+	Config.Server.ReadTimeout = 60 * time.Second  // 读取超时60秒（用于上传大文件）
+	Config.Server.WriteTimeout = 60 * time.Second // 写入超时60秒（用于上传大文件）
 	Config.CORS.AllowOrigins = []string{"*"}
 	Config.CORS.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	Config.CORS.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}

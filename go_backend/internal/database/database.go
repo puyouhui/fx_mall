@@ -1930,7 +1930,7 @@ func InitDB() error {
 		    category VARCHAR(50) NOT NULL DEFAULT 'others' COMMENT '目录分类：products/carousels/categories/users/delivery/others/rich-content',
 		    file_name VARCHAR(255) NOT NULL COMMENT '文件名',
 		    file_size BIGINT NOT NULL DEFAULT 0 COMMENT '文件大小（字节）',
-		    file_type VARCHAR(20) NOT NULL DEFAULT 'image/jpeg' COMMENT '文件类型',
+		    file_type VARCHAR(100) NOT NULL DEFAULT 'image/jpeg' COMMENT '文件类型',
 		    width INT DEFAULT NULL COMMENT '图片宽度（像素）',
 		    height INT DEFAULT NULL COMMENT '图片高度（像素）',
 		    uploaded_at DATETIME NOT NULL COMMENT '上传时间',

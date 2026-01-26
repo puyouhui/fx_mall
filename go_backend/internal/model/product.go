@@ -419,7 +419,7 @@ func SearchProductsWithPagination(keyword string, pageNum, pageSize int) ([]Prod
 	}
 
 	// 查询商品列表（搜索范围：商品名称和描述）
-	query := "SELECT id, name, description, original_price, price, category_id, is_special, images, specs, status, created_at, updated_at FROM products WHERE status = 1 AND (name LIKE ? OR description LIKE ?) ORDER BY id DESC LIMIT ? OFFSET ?"
+	query := "SELECT id, name, description, original_price, price, category_id, supplier_id, is_special, images, specs, status, created_at, updated_at FROM products WHERE status = 1 AND (name LIKE ? OR description LIKE ?) ORDER BY id DESC LIMIT ? OFFSET ?"
 	rows, err := database.DB.Query(query, searchPattern, searchPattern, pageSize, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("搜索商品失败: %v", err)
@@ -429,9 +429,10 @@ func SearchProductsWithPagination(keyword string, pageNum, pageSize int) ([]Prod
 	for rows.Next() {
 		var product Product
 		var imagesJSON, specsJSON string
-		var dbPrice, dbOriginalPrice sql.NullFloat64
+		var dbPrice, dbOriginalPrice sql.NullFloat64 // 使用可空类型
+		var dbSupplierID sql.NullInt64
 
-		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &dbOriginalPrice, &dbPrice, &product.CategoryID, &product.IsSpecial, &imagesJSON, &specsJSON, &product.Status, &product.CreatedAt, &product.UpdatedAt); err != nil {
+		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &dbOriginalPrice, &dbPrice, &product.CategoryID, &dbSupplierID, &product.IsSpecial, &imagesJSON, &specsJSON, &product.Status, &product.CreatedAt, &product.UpdatedAt); err != nil {
 			return nil, 0, fmt.Errorf("扫描商品数据失败: %v", err)
 		}
 
@@ -441,6 +442,10 @@ func SearchProductsWithPagination(keyword string, pageNum, pageSize int) ([]Prod
 		}
 		if dbOriginalPrice.Valid {
 			product.OriginalPrice = dbOriginalPrice.Float64
+		}
+		if dbSupplierID.Valid {
+			supplierID := int(dbSupplierID.Int64)
+			product.SupplierID = &supplierID
 		}
 
 		// 解析JSON字符串到切片

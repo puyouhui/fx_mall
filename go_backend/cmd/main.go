@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 
 	"go_backend/internal/api"
 	"go_backend/internal/config"
@@ -449,6 +450,15 @@ func main() {
 
 	// 启动服务器
 	port := config.Config.Server.Port
+	srv := &http.Server{
+		Addr:         fmt.Sprintf(":%d", port),
+		Handler:      router,
+		ReadTimeout:  config.Config.Server.ReadTimeout,
+		WriteTimeout: config.Config.Server.WriteTimeout,
+	}
 	fmt.Printf("服务器启动成功，访问地址: http://localhost:%d\n", port)
-	router.Run(fmt.Sprintf(":%d", port))
+	fmt.Printf("读取超时: %v, 写入超时: %v\n", config.Config.Server.ReadTimeout, config.Config.Server.WriteTimeout)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("服务器启动失败: %v", err)
+	}
 }

@@ -28,6 +28,18 @@ func successResponse(c *gin.Context, data interface{}, message string) {
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": data, "message": message})
 }
 
+// extractMIMEType 从 Content-Type 中提取 MIME 类型部分（去除参数）
+func extractMIMEType(contentType string) string {
+	if contentType == "" {
+		return "image/jpeg" // 默认值
+	}
+	// 去除分号后的参数部分
+	if idx := strings.Index(contentType, ";"); idx >= 0 {
+		return strings.TrimSpace(contentType[:idx])
+	}
+	return strings.TrimSpace(contentType)
+}
+
 // SaveImageIndex 保存图片索引到数据库（辅助函数，可导出供其他文件使用）
 func SaveImageIndex(fileURL string, category string, fileName string, fileSize int64, contentType string) {
 	cfg := config.Config.MinIO
@@ -51,6 +63,9 @@ func SaveImageIndex(fileURL string, category string, fileName string, fileSize i
 		fileName = parts[len(parts)-1]
 	}
 
+	// 提取 MIME 类型（去除参数，只保留类型部分）
+	mimeType := extractMIMEType(contentType)
+
 	// 创建图片索引记录
 	imgIndex := &model.ImageIndex{
 		ObjectName: objectName,
@@ -58,7 +73,7 @@ func SaveImageIndex(fileURL string, category string, fileName string, fileSize i
 		Category:   category,
 		FileName:   fileName,
 		FileSize:   fileSize,
-		FileType:   contentType,
+		FileType:   mimeType,
 		UploadedAt: time.Now(),
 	}
 
