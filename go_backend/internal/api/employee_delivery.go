@@ -835,7 +835,16 @@ func CompleteDeliveryOrder(c *gin.Context) {
 	}
 
 	// 记录配送流程日志：配送完成
-	remark := "配送完成，已上传货物照片和门牌照片"
+	var remark string
+	if productImageURL != nil && doorplateImageURL != nil {
+		remark = "配送完成，已上传货物照片和门牌照片"
+	} else if productImageURL != nil {
+		remark = "配送完成，已上传货物照片"
+	} else if doorplateImageURL != nil {
+		remark = "配送完成，已上传门牌照片"
+	} else {
+		remark = "配送完成（未上传照片）"
+	}
 	deliveryLog := &model.DeliveryLog{
 		OrderID:              id,
 		Action:               model.DeliveryLogActionDeliveringCompleted,
@@ -881,6 +890,104 @@ func CompleteDeliveryOrder(c *gin.Context) {
 		"data": gin.H{
 			"delivery_record": deliveryRecord,
 		},
+	})
+}
+
+// UpdateOrderAddress 更新订单地址（地址纠错）
+func UpdateOrderAddress(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+
+	if !employee.IsDelivery {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是配送员，无权访问此功能"})
+		return
+	}
+
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
+		return
+	}
+
+	// 获取订单
+	order, err := model.GetOrderByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单失败: " + err.Error()})
+		return
+	}
+	if order == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
+		return
+	}
+
+	// 验证配送员是否匹配（只有接单的配送员可以修改地址）
+	if order.DeliveryEmployeeCode == nil || *order.DeliveryEmployeeCode != employee.EmployeeCode {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您无权修改此订单的地址"})
+		return
+	}
+
+	var req struct {
+		AddressID int      `json:"address_id"`
+		Latitude  *float64 `json:"latitude"`
+		Longitude *float64 `json:"longitude"`
+		Address   *string  `json:"address"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	// 验证地址ID是否匹配
+	if req.AddressID != order.AddressID {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "地址ID不匹配"})
+		return
+	}
+
+	// 获取地址信息
+	address, err := model.GetAddressByID(req.AddressID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取地址信息失败: " + err.Error()})
+		return
+	}
+	if address == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "地址不存在"})
+		return
+	}
+
+	// 构建更新数据
+	addressData := map[string]interface{}{}
+	if req.Latitude != nil {
+		addressData["latitude"] = *req.Latitude
+	}
+	if req.Longitude != nil {
+		addressData["longitude"] = *req.Longitude
+	}
+	if req.Address != nil && *req.Address != "" {
+		addressData["address"] = strings.TrimSpace(*req.Address)
+	}
+
+	if len(addressData) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "没有需要更新的字段"})
+		return
+	}
+
+	// 更新地址
+	err = model.UpdateAddress(req.AddressID, address.UserID, addressData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新地址失败: " + err.Error()})
+		return
+	}
+
+	// 如果订单状态是配送中，可能需要重新计算配送费
+	// 这里暂时不重新计算，因为配送费在接单时已经确定
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "地址更新成功",
 	})
 }
 

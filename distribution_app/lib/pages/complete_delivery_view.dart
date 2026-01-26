@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
+import 'package:latlong2/latlong.dart';
 import '../api/order_api.dart';
+import '../utils/request.dart';
+import '../utils/coordinate_transform.dart';
+import 'address_pick_map_page.dart';
 
 /// 配送完成页面：上传货物照片和门牌照片
 class CompleteDeliveryView extends StatefulWidget {
@@ -19,6 +23,9 @@ class _CompleteDeliveryViewState extends State<CompleteDeliveryView> {
   bool _isSubmitting = false;
 
   int? _orderId;
+  Map<String, dynamic>? _orderData; // 订单数据
+  Map<String, dynamic>? _addressData; // 地址数据
+  bool _isLoadingOrder = false;
 
   @override
   void didChangeDependencies() {
@@ -26,6 +33,168 @@ class _CompleteDeliveryViewState extends State<CompleteDeliveryView> {
     // 从路由参数获取订单ID
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     _orderId = args?['orderId'] as int?;
+    if (_orderId != null) {
+      _loadOrderDetail();
+    }
+  }
+
+  // 加载订单详情
+  Future<void> _loadOrderDetail() async {
+    if (_orderId == null) return;
+
+    setState(() {
+      _isLoadingOrder = true;
+    });
+
+    try {
+      final response = await OrderApi.getOrderDetail(_orderId!);
+      if (response.isSuccess && response.data != null) {
+        setState(() {
+          _orderData = response.data!['order'] as Map<String, dynamic>?;
+          _addressData = response.data!['address'] as Map<String, dynamic>?;
+        });
+      }
+    } catch (e) {
+      // 忽略错误，不影响页面显示
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingOrder = false;
+        });
+      }
+    }
+  }
+
+  // 地址纠错
+  Future<void> _correctAddress() async {
+    if (_orderId == null || _addressData == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('订单或地址信息缺失'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // 获取当前地址的经纬度（GCJ-02）
+    final currentLat = _addressData!['latitude'] as num?;
+    final currentLng = _addressData!['longitude'] as num?;
+    
+    LatLng? initialCenter;
+    LatLng? initialSelected;
+    
+    if (currentLat != null && currentLng != null) {
+      // 转换为WGS84（天地图使用WGS84）
+      final wgs84 = CoordinateTransform.gcj02ToWgs84(
+        currentLat.toDouble(),
+        currentLng.toDouble(),
+      );
+      initialCenter = wgs84;
+      initialSelected = wgs84;
+    }
+
+    // 打开地图选择页面
+    final pickedWgs84 = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (_) => AddressPickMapPage(
+          initialCenter: initialCenter,
+          initialSelected: initialSelected,
+        ),
+      ),
+    );
+
+    if (pickedWgs84 == null) return;
+
+    // 转换回GCJ-02（后端使用GCJ-02）
+    final gcj = CoordinateTransform.wgs84ToGcj02(
+      pickedWgs84.latitude,
+      pickedWgs84.longitude,
+    );
+
+    // 逆地理编码获取地址文本
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      // 先进行逆地理编码
+      final geocodeResp = await Request.post<Map<String, dynamic>>(
+        '/employee/addresses/reverse-geocode',
+        body: {
+          'longitude': gcj.longitude,
+          'latitude': gcj.latitude,
+        },
+        parser: (data) => data as Map<String, dynamic>,
+      );
+
+      String? addressText;
+      if (geocodeResp.isSuccess && geocodeResp.data != null) {
+        addressText = geocodeResp.data!['address'] as String?;
+      }
+
+      // 更新订单地址
+      final addressId = _addressData!['id'] as int?;
+      if (addressId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('地址ID缺失'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final updateResp = await Request.put<Map<String, dynamic>>(
+        '/employee/delivery/orders/$_orderId/address',
+        body: {
+          'address_id': addressId,
+          'latitude': gcj.latitude,
+          'longitude': gcj.longitude,
+          if (addressText != null && addressText.isNotEmpty) 'address': addressText,
+        },
+        parser: (data) => data as Map<String, dynamic>,
+      );
+
+      if (!mounted) return;
+
+      if (updateResp.isSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('地址已更新'),
+            backgroundColor: Color(0xFF20CB6B),
+          ),
+        );
+        // 重新加载订单详情
+        await _loadOrderDetail();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              updateResp.message.isNotEmpty
+                  ? updateResp.message
+                  : '地址更新失败',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('地址更新失败: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
   }
 
   // 检查并请求相机权限
@@ -540,7 +709,7 @@ class _CompleteDeliveryViewState extends State<CompleteDeliveryView> {
     });
   }
 
-  // 提交配送完成
+  // 提交配送完成（带图片）
   Future<void> _submitDelivery() async {
     if (_orderId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -624,6 +793,93 @@ class _CompleteDeliveryViewState extends State<CompleteDeliveryView> {
     }
   }
 
+  // 提交配送完成（不需要图片）
+  Future<void> _submitDeliveryWithoutImages() async {
+    if (_orderId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('订单ID缺失'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // 显示确认对话框
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认完成配送'),
+        content: const Text(
+          '您确定要跳过照片上传完成配送吗？\n\n此操作将直接标记订单为已配送完成，不会上传任何照片。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF20CB6B),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      final response = await OrderApi.completeOrder(_orderId!);
+
+      if (!mounted) return;
+
+      if (response.isSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('配送完成'),
+            backgroundColor: Color(0xFF20CB6B),
+          ),
+        );
+        // 返回上一页，并传递成功标识
+        Navigator.of(context).pop(true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              response.message.isNotEmpty
+                  ? response.message
+                  : '提交失败，请稍后重试',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('提交失败: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -632,6 +888,13 @@ class _CompleteDeliveryViewState extends State<CompleteDeliveryView> {
         backgroundColor: const Color(0xFF20CB6B),
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_location_alt),
+            tooltip: '地址纠错',
+            onPressed: _isSubmitting || _isLoadingOrder ? null : _correctAddress,
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -688,7 +951,30 @@ class _CompleteDeliveryViewState extends State<CompleteDeliveryView> {
               onRemove: _removeDoorplateImage,
               icon: Icons.home_outlined,
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
+
+            // 忘记拍了按钮
+            SizedBox(
+              height: 44,
+              child: OutlinedButton(
+                onPressed: _isSubmitting ? null : _submitDeliveryWithoutImages,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF8C92A4),
+                  side: const BorderSide(color: Color(0xFFE0E0E0)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  '忘记拍了',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
 
             // 提交按钮
             SizedBox(

@@ -70,6 +70,7 @@ func main() {
 			miniAppProtectedGroup.PUT("/addresses/:id/default", api.SetDefaultMiniAppAddress) // 设置默认地址
 			miniAppProtectedGroup.POST("/addresses/geocode", api.GeocodeAddress)              // 地址解析（将地址文本转换为经纬度）
 			miniAppProtectedGroup.POST("/addresses/reverse-geocode", api.ReverseGeocode)      // 逆地理编码（将经纬度转换为地址）
+			miniAppProtectedGroup.POST("/addresses/search-poi", api.SearchPOI)                 // POI搜索（使用高德地图API搜索地址）
 
 			// 发票抬头相关接口
 			miniAppProtectedGroup.GET("/invoice", api.GetMiniAppInvoice)   // 获取用户的发票抬头
@@ -390,6 +391,7 @@ func main() {
 				employeeProtectedGroup.PUT("/delivery/orders/:id/accept", api.AcceptDeliveryOrder)                       // 接单
 				employeeProtectedGroup.PUT("/delivery/orders/:id/start", api.StartDeliveryOrder)                         // 开始配送
 				employeeProtectedGroup.POST("/delivery/orders/:id/complete", api.CompleteDeliveryOrder)                  // 完成配送（支持上传图片）
+				employeeProtectedGroup.PUT("/delivery/orders/:id/address", api.UpdateOrderAddress)                       // 更新订单地址（地址纠错）
 				employeeProtectedGroup.POST("/delivery/orders/:id/report", api.ReportOrderIssue)                         // 问题上报
 				employeeProtectedGroup.GET("/delivery/my-orders", api.GetDeliveryOrders)                                 // 获取我的配送订单（通过status参数筛选）
 				employeeProtectedGroup.GET("/delivery/pickup/suppliers", api.GetPickupSuppliers)                         // 获取待取货供应商列表
@@ -417,6 +419,7 @@ func main() {
 				employeeProtectedGroup.PUT("/sales/addresses/:id", api.UpdateSalesCustomerAddress)                               // 更新客户地址
 				employeeProtectedGroup.POST("/upload/address-avatar", api.UploadAddressAvatarByEmployee)                         // 上传门头照
 				employeeProtectedGroup.POST("/addresses/reverse-geocode", api.ReverseGeocode)                                    // 逆地理编码（将经纬度转换为地址，用于选点回填）
+				employeeProtectedGroup.POST("/addresses/search-poi", api.SearchPOI)                                                 // POI搜索（使用高德地图API搜索地址）
 				employeeProtectedGroup.POST("/sales/orders", api.CreateOrderForCustomer)                                         // 为客户创建订单
 				employeeProtectedGroup.GET("/sales/products", api.GetSalesProducts)                                              // 获取商品列表
 				employeeProtectedGroup.GET("/sales/pending-orders", api.GetMyPendingOrders)                                      // 获取待配送订单列表

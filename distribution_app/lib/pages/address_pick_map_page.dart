@@ -3,29 +3,24 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:async';
-import 'package:employees_app/utils/request.dart';
+import '../utils/request.dart';
 
-/// 地址选点页面（固定中心点选址）：
-/// - 中心“位置图标”固定在屏幕中心（用于选点，返回它的坐标）
-/// - “绿色原点”为我的位置（属于地图图层，拖动地图时会跟随地图变化）
-/// - 进入页面后自动把“我的位置”设为地图中心
-class CustomerAddressPickMapPage extends StatefulWidget {
+/// 地址选点页面（配送员端）
+class AddressPickMapPage extends StatefulWidget {
   final LatLng? initialCenter;
   final LatLng? initialSelected;
 
-  const CustomerAddressPickMapPage({
+  const AddressPickMapPage({
     super.key,
     this.initialCenter,
     this.initialSelected,
   });
 
   @override
-  State<CustomerAddressPickMapPage> createState() =>
-      _CustomerAddressPickMapPageState();
+  State<AddressPickMapPage> createState() => _AddressPickMapPageState();
 }
 
-class _CustomerAddressPickMapPageState
-    extends State<CustomerAddressPickMapPage> {
+class _AddressPickMapPageState extends State<AddressPickMapPage> {
   final MapController _mapController = MapController();
   LatLng _currentCenter = const LatLng(25.0389, 102.7183); // 默认昆明
 
@@ -46,7 +41,6 @@ class _CustomerAddressPickMapPageState
   @override
   void initState() {
     super.initState();
-    // 如果有之前选择的位置，使用它；否则使用initialCenter或默认值
     _currentCenter =
         widget.initialSelected ??
         widget.initialCenter ??
@@ -55,14 +49,11 @@ class _CustomerAddressPickMapPageState
     _lifecycleObserver = _LifecycleObserver(onResumed: _onAppResumed);
     WidgetsBinding.instance.addObserver(_lifecycleObserver);
     
-    // 如果有之前选择的位置，直接定位到那里；否则定位到用户当前位置
     if (widget.initialSelected != null) {
-      // 重新选择：定位到之前选择的位置
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _mapController.move(widget.initialSelected!, 16);
       });
     } else {
-      // 新选择：定位到用户当前位置
       _initMyLocationAndCenter();
     }
   }
@@ -76,7 +67,6 @@ class _CustomerAddressPickMapPageState
   }
 
   void _onAppResumed() {
-    // 从系统设置返回后，自动再尝试一次（避免仍卡在“正在定位/权限被关”状态）
     if (!mounted) return;
     if (_isLocating) return;
     if (_myLocation == null || _locateError != null) {
@@ -85,8 +75,6 @@ class _CustomerAddressPickMapPageState
   }
 
   void _confirm() {
-    // 返回中心“位置图标”的坐标（即地图中心点）
-    // 如果选择了搜索结果，返回搜索结果坐标；否则返回中心"位置图标"的坐标
     final result = _selectedSearchResult ?? _mapController.camera.center;
     Navigator.of(context).pop<LatLng>(result);
   }
@@ -108,7 +96,6 @@ class _CustomerAddressPickMapPageState
     });
 
     try {
-      // 获取当前地图中心点作为搜索中心
       final center = _mapController.camera.center;
       final location = '${center.longitude},${center.latitude}';
 
@@ -133,7 +120,6 @@ class _CustomerAddressPickMapPageState
             _searchResults = results
                 .map((r) => r as Map<String, dynamic>)
                 .toList();
-            // 自动选择第一个结果并移动地图
             if (_searchResults.isNotEmpty) {
               final first = _searchResults[0];
               final lat = first['latitude'] as num?;
@@ -171,7 +157,6 @@ class _CustomerAddressPickMapPageState
     }
   }
 
-  // 选择搜索结果
   void _selectSearchResult(Map<String, dynamic> result) {
     final lat = result['latitude'] as num?;
     final lng = result['longitude'] as num?;
@@ -185,7 +170,6 @@ class _CustomerAddressPickMapPageState
 
   TileProvider _createTiandituTileProvider() {
     return NetworkTileProvider(
-      // 注意：flutter_map 内部会对 headers 做 putIfAbsent，不能使用 const Map（不可变）
       headers: {
         'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -203,10 +187,7 @@ class _CustomerAddressPickMapPageState
     });
 
     try {
-      // 用户要求“网络定位”，不优先使用 GPS：
-      // 这里不强制要求定位服务开关为“开启”，先尝试网络定位（Android 下 forceAndroidLocationManager=true 更偏向 NETWORK_PROVIDER）。
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -239,10 +220,8 @@ class _CustomerAddressPickMapPageState
       if (!mounted) return;
       setState(() {
         _myLocation = my;
-        // 只有在没有之前选择的位置时，才将中心点设置为我的位置
         if (widget.initialSelected == null) {
           _currentCenter = my;
-          // 地图控制器 move 建议放到下一帧，保证已挂载
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _mapController.move(my, 16);
           });
@@ -263,16 +242,11 @@ class _CustomerAddressPickMapPageState
   }
 
   Future<Position?> _getPositionWithFallback() async {
-    // 1) 先取最后一次已知位置（通常秒回，体验最快）
     try {
       final last = await Geolocator.getLastKnownPosition();
       if (last != null) return last;
-    } catch (_) {
-      // ignore and fallback
-    }
+    } catch (_) {}
 
-    // 2) 网络定位优先：低精度/最低精度（避免触发慢 GPS）
-    // Android：forceAndroidLocationManager=true 更偏向原生 LocationManager（NETWORK_PROVIDER）
     final accuracyLevels = <LocationAccuracy>[
       LocationAccuracy.low,
       LocationAccuracy.lowest,
@@ -290,29 +264,25 @@ class _CustomerAddressPickMapPageState
           forceAndroidLocationManager: true,
         );
         return pos;
-      } catch (_) {
-        // continue
-      }
+      } catch (_) {}
     }
 
-    // 3) 再兜底：订阅一次定位流，取第一个位置（加超时）
     final completer = Completer<Position?>();
     try {
       await _posSub?.cancel();
-      _posSub =
-          Geolocator.getPositionStream(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.low,
-              distanceFilter: 0,
-            ),
-          ).listen(
-            (p) {
-              if (!completer.isCompleted) completer.complete(p);
-            },
-            onError: (_) {
-              if (!completer.isCompleted) completer.complete(null);
-            },
-          );
+      _posSub = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+          distanceFilter: 0,
+        ),
+      ).listen(
+        (p) {
+          if (!completer.isCompleted) completer.complete(p);
+        },
+        onError: (_) {
+          if (!completer.isCompleted) completer.complete(null);
+        },
+      );
 
       return await completer.future.timeout(
         const Duration(seconds: 8),
@@ -394,7 +364,6 @@ class _CustomerAddressPickMapPageState
 
   @override
   Widget build(BuildContext context) {
-    // 天地图瓦片（Web墨卡托，WGS84）
     const String tiandituTileUrlTemplate =
         'https://t{s}.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL={x}&TILEROW={y}&TILEMATRIX={z}&tk=d95864378581051adb04fe26acb13ecf';
     const String tiandituLabelUrlTemplate =
@@ -407,7 +376,7 @@ class _CustomerAddressPickMapPageState
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
         centerTitle: true,
-        backgroundColor: Color(0xFF20CB6B),
+        backgroundColor: const Color(0xFF20CB6B),
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         flexibleSpace: const DecoratedBox(
@@ -449,7 +418,6 @@ class _CustomerAddressPickMapPageState
               minZoom: 3,
               maxZoom: 18,
               onMapEvent: (event) {
-                // 固定中心点选址：拖动/缩放结束后取当前中心点
                 if (event is MapEventMoveEnd ||
                     event is MapEventFlingAnimationEnd ||
                     event is MapEventDoubleTapZoomEnd ||
@@ -465,7 +433,7 @@ class _CustomerAddressPickMapPageState
               TileLayer(
                 urlTemplate: tiandituTileUrlTemplate,
                 subdomains: const ['0', '1', '2', '3', '4', '5', '6', '7'],
-                userAgentPackageName: 'com.example.employees_app',
+                userAgentPackageName: 'com.example.distribution_app',
                 maxNativeZoom: 18,
                 maxZoom: 18,
                 tileProvider: _createTiandituTileProvider(),
@@ -473,12 +441,11 @@ class _CustomerAddressPickMapPageState
               TileLayer(
                 urlTemplate: tiandituLabelUrlTemplate,
                 subdomains: const ['0', '1', '2', '3', '4', '5', '6', '7'],
-                userAgentPackageName: 'com.example.employees_app',
+                userAgentPackageName: 'com.example.distribution_app',
                 maxNativeZoom: 18,
                 maxZoom: 18,
                 tileProvider: _createTiandituTileProvider(),
               ),
-              // 我的位置：绿色原点（地图图层，拖动地图会跟随变化）
               if (_myLocation != null)
                 MarkerLayer(
                   markers: [
@@ -506,7 +473,6 @@ class _CustomerAddressPickMapPageState
                     ),
                   ],
                 ),
-              // 搜索结果标注
               if (_searchResults.isNotEmpty)
                 MarkerLayer(
                   markers: _searchResults.map((result) {
@@ -541,10 +507,10 @@ class _CustomerAddressPickMapPageState
                             ),
                           ],
                         ),
-                        child: Icon(
+                        child: const Icon(
                           Icons.location_on,
                           color: Colors.white,
-                          size: isSelected ? 18 : 16,
+                          size: 16,
                         ),
                       ),
                     );
@@ -552,12 +518,10 @@ class _CustomerAddressPickMapPageState
                 ),
             ],
           ),
-          // 固定在屏幕中心的“位置图标”（用于选点，不拦截手势）
           const IgnorePointer(
             ignoring: true,
             child: Center(child: _CenterPickMarker()),
           ),
-          // 搜索框（悬浮在地图上方）
           Positioned(
             top: 16,
             left: 16,
@@ -631,7 +595,6 @@ class _CustomerAddressPickMapPageState
                     ),
                     onChanged: (value) {
                       setState(() {});
-                      // 延迟搜索，避免频繁请求
                       Future.delayed(const Duration(milliseconds: 500), () {
                         if (_searchController.text == value && value.isNotEmpty) {
                           _searchPOI(value);
@@ -644,7 +607,6 @@ class _CustomerAddressPickMapPageState
                       }
                     },
                   ),
-                  // 搜索结果列表
                   if (_searchResults.isNotEmpty)
                     Container(
                       constraints: const BoxConstraints(maxHeight: 200),
@@ -814,7 +776,6 @@ class _CenterPickMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 中心点准星（绿色）：固定在屏幕中心，用于选点
     return SizedBox(
       width: 44,
       height: 44,
@@ -833,68 +794,50 @@ class _CrosshairPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-
-    // 阴影（轻微立体感）
     final shadowPaint = Paint()
       ..color = Colors.black.withOpacity(0.18)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
-
     final ringPaint = Paint()
       ..color = color.withOpacity(0.95)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.6
       ..strokeCap = StrokeCap.round;
-
     final linePaint = Paint()
       ..color = color.withOpacity(0.95)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.2
       ..strokeCap = StrokeCap.round;
-
     final dotPaint = Paint()
       ..color = color
       ..style = PaintingStyle.fill;
 
-    // 外圈
     final radius = size.width * 0.38;
-    canvas.drawCircle(
-      center.translate(0, 1.2),
-      radius,
-      shadowPaint,
-    ); // shadow offset
+    canvas.drawCircle(center.translate(0, 1.2), radius, shadowPaint);
     canvas.drawCircle(center, radius, ringPaint);
 
-    // 十字线（中间留空，避免遮挡“我的位置”绿色原点）
     final gap = 6.5;
     final len = radius + 6;
-
-    // 上
     canvas.drawLine(
       Offset(center.dx, center.dy - len),
       Offset(center.dx, center.dy - gap),
       linePaint,
     );
-    // 下
     canvas.drawLine(
       Offset(center.dx, center.dy + gap),
       Offset(center.dx, center.dy + len),
       linePaint,
     );
-    // 左
     canvas.drawLine(
       Offset(center.dx - len, center.dy),
       Offset(center.dx - gap, center.dy),
       linePaint,
     );
-    // 右
     canvas.drawLine(
       Offset(center.dx + gap, center.dy),
       Offset(center.dx + len, center.dy),
       linePaint,
     );
-
-    // 中心小点（点很小，主要用于视觉聚焦）
     canvas.drawCircle(center, 2.2, dotPaint);
   }
 

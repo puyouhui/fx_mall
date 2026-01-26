@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1806,6 +1807,75 @@ func ReverseGeocode(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "逆地理编码成功",
+		"data":    result,
+	})
+}
+
+// SearchPOI POI搜索接口（使用高德地图API搜索地址）
+func SearchPOI(c *gin.Context) {
+	// 添加panic恢复
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[SearchPOI] 发生panic: %v", r)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": fmt.Sprintf("POI搜索发生错误: %v", r),
+			})
+		}
+	}()
+
+	type poiSearchRequest struct {
+		Keyword  string  `json:"keyword" binding:"required"`  // 搜索关键词
+		City     string  `json:"city,omitempty"`              // 城市（可选）
+		Location *string `json:"location,omitempty"`          // 中心点坐标，格式"经度,纬度"（可选）
+	}
+
+	var req poiSearchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	log.Printf("[SearchPOI] 收到搜索请求: keyword=%s, city=%s, location=%v", req.Keyword, req.City, req.Location)
+
+	// 获取地图API Key
+	amapKey, _ := model.GetSystemSetting("map_amap_key")
+	if amapKey == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "未配置高德地图API Key，无法进行POI搜索",
+			"data":    utils.POISearchResponse{Success: false, Message: "未配置高德地图API Key"},
+		})
+		return
+	}
+
+	var location string
+	if req.Location != nil {
+		location = *req.Location
+	}
+
+	result, err := utils.SearchPOI(req.Keyword, req.City, location, amapKey)
+	if err != nil {
+		log.Printf("[SearchPOI] 搜索失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "POI搜索失败: " + err.Error(),
+		})
+		return
+	}
+
+	if !result.Success {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": result.Message,
+			"data":    result,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "搜索成功",
 		"data":    result,
 	})
 }
