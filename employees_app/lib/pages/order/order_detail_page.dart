@@ -649,7 +649,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
 
     // 小程序路径：订单详情页面
     // 格式：weixin://dl/business/?appid=小程序appid&path=页面路径
-    const String miniAppId = 'wxa2535727aedb00cc'; // 小程序appid
+    const String miniAppId = 'wx216ea69c5507523c'; // 小程序appid
     final String miniAppPath = '/pages/order/detail?id=$orderId';
 
     // 构建微信小程序scheme URL
