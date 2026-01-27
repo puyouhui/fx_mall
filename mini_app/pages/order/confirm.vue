@@ -254,7 +254,7 @@ export default {
       hidePrice: false,
       requirePhoneContact: true,
       expectedDeliveryText: '尽快送达',
-      defaultImage: '/static/empty-cart.png',
+      defaultImage: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg',
       pointsDiscount: 0,
       couponDiscount: 0,
       deliveryFeeSaved: 0,

@@ -85,23 +85,42 @@
 
 		<!-- 主体内容 -->
 		<view class="main-content">
-			<!-- 二级分类列表 - 左侧垂直滚动 -->
+			<!-- 二级分类列表 - 左侧垂直滚动，明确高度避免百分比失效 -->
 			<view class="secondary-categories">
-				<scroll-view scroll-y enable-flex class="secondary-scroll">
-					<view class="secondary-category-item" v-for="category in secondaryCategories" :key="category.id"
-						:class="{ active: selectedSecondaryCategoryId === category.id }"
-						@click="selectSecondaryCategory(category.id)">
+				<scroll-view scroll-y enable-flex class="secondary-scroll" 
+					:style="{ height: Math.max(200, containerHeight) + 'px' }"
+					:scroll-into-view="secondaryScrollIntoView"
+					scroll-with-animation>
+					<view class="secondary-category-item" 
+						v-for="category in secondaryCategories" 
+						:key="category.id"
+						:id="'secondary-' + category.id"
+						:class="{ active: selectedSecondaryCategoryId === category.id || selectedSecondaryCategoryId == category.id }"
+						@click="selectSecondaryCategory(category)">
 						{{ category.name }}
 					</view>
 				</scroll-view>
 			</view>
 
-			<!-- 商品列表 - 右侧两列布局 -->
+			<!-- 商品列表 - 右侧两列布局，使用 scroll-view 避免 overflow 与页面滚动冲突 -->
 			<view class="products-container">
 				<view class="category-title">{{ currentCategoryName }}</view>
-				<view class="product-list" v-if="currentProducts.length > 0">
+				<scroll-view
+					v-if="currentProducts.length > 0"
+					scroll-y
+					class="product-scroll"
+					:style="{ height: productScrollHeight + 'px' }"
+					:show-scrollbar="true"
+					@scrolltolower="onScrollToLower"
+					@scroll="onScroll"
+					:scroll-top="scrollTop"
+					:enable-back-to-top="true"
+					:key="scrollTopKey"
+					:lower-threshold="50"
+				>
+					<view class="product-list">
 					<view class="product-item" v-for="product in currentProducts" :key="product.id" @click="goToProductDetail(product.id)">
-						<image :src="product.images[0]" class="product-image"></image>
+						<image :src="(product.images && product.images[0]) || 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'" class="product-image" mode="aspectFill"></image>
 						<view class="product-content">
 							<view class="product-name">{{ product.name }}</view>
 							<view class="product-desc">{{ product.description || '价格实惠，品质稳定' }}</view>
@@ -120,7 +139,8 @@
 							</view>
 						</view>
 					</view>
-				</view>
+					</view>
+				</scroll-view>
 				<view class="empty-tip" v-else>
 					暂无商品
 				</view>
@@ -161,16 +181,22 @@ export default {
 
 			// 滚动相关
 			scrollIntoViewId: '', // 用于滚动到指定分类
+			secondaryScrollIntoView: '', // 二级分类列表滚动到指定分类
+			scrollTop: 0, // 商品列表滚动位置
+			scrollTopKey: 0, // 用于强制重置滚动位置
+			isAutoSwitching: false, // 是否正在自动切换分类
+			lastScrollTime: 0, // 上次滚动时间，用于防抖
 
 			// 布局相关
 			categoriesContainerHeight: 100, // 分类容器固定高度
 			containerHeight: 0, // 主体区域高度（通过计算设置）
+			productScrollHeight: 0, // 商品列表 scroll-view 高度（px，避免百分比失效）
 			screenHeight: 0, // 屏幕高度
 			tabBarHeight: 100, // 底部tabbar高度（rpx单位）
 
-			// 调试信息
+			// 调试信息（关闭以减少渲染开销）
 			debugInfo: {
-				show: true,
+				show: false,
 				categoryId: '',
 				apiResult: ''
 			}
@@ -310,7 +336,7 @@ export default {
 				).map(category => ({
 					...category,
 					parentId: category.parent_id || 0, // 统一键名
-					icon: category.icon || '/static/images/default-category.png' // 设置默认图标
+					icon: category.icon || 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' // 设置默认图标
 				}));
 
 				// 设置默认选中第一个分类
@@ -335,10 +361,10 @@ export default {
 		// 使用模拟分类数据
 		useMockCategories() {
 			this.primaryCategories = [
-				{ id: 1, name: '热门推荐', parentId: 0, icon: '/static/images/category1.png' },
-				{ id: 2, name: '新鲜水果', parentId: 0, icon: '/static/images/category2.png' },
-				{ id: 3, name: '休闲零食', parentId: 0, icon: '/static/images/category3.png' },
-				{ id: 4, name: '生鲜蔬菜', parentId: 0, icon: '/static/images/category4.png' }
+				{ id: 1, name: '热门推荐', parentId: 0, icon: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' },
+				{ id: 2, name: '新鲜水果', parentId: 0, icon: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' },
+				{ id: 3, name: '休闲零食', parentId: 0, icon: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' },
+				{ id: 4, name: '生鲜蔬菜', parentId: 0, icon: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' }
 			];
 
 			if (this.primaryCategories.length > 0 && this.selectedPrimaryCategoryId === 0) {
@@ -394,6 +420,12 @@ export default {
 
 			// 自动选择第一个二级分类
 			this.selectedSecondaryCategoryId = this.secondaryCategories[0].id;
+			// 更新当前分类名称为二级分类名称
+			this.currentCategoryName = this.secondaryCategories[0].name;
+			// 更新左侧二级分类列表的滚动位置
+			this.$nextTick(() => {
+				this.secondaryScrollIntoView = 'secondary-' + this.selectedSecondaryCategoryId;
+			});
 			// 使用二级分类ID加载对应商品
 			this.loadProductsByCategory(this.selectedSecondaryCategoryId);
 		},
@@ -598,7 +630,7 @@ export default {
 						description: '新鲜',
 						price: 8.8,
 						originalPrice: 10.8,
-						image: '/static/test/vegetable1.jpg'
+						image: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'
 					},
 					{
 						id: 2,
@@ -606,7 +638,7 @@ export default {
 						description: '绿色健康 新鲜蔬菜',
 						price: 18.8,
 						originalPrice: 24.8,
-						image: '/static/test/vegetable2.jpg'
+						image: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'
 					},
 					{
 						id: 3,
@@ -614,7 +646,7 @@ export default {
 						description: '新鲜 2.5KG',
 						price: 13.8,
 						originalPrice: 16.8,
-						image: '/static/test/vegetable3.jpg'
+						image: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'
 					},
 					{
 						id: 4,
@@ -622,7 +654,7 @@ export default {
 						description: '新鲜采摘',
 						price: 12.8,
 						originalPrice: 15.8,
-						image: '/static/test/vegetable4.jpg'
+						image: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'
 					}
 				];
 			} else {
@@ -633,7 +665,7 @@ export default {
 					description: '优质商品，品质保证',
 					price: Math.floor(Math.random() * 50) + 10,
 					originalPrice: Math.floor(Math.random() * 30) + 60,
-					image: `/static/test/product${index + 1}.jpg`
+					image: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'
 				}));
 			}
 		},
@@ -656,18 +688,59 @@ export default {
 			// 收起分类弹窗
 			this.isCategoriesExpanded = false;
 
-			// 滚动到顶部
-			uni.pageScrollTo({
-				scrollTop: 0,
-				duration: 300
-			});
+			// 不再调用 uni.pageScrollTo：主体为 fixed 布局，使用 scroll-view 滚动，
+			// 页面级滚动易与 scroll-view 冲突，导致滑动卡死、左侧二级分类点击无反应
 		},
 
 		// 选择二级分类
-		selectSecondaryCategory(categoryId) {
-			console.log(categoryId);
+		selectSecondaryCategory(category, resetScroll = true) {
+			// 支持传入 category 对象或 categoryId
+			let categoryId;
+			let categoryName;
+			
+			if (typeof category === 'object' && category !== null) {
+				// 传入的是 category 对象
+				categoryId = category.id;
+				categoryName = category.name;
+			} else {
+				// 传入的是 categoryId（向后兼容）
+				categoryId = category;
+				const foundCategory = this.secondaryCategories.find(cat => {
+					return cat.id == categoryId || cat.id === categoryId || 
+						   String(cat.id) === String(categoryId) ||
+						   Number(cat.id) === Number(categoryId);
+				});
+				categoryName = foundCategory ? foundCategory.name : '';
+			}
 
 			this.selectedSecondaryCategoryId = categoryId;
+			// 更新当前分类名称为选中的二级分类名称
+			if (categoryName) {
+				this.currentCategoryName = categoryName;
+			} else {
+				// 如果找不到名称，从列表中查找
+				const selectedCategory = this.secondaryCategories.find(cat => {
+					return cat.id == categoryId || cat.id === categoryId || 
+						   String(cat.id) === String(categoryId) ||
+						   Number(cat.id) === Number(categoryId);
+				});
+				this.currentCategoryName = selectedCategory ? selectedCategory.name : this.currentCategoryName;
+			}
+			
+			// 重置滚动位置到顶部
+			if (resetScroll) {
+				// 使用 key 变化来强制重置滚动位置
+				this.scrollTopKey = Date.now();
+				this.$nextTick(() => {
+					this.scrollTop = 0;
+				});
+			}
+
+			// 更新左侧二级分类列表的滚动位置，使其滚动到选中的分类
+			this.$nextTick(() => {
+				this.secondaryScrollIntoView = 'secondary-' + categoryId;
+			});
+			
 			// 使用二级分类ID加载对应商品
 			this.loadProductsByCategory(categoryId);
 		},
@@ -675,6 +748,67 @@ export default {
 		// 切换分类展开/收起
 		toggleCategoriesExpand() {
 			this.isCategoriesExpanded = !this.isCategoriesExpanded;
+		},
+
+		// 滚动事件处理
+		onScroll(e) {
+			// 可以在这里添加其他滚动相关的逻辑
+		},
+
+		// 滚动到底部时触发
+		onScrollToLower() {
+			// 防抖处理：800ms 内只触发一次，避免频繁切换
+			const now = Date.now();
+			if (now - this.lastScrollTime < 800) {
+				return;
+			}
+			this.lastScrollTime = now;
+
+			// 如果正在自动切换，忽略此次触发
+			if (this.isAutoSwitching) {
+				return;
+			}
+
+			// 如果没有二级分类或只有一个分类，不执行切换
+			if (!this.secondaryCategories || this.secondaryCategories.length <= 1) {
+				return;
+			}
+
+			// 如果当前没有商品，不执行切换
+			if (!this.currentProducts || this.currentProducts.length === 0) {
+				return;
+			}
+
+			// 找到当前分类在列表中的索引
+			const currentIndex = this.secondaryCategories.findIndex(cat => {
+				return cat.id == this.selectedSecondaryCategoryId || 
+					   cat.id === this.selectedSecondaryCategoryId;
+			});
+
+			// 如果找不到当前分类或已经是最后一个，不执行切换
+			if (currentIndex === -1 || currentIndex >= this.secondaryCategories.length - 1) {
+				return;
+			}
+
+			// 获取下一个分类
+			const nextCategory = this.secondaryCategories[currentIndex + 1];
+			if (!nextCategory) {
+				return;
+			}
+
+			// 标记正在自动切换
+			this.isAutoSwitching = true;
+
+			// 平滑切换到下一个分类
+			this.$nextTick(() => {
+				// 使用平滑过渡效果
+				this.selectSecondaryCategory(nextCategory, true);
+				
+				// 重置自动切换标记，延迟稍长一些确保切换完成
+				setTimeout(() => {
+					this.isAutoSwitching = false;
+				}, 600);
+			});
 		},
 
 		// 计算布局高度
@@ -688,6 +822,9 @@ export default {
 
 			// 主体区域高度 = 屏幕高度 - 头部高度 - 分类容器高度(90px) - tabBar高度
 			this.containerHeight = this.screenHeight - headerTotalHeight - tabBarHeightInPx;
+			// 商品列表 scroll-view 需明确高度（px），避免小程序中百分比失效导致滚动异常
+			// 减去分类标题约 20px、上下 padding 约 24px
+			this.productScrollHeight = Math.max(100, this.containerHeight - 44);
 		},
 
 		// 跳转到商品详情页
@@ -1272,12 +1409,21 @@ page {
 	background-color: #20CB6B;
 }
 
-// 商品列表容器 - 右侧占据剩余空间
+// 商品列表容器 - 右侧占据剩余空间，flex 列布局，禁止 overflow 滚动（改用 scroll-view）
 .products-container {
 	flex: 1;
-	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
 	padding: 20rpx;
 	background-color: #fff;
+	min-width: 0;
+}
+
+.product-scroll {
+	flex: 1;
+	min-height: 0;
+	width: 100%;
 }
 
 .category-title {
@@ -1328,8 +1474,8 @@ page {
 	width: 200rpx;
 	height: 200rpx;
 	border-radius: 16rpx;
-	object-fit: cover;
 	flex-shrink: 0;
+	display: block;
 }
 
 .product-content {

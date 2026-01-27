@@ -13,10 +13,10 @@
 						<uni-icons type="search" size="20" color="#2E2E2E"></uni-icons>
 					</view>
 				</view>
-				<view class="header-share" @click="shareProduct">
+				<button class="header-share" open-type="share" hover-class="none">
 					<image src="/static/font/wechat.svg" mode="aspectFit" class="share-icon"></image>
 					<text class="share-text">分享</text>
-				</view>
+				</button>
 			</view>
 		</view>
 
@@ -225,6 +225,7 @@
 import { getProductDetail } from '../../api/products';
 import { getMiniUserInfo, addFavorite, deleteFavorite, deleteFavoriteByProductId, checkFavorite } from '../../api/index';
 import { fetchPurchaseList, addItemToPurchaseList, updatePurchaseListQuantity, deletePurchaseListItemById } from '../../utils/purchaseList';
+import { getShareConfig, buildSharePath } from '../../utils/shareConfig.js';
 export default {
 	data() {
 		return {
@@ -287,6 +288,23 @@ export default {
 			this.hasScrolled = false;
 		}
 		this.scrollTop = currentScrollTop;
+	},
+	// 分享小程序（商品详情页）
+	onShareAppMessage(options) {
+		// 使用 shareConfig 获取分享配置
+		const shareConfig = getShareConfig('product', {
+			productName: this.product.name || '商品详情',
+			productImage: this.product.images && this.product.images.length > 0 ? this.product.images[0] : ''
+		});
+		
+		// 构建分享路径，添加商品ID和分享者ID
+		const path = buildSharePath(`/pages/product/detail?id=${this.product.id}`);
+		
+		return {
+			title: shareConfig.title,
+			path: path,
+			imageUrl: shareConfig.imageUrl || ''
+		};
 	},
 	methods: {
 		// 初始化用户类型
@@ -845,32 +863,6 @@ export default {
 			});
 		},
 
-		// 分享商品
-		shareProduct() {
-			uni.showShareMenu({
-				withShareTicket: true,
-				menus: ['shareAppMessage', 'shareTimeline']
-			});
-		},
-
-		// 分享小程序（商品详情页）
-		onShareAppMessage(options) {
-			// 获取当前用户ID
-			const userInfo = uni.getStorageSync('miniUserInfo');
-			const userId = userInfo?.id || userInfo?.ID;
-			
-			// 构建分享路径，添加商品ID和分享者ID
-			let path = `/pages/product/detail?id=${this.product.id}`;
-			if (userId) {
-				path += `&referrer_id=${userId}`;
-			}
-			
-			return {
-				title: `${this.product.name || '商品详情'} - 快来选购吧！`,
-				path: path,
-				imageUrl: this.product.images && this.product.images.length > 0 ? this.product.images[0] : ''
-			};
-		},
 
 		// 检查收藏状态
 		async checkFavoriteStatus() {
@@ -994,6 +986,14 @@ export default {
 	background-color: rgba(255, 255, 255, 0.8);
 	padding: 0 20rpx;
 	border-radius: 20px;
+	border: none;
+	line-height: 1;
+	font-size: inherit;
+	margin: 0;
+}
+
+.header-share::after {
+	border: none;
 }
 
 .share-icon {

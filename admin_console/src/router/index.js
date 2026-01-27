@@ -200,6 +200,14 @@ const routes = [
         }
       },
       {
+        path: 'reward-activities',
+        name: 'RewardActivities',
+        component: () => import('../views/RewardActivities.vue'),
+        meta: {
+          title: '奖励活动管理'
+        }
+      },
+      {
         path: 'referral-reward',
         name: 'ReferralReward',
         component: () => import('../views/ReferralReward.vue'),

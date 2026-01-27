@@ -62,6 +62,13 @@ func MiniAppLogin(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建用户失败: " + err.Error()})
 			return
 		}
+
+		// 新客户登录即送奖励（使用 activity_type = new_customer 的活动配置），异步发放，避免阻塞登录
+		go func(userID int) {
+			if err := model.GrantNewCustomerLoginReward(userID); err != nil {
+				log.Printf("[MiniAppLogin] 发放新客户登录奖励失败(user_id=%d): %v", userID, err)
+			}
+		}(user.ID)
 	} else {
 		// 如果用户已存在但没有编号，生成一个
 		if user.UserCode == "" {

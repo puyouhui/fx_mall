@@ -2,13 +2,15 @@
   "pages": [{
       "path": "pages/index/index",
       "style": {
-        "navigationStyle": "custom"
+        "navigationStyle": "custom",
+        "enableShareAppMessage": true
       }
     },
     {
       "path": "pages/category/category",
       "style": {
-        "navigationStyle": "custom"
+        "navigationStyle": "custom",
+        "disableScroll": true
       }
     },
     {

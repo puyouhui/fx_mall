@@ -17,7 +17,7 @@
     <!-- 商品列表 -->
     <view class="product-list" v-if="favorites.length > 0">
       <view class="product-item" v-for="item in favorites" :key="item.id" @click="goToProductDetail(item.product_id)">
-        <image :src="item.product_image || (item.product && item.product.images && item.product.images[0]) || '/static/test/product1.jpg'" class="product-image" mode="aspectFill"></image>
+        <image :src="item.product_image || (item.product && item.product.images && item.product.images[0]) || 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'" class="product-image" mode="aspectFill"></image>
         <view class="product-info">
           <text class="product-name">{{ item.product_name || (item.product && item.product.name) || '商品名称' }}</text>
           <text class="product-desc" v-if="item.product && item.product.description">{{ item.product.description }}</text>
@@ -37,7 +37,7 @@
 
     <!-- 空状态 -->
     <view class="empty-state" v-else-if="!loading">
-      <image src="/static/icon/empty-cart.png" class="empty-icon" mode="aspectFit"></image>
+      <image src="https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg" class="empty-icon" mode="aspectFit"></image>
       <text class="empty-text">暂无收藏商品</text>
       <text class="empty-tip">快去收藏您喜欢的商品吧~</text>
     </view>

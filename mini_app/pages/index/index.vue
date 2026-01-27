@@ -8,14 +8,14 @@
 			<!-- 导航栏内容区域 -->
 			<view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
 				<!-- 搜索框区域 -->
-					<view class="navbar-search" @click="goToSearch">
-						<view class="navbar-search_icon">
-							<uni-icons type="search" size="16" color="#999"></uni-icons>
-						</view>
-						<view class="navbar-search_text">
-							<input type="text" placeholder="请输入产品名称查询" placeholder-style="color: #999;" disabled/>
-						</view>
+				<view class="navbar-search" @click="goToSearch">
+					<view class="navbar-search_icon">
+						<uni-icons type="search" size="16" color="#999"></uni-icons>
 					</view>
+					<view class="navbar-search_text">
+						<input type="text" placeholder="请输入产品名称查询" placeholder-style="color: #999;" disabled />
+					</view>
+				</view>
 			</view>
 		</view>
 		<!-- 添加占位符高度，避免内容被遮挡 -->
@@ -82,13 +82,15 @@
 				<view class="hot-product-item" v-for="(product, index) in hotProducts" :key="index"
 					@click="goToProductDetail(product.id)">
 					<!-- <image :src="product.images[0]" class="hot-product-image" mode="aspectFill"></image> -->
-					<image v-if="product.images && product.images.length > 0" :src="product.images[0]" class="hot-product-image" mode="aspectFill"></image>
+					<image v-if="product.images && product.images.length > 0" :src="product.images[0]"
+						class="hot-product-image" mode="aspectFill"></image>
 					<image v-else src="/static/icon/nav_icon4.png" class="hot-product-image" mode="aspectFill"></image>
 					<view class="hot-product-price">
 						<view class="price-pill">
 							<!-- <text class="price-icon">⚡</text> -->
 							<text class="price-symbol">¥</text>
-							<text class="price-number">{{ formatHotPrice(product.displayPrice || product.price) }}</text>
+							<text class="price-number">{{ formatHotPrice(product.displayPrice || product.price)
+								}}</text>
 						</view>
 					</view>
 				</view>
@@ -134,11 +136,32 @@
 	</view>
 
 	<ProductSelector ref="productSelector" />
+
+	<!-- 资料完善提示弹窗 -->
+	<view class="profile-modal-overlay" v-if="showProfileModal" @click="handleProfileModalCancel">
+		<view class="profile-modal-content" @click.stop>
+			<view class="profile-modal-header">
+				<text class="profile-modal-title">完善资料</text>
+			</view>
+			<view class="profile-modal-body">
+				<text class="profile-modal-text">为了有更好的购物体验，建议请先完善您的店铺资料~</text>
+			</view>
+			<view class="profile-modal-footer">
+				<view class="profile-modal-btn cancel-btn" @click="handleProfileModalCancel">
+					<text class="profile-modal-btn-text">先看看</text>
+				</view>
+				<view class="profile-modal-btn confirm-btn" @click="handleProfileModalConfirm">
+					<text class="profile-modal-btn-text">去完善</text>
+				</view>
+			</view>
+		</view>
+	</view>
 </template>
 
 <script>
-import { getCarousels, getCategories, getSpecialProducts, getHotProducts, getMiniUserInfo } from '../../api/index';
+import { getCarousels, getCategories, getSpecialProducts, getHotProducts, getMiniUserInfo, miniLogin } from '../../api/index';
 import ProductSelector from '../../components/ProductSelector.vue';
+import { getShareConfig, buildSharePath } from '../../utils/shareConfig.js';
 export default {
 	components: {
 		ProductSelector
@@ -167,13 +190,15 @@ export default {
 					title: '烧烤',
 					products: []
 				}
-			]
+			],
+			isAutoLogging: false, // 是否正在自动登录
+			showProfileModal: false // 是否显示资料完善提示弹窗
 		};
 	},
 	onLoad() {
 		// 初始化用户类型
 		this.initUserType();
-		
+
 		this.loadCarousels();
 		this.loadCategories();
 		this.loadSpecialProducts();
@@ -188,10 +213,28 @@ export default {
 
 		// 获取胶囊按钮信息，实现精确对齐
 		this.getMenuButtonInfo();
+
+		// 启用分享功能
+		uni.showShareMenu({
+			withShareTicket: true,
+			menus: ['shareAppMessage', 'shareTimeline']
+		});
+
+		// 检查并自动登录
+		this.checkAndAutoLogin();
 	},
 	// 页面显示时更新用户信息
 	onShow() {
 		this.updateUserInfo();
+		// 如果弹窗正在显示，检查用户是否已经完善了资料
+		if (this.showProfileModal) {
+			const userInfo = uni.getStorageSync('miniUserInfo');
+			const profileCompleted = userInfo && (userInfo.profile_completed || userInfo.profileCompleted);
+			if (profileCompleted) {
+				// 如果已经完善了资料，关闭弹窗
+				this.showProfileModal = false;
+			}
+		}
 	},
 	// 页面滚动事件
 	onPageScroll(e) {
@@ -205,7 +248,156 @@ export default {
 
 		this.lastScrollTop = scrollTop;
 	},
+	// 分享小程序
+	onShareAppMessage(options) {
+		// 使用 shareConfig 获取分享配置
+		const shareConfig = getShareConfig('index');
+
+		// 构建分享路径，添加分享者ID
+		const path = buildSharePath('/pages/index/index');
+
+		// 确保 imageUrl 正确传递（如果配置中有值就使用，否则使用空字符串）
+		const shareImageUrl = shareConfig.imageUrl ? shareConfig.imageUrl : '';
+
+		// 调试信息
+		console.log('首页分享配置:', shareConfig);
+		console.log('分享路径:', path);
+		console.log('分享图片URL:', shareImageUrl);
+
+		return {
+			title: shareConfig.title,
+			path: path,
+			imageUrl: shareImageUrl
+		};
+	},
+
 	methods: {
+		// 检查并自动登录
+		async checkAndAutoLogin() {
+			// 检查是否已登录
+			const token = uni.getStorageSync('miniUserToken');
+			const userInfo = uni.getStorageSync('miniUserInfo');
+			const uniqueId = uni.getStorageSync('miniUserUniqueId');
+
+			// 如果已有完整的登录信息，不需要重新登录
+			if (token && userInfo && uniqueId) {
+				return;
+			}
+
+			// 如果正在登录中，避免重复触发
+			if (this.isAutoLogging) {
+				return;
+			}
+
+			// 延迟一点执行，让页面先加载完成
+			setTimeout(async () => {
+				try {
+					this.isAutoLogging = true;
+					await this.performAutoLogin();
+				} catch (error) {
+					console.error('自动登录失败:', error);
+					// 静默失败，不打扰用户
+				} finally {
+					this.isAutoLogging = false;
+				}
+			}, 500);
+		},
+
+		// 执行自动登录
+		async performAutoLogin() {
+			uni.showLoading({
+				title: '加载中...',
+				mask: true
+			});
+
+			try {
+				// 调用微信登录
+				const loginRes = await new Promise((resolve, reject) => {
+					uni.login({
+						provider: 'weixin',
+						success: resolve,
+						fail: reject
+					});
+				});
+
+				if (!loginRes || !loginRes.code) {
+					throw new Error('未获取到登录凭证');
+				}
+
+				// 获取本地存储的分享者ID
+				const shareReferrerId = uni.getStorageSync('shareReferrerId');
+				let referrerId = null;
+				if (shareReferrerId) {
+					const id = parseInt(shareReferrerId);
+					if (!isNaN(id) && id > 0) {
+						referrerId = id;
+					}
+				}
+
+				// 调用登录API
+				const resp = await miniLogin(loginRes.code, referrerId);
+				const data = resp?.data || {};
+				const user = data.user || {};
+				const token = data.token || '';
+				const uniqueId = user.unique_id || user.uniqueId;
+
+				if (!uniqueId) {
+					throw new Error('未返回用户唯一ID');
+				}
+
+				// 登录成功后，清除分享者ID（只绑定一次）
+				if (referrerId) {
+					uni.removeStorageSync('shareReferrerId');
+				}
+
+				// 保存用户信息
+				if (user) {
+					uni.setStorageSync('miniUserInfo', user);
+					if (uniqueId) {
+						uni.setStorageSync('miniUserUniqueId', uniqueId);
+					}
+				}
+
+				if (token) {
+					uni.setStorageSync('miniUserToken', token);
+				}
+
+				// 更新用户类型
+				this.userType = user.user_type || null;
+
+				// 重新计算产品价格
+				this.recalculateAllPrices();
+
+				// 检查是否需要完善资料
+				const profileCompleted = user.profile_completed || user.profileCompleted || false;
+				if (!profileCompleted) {
+					// 延迟显示弹窗，让登录提示先消失
+					setTimeout(() => {
+						this.showProfileModal = true;
+					}, 300);
+				}
+			} catch (error) {
+				console.error('自动登录失败:', error);
+				// 静默失败，不显示错误提示，避免打扰用户
+			} finally {
+				uni.hideLoading();
+			}
+		},
+
+		// 处理资料完善弹窗 - 先看看
+		handleProfileModalCancel() {
+			this.showProfileModal = false;
+		},
+
+		// 处理资料完善弹窗 - 去完善
+		handleProfileModalConfirm() {
+			this.showProfileModal = false;
+			// 跳转到资料填写页面
+			uni.navigateTo({
+				url: '/pages/profile/form'
+			});
+		},
+
 		// 初始化用户类型
 		initUserType() {
 			const userInfo = uni.getStorageSync('miniUserInfo');
@@ -215,7 +407,7 @@ export default {
 				this.userType = null;
 			}
 		},
-		
+
 		// 更新用户信息
 		async updateUserInfo() {
 			try {
@@ -244,7 +436,7 @@ export default {
 				this.userType = null;
 			}
 		},
-		
+
 		// 重新计算所有产品价格
 		recalculateAllPrices() {
 			// 重新计算热销产品价格
@@ -270,14 +462,14 @@ export default {
 				});
 			}
 		},
-		
+
 		// 跳转到搜索页面
 		goToSearch() {
 			uni.navigateTo({
 				url: '/pages/search/search'
 			});
 		},
-		
+
 		// 获取胶囊按钮信息并计算导航栏高度
 		getMenuButtonInfo() {
 			try {
@@ -411,7 +603,7 @@ export default {
 
 			// 根据用户类型决定显示哪种价格
 			const isWholesaleUser = this.userType === 'wholesale';
-			
+
 			// 收集价格
 			const prices = [];
 			product.specs.forEach(spec => {
@@ -509,8 +701,8 @@ export default {
 			// 模拟数据
 			this.sections.forEach(section => {
 				section.products = [
-					{ id: 5, images: ['/static/test/product5.jpg'], price: '128~298' },
-					{ id: 6, images: ['/static/test/product6.jpg'], price: '128~298' }
+					{ id: 5, images: ['https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'], price: '128~298' },
+					{ id: 6, images: ['https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'], price: '128~298' }
 				];
 			});
 		},
@@ -518,11 +710,11 @@ export default {
 		// 导航到指定链接
 		navigateTo(link) {
 			console.log('navigateTo', link);
-			
+
 			if (!link || link.trim() === '') {
 				return;
 			}
-			
+
 			// 处理外部链接（http:// 或 https://）
 			if (link.startsWith('http://') || link.startsWith('https://')) {
 				// #ifdef H5
@@ -536,7 +728,7 @@ export default {
 				// #endif
 				return;
 			}
-			
+
 			// 处理完整的小程序路径（以 /pages/ 开头）
 			if (link.startsWith('/pages/')) {
 				// 判断是否是 tabBar 页面
@@ -552,7 +744,7 @@ export default {
 				}
 				return;
 			}
-			
+
 			// 处理商品详情页：product/xxx 或 product?id=xxx
 			if (link.startsWith('product/')) {
 				const productId = link.split('/')[1];
@@ -561,7 +753,7 @@ export default {
 				});
 				return;
 			}
-			
+
 			// 处理分类页面：category/xxx 或 category?id=xxx
 			if (link.startsWith('category/')) {
 				const categoryId = link.split('/')[1];
@@ -572,7 +764,7 @@ export default {
 				});
 				return;
 			}
-			
+
 			// 处理富文本页面：rich-content/xxx 或 rich-content?id=xxx
 			if (link.startsWith('rich-content/')) {
 				const contentId = link.split('/')[1];
@@ -581,7 +773,7 @@ export default {
 				});
 				return;
 			}
-			
+
 			// 处理带查询参数的格式：page?key=value
 			if (link.includes('?')) {
 				const [page, params] = link.split('?');
@@ -613,7 +805,7 @@ export default {
 					}
 				}
 			}
-			
+
 			// 如果都不匹配，尝试作为完整路径处理
 			if (link.startsWith('/')) {
 				uni.navigateTo({
@@ -646,24 +838,6 @@ export default {
 			});
 		},
 
-		// 分享小程序
-		onShareAppMessage(options) {
-			// 获取当前用户ID
-			const userInfo = uni.getStorageSync('miniUserInfo');
-			const userId = userInfo?.id || userInfo?.ID;
-			
-			// 构建分享路径，添加分享者ID
-			let path = '/pages/index/index';
-			if (userId) {
-				path += `?referrer_id=${userId}`;
-			}
-			
-			return {
-				title: '发现好商品，快来选购吧！',
-				path: path,
-				imageUrl: '' // 可以设置分享图片
-			};
-		},
 
 		// 显示商品选择弹窗
 		onAddBtnClick(product) {
@@ -1123,6 +1297,79 @@ export default {
 	font-size: 24rpx;
 }
 
+/* 资料完善提示弹窗样式 */
+.profile-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 9999;
+}
+
+.profile-modal-content {
+	width: 600rpx;
+	background-color: #fff;
+	border-radius: 24rpx;
+	overflow: hidden;
+}
+
+.profile-modal-header {
+	padding: 40rpx 40rpx 20rpx;
+	text-align: center;
+}
+
+.profile-modal-title {
+	font-size: 36rpx;
+	font-weight: 600;
+	color: #333;
+}
+
+.profile-modal-body {
+	padding: 20rpx 40rpx 40rpx;
+	text-align: center;
+}
+
+.profile-modal-text {
+	font-size: 28rpx;
+	color: #666;
+	line-height: 1.6;
+}
+
+.profile-modal-footer {
+	display: flex;
+	border-top: 1rpx solid #f0f0f0;
+}
+
+.profile-modal-btn {
+	flex: 1;
+	height: 100rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 32rpx;
+}
+
+.profile-modal-btn.cancel-btn {
+	color: #666;
+	background-color: #f5f5f5;
+	border-right: 1rpx solid #f0f0f0;
+}
+
+.profile-modal-btn.confirm-btn {
+	color: #fff;
+	background-color: #20CB6B;
+	font-weight: 600;
+}
+
+.profile-modal-btn-text {
+	font-size: 32rpx;
+}
+
 .add-btn {
 	width: 32px;
 	height: 32px;
@@ -1136,5 +1383,4 @@ export default {
 	align-items: center;
 	box-sizing: border-box;
 }
-
 </style>

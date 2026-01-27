@@ -126,11 +126,20 @@
         </view>
       </view>
     </view>
+    
+    <!-- 悬浮分享按钮 -->
+    <button class="share-button" open-type="share" hover-class="none">
+      <view class="share-button-content">
+        <!-- <uni-icons type="share" size="24" color="#fff"></uni-icons> -->
+        <text class="share-button-text">分享</text>
+      </view>
+    </button>
   </view>
 </template>
 
 <script>
 import { getReferralUsers, getReferralActivityInfo, getReferralStats } from '../../api/referral.js';
+import { getShareConfig, buildSharePath } from '../../utils/shareConfig.js';
 
 export default {
   data() {
@@ -195,6 +204,20 @@ export default {
     if (this.hasMore && !this.loading) {
       this.loadMore();
     }
+  },
+  // 分享小程序（推荐页面）
+  onShareAppMessage(options) {
+    // 使用 shareConfig 获取分享配置
+    const shareConfig = getShareConfig('referral');
+    
+    // 构建分享路径，添加分享者ID，分享后进入首页
+    const path = buildSharePath('/pages/index/index');
+    
+    return {
+      title: shareConfig.title,
+      path: path,
+      imageUrl: shareConfig.imageUrl || ''
+    };
   },
   methods: {
     // 获取胶囊按钮信息并计算导航栏高度
@@ -272,8 +295,26 @@ export default {
           page_size: this.pageSize
         });
         
+        console.log('[loadUserList] API返回数据:', res);
+        
         if (res && res.code === 200) {
-          const list = res.data?.list || res.data || [];
+          // 处理返回的数据结构
+          let list = [];
+          if (res.data) {
+            if (Array.isArray(res.data)) {
+              // 如果 data 直接是数组
+              list = res.data;
+            } else if (res.data.list && Array.isArray(res.data.list)) {
+              // 如果 data 是对象，包含 list 字段
+              list = res.data.list;
+            } else if (res.data.referrals && Array.isArray(res.data.referrals)) {
+              // 兼容其他可能的字段名
+              list = res.data.referrals;
+            }
+          }
+          
+          console.log('[loadUserList] 解析后的用户列表:', list);
+          console.log('[loadUserList] 用户列表长度:', list.length);
           
           if (this.pageNum === 1) {
             this.userList = list;
@@ -282,16 +323,21 @@ export default {
           }
           
           // 判断是否还有更多数据
-          const total = res.data?.total || 0;
+          const total = res.data?.total || res.data?.count || 0;
           this.hasMore = this.userList.length < total && list.length === this.pageSize;
+          
+          console.log('[loadUserList] 总数:', total);
+          console.log('[loadUserList] 当前列表长度:', this.userList.length);
+          console.log('[loadUserList] 是否还有更多:', this.hasMore);
         } else {
+          console.error('[loadUserList] API返回错误:', res);
           uni.showToast({
-            title: res.message || '加载失败',
+            title: res?.message || '加载失败',
             icon: 'none'
           });
         }
       } catch (error) {
-        console.error('加载用户列表失败:', error);
+        console.error('[loadUserList] 加载用户列表失败:', error);
         // 如果接口不存在，使用模拟数据
         if (this.pageNum === 1) {
           this.userList = [];
@@ -325,7 +371,8 @@ export default {
       const hours = String(date.getHours()).padStart(2, '0');
       const minutes = String(date.getMinutes()).padStart(2, '0');
       return `${year}-${month}-${day} ${hours}:${minutes}`;
-    }
+    },
+    
   }
 };
 </script>
@@ -656,5 +703,50 @@ export default {
 .no-more-text {
   font-size: 24rpx;
   color: #999;
+}
+
+/* 悬浮分享按钮 */
+.share-button {
+  position: fixed;
+  bottom: 120rpx;
+  right: 30rpx;
+  z-index: 999;
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  box-shadow: 0 8rpx 24rpx rgba(32, 203, 107, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+  border: none;
+  padding: 0;
+  margin: 0;
+  line-height: 1;
+  font-size: 28rpx;
+}
+
+.share-button::after {
+  border: none;
+}
+
+.share-button:active {
+  transform: scale(0.95);
+  opacity: 0.9;
+}
+
+.share-button-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+}
+
+.share-button-text {
+  font-size: 22rpx;
+  color: #fff;
+  font-weight: 500;
 }
 </style>

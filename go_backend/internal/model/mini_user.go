@@ -3,6 +3,7 @@ package model
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"math/rand"
 	"strings"
 	"time"
@@ -708,25 +709,35 @@ func GetReferralUsersWithOrderStatus(referrerID int, pageNum, pageSize int) ([]m
 	}
 
 	// 查询用户列表，并检查是否已下单
+	// 使用子查询来避免 GROUP BY 可能的问题
 	query := `
 		SELECT 
-			u.id, u.unique_id, u.user_code, u.name, u.avatar, u.phone, 
-			u.created_at, u.updated_at,
-			MIN(o.created_at) as first_order_at,
-			CASE WHEN COUNT(o.id) > 0 THEN 1 ELSE 0 END as has_ordered
+			u.id, 
+			u.unique_id, 
+			COALESCE(u.user_code, '') as user_code, 
+			COALESCE(u.name, '') as name, 
+			u.avatar, 
+			u.phone, 
+			u.created_at, 
+			u.updated_at,
+			(SELECT MIN(created_at) FROM orders WHERE user_id = u.id AND status != 'cancelled') as first_order_at,
+			CASE WHEN EXISTS(SELECT 1 FROM orders WHERE user_id = u.id AND status != 'cancelled') THEN 1 ELSE 0 END as has_ordered
 		FROM mini_app_users u
-		LEFT JOIN orders o ON u.id = o.user_id AND o.status != 'cancelled'
 		WHERE u.referrer_id = ?
-		GROUP BY u.id, u.unique_id, u.user_code, u.name, u.avatar, u.phone, u.created_at, u.updated_at
 		ORDER BY u.created_at DESC
 		LIMIT ? OFFSET ?
 	`
 
+	log.Printf("[GetReferralUsersWithOrderStatus] 查询参数: referrerID=%d, pageSize=%d, offset=%d", referrerID, pageSize, offset)
+	
 	rows, err := database.DB.Query(query, referrerID, pageSize, offset)
 	if err != nil {
+		log.Printf("[GetReferralUsersWithOrderStatus] 查询失败: %v", err)
 		return nil, 0, err
 	}
 	defer rows.Close()
+	
+	log.Printf("[GetReferralUsersWithOrderStatus] 查询成功，开始扫描行数据")
 
 	users := make([]map[string]interface{}, 0)
 	for rows.Next() {
@@ -751,18 +762,20 @@ func GetReferralUsersWithOrderStatus(referrerID int, pageNum, pageSize int) ([]m
 			&firstOrderAt,
 			&hasOrdered,
 		); err != nil {
+			// 记录错误但继续处理其他行
+			log.Printf("[GetReferralUsersWithOrderStatus] 扫描行数据失败: %v", err)
 			continue
 		}
 
 		userData := map[string]interface{}{
-			"id":          id,
-			"unique_id":   uniqueID,
-			"user_code":   userCode,
-			"name":        name,
-			"avatar":      nullString(avatar),
-			"phone":       nullString(phone),
+			"id":            id,
+			"unique_id":     uniqueID,
+			"user_code":     userCode,
+			"name":          name,
+			"avatar":        nullString(avatar),
+			"phone":         nullString(phone),
 			"registered_at": createdAt.Format("2006-01-02 15:04:05"),
-			"has_ordered": hasOrdered == 1,
+			"has_ordered":   hasOrdered == 1,
 		}
 
 		if firstOrderAt.Valid {
@@ -770,8 +783,16 @@ func GetReferralUsersWithOrderStatus(referrerID int, pageNum, pageSize int) ([]m
 		}
 
 		users = append(users, userData)
+		log.Printf("[GetReferralUsersWithOrderStatus] 成功添加用户: id=%d, name=%s, has_ordered=%v", id, name, hasOrdered == 1)
 	}
 
+	// 检查是否有行扫描错误
+	if err := rows.Err(); err != nil {
+		log.Printf("[GetReferralUsersWithOrderStatus] 遍历行时出错: %v", err)
+		return nil, 0, err
+	}
+
+	log.Printf("[GetReferralUsersWithOrderStatus] 返回结果: total=%d, users count=%d", total, len(users))
 	return users, total, nil
 }
 

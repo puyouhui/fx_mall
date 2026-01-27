@@ -15,9 +15,9 @@ export const getCarousels = () => {
     return {
       code: 200,
       data: [
-        { id: 1, image: '/static/test/carousel1.png', link: 'product/1', title: '限时特惠' },
-        { id: 2, image: '/static/test/carousel1.png', link: 'category/1', title: '新品上市' },
-        { id: 3, image: '/static/test/carousel1.png', link: 'product/3', title: '热销推荐' }
+        { id: 1, image: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg', link: 'product/1', title: '限时特惠' },
+        { id: 2, image: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg', link: 'category/1', title: '新品上市' },
+        { id: 3, image: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg', link: 'product/3', title: '热销推荐' }
       ]
     };
   });
@@ -34,10 +34,10 @@ export const getCategories = () => {
     return {
       code: 200,
       data: [
-        { id: 1, name: '电子产品', icon: '/static/test/category1.png' },
-        { id: 2, name: '家居用品', icon: '/static/test/category1.png' },
-        { id: 3, name: '服装鞋帽', icon: '/static/test/category1.png' },
-        { id: 4, name: '食品饮料', icon: '/static/test/category1.png' }
+        { id: 1, name: '电子产品', icon: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' },
+        { id: 2, name: '家居用品', icon: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' },
+        { id: 3, name: '服装鞋帽', icon: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' },
+        { id: 4, name: '食品饮料', icon: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' }
       ]
     };
   });
@@ -64,7 +64,7 @@ export const getSpecialProducts = (params = { pageNum: 1, pageSize: 10 }) => {
           categoryId: 1,
           price: 2999.99,
           isSpecial: true,
-          images: ['/static/test/product1-1.jpg', '/static/test/product1-1.jpg'],
+          images: ['https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg', 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'],
           specs: [
             { id: 1, name: '8GB+128GB', price: 2999.99 },
             { id: 2, name: '8GB+256GB', price: 3299.99 }
@@ -77,7 +77,7 @@ export const getSpecialProducts = (params = { pageNum: 1, pageSize: 10 }) => {
           categoryId: 1,
           price: 899.99,
           isSpecial: true,
-          images: ['/static/test/product1-1.jpg']
+          images: ['https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg']
         },
         {
           id: 4,
@@ -86,7 +86,7 @@ export const getSpecialProducts = (params = { pageNum: 1, pageSize: 10 }) => {
           categoryId: 2,
           price: 129.99,
           isSpecial: true,
-          images: ['/static/test/product1-1.jpg'],
+          images: ['https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'],
           specs: [
             { id: 1, name: '白色', price: 129.99 },
             { id: 2, name: '黑色', price: 139.99 }
@@ -99,7 +99,7 @@ export const getSpecialProducts = (params = { pageNum: 1, pageSize: 10 }) => {
           categoryId: 3,
           price: 89.99,
           isSpecial: true,
-          images: ['/static/test/product1-1.jpg'],
+          images: ['https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'],
           specs: [
             { id: 1, name: 'M码', price: 89.99 },
             { id: 2, name: 'L码', price: 99.99 },

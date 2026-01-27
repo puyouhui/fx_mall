@@ -93,7 +93,7 @@
                   :key="idx"
                   :style="{ zIndex: getOrderImages(order).length - idx }"
                 >
-                  <image :src="img || '/static/default-product.png'" class="goods-thumb" mode="aspectFill"></image>
+                  <image :src="img || 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'" class="goods-thumb" mode="aspectFill"></image>
                 </view>
               </view>
               <text class="item-count">{{ order.item_count || 0 }} 件商品</text>

@@ -26,7 +26,7 @@
       <!-- 商品列表 -->
       <view class="product-list" v-if="searchResults.length > 0">
         <view class="product-item" v-for="(product, index) in searchResults" :key="index" @click="goToProductDetail(product.id)">
-          <image :src="product.images && product.images.length > 0 ? product.images[0] : '/static/test/product1.jpg'" class="product-image" mode="aspectFill"></image>
+          <image :src="product.images && product.images.length > 0 ? product.images[0] : 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'" class="product-image" mode="aspectFill"></image>
           <view class="product-info">
             <text class="product-name">{{ product.name }}</text>
             <text class="product-desc" v-if="product.description">{{ product.description }}</text>

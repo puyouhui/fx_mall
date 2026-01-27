@@ -1723,7 +1723,7 @@ const handlePrintMaterial = async (orderData) => {
           height: 20,
           top: currentTop,
           left: 0,
-          title: '橙心选，进货更方便, 生意大“橙”功!',
+          title: '进货更方便, 生意大橙功!',
           textAlign: 'center',
           fontSize: 12,
           fontWeight: 'bold'

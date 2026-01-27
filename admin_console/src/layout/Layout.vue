@@ -182,9 +182,9 @@
             <el-icon><Document /></el-icon>
             <span>价格反馈管理</span>
           </el-menu-item>
-          <el-menu-item index="/referral-reward" @click="handleMenuClick('/referral-reward')">
+          <el-menu-item index="/reward-activities" @click="handleMenuClick('/reward-activities')">
             <el-icon><Ticket /></el-icon>
-            <span>推荐奖励活动</span>
+            <span>奖励活动管理</span>
           </el-menu-item>
         </el-sub-menu>
 

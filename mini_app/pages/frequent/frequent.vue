@@ -17,7 +17,7 @@
     <!-- 商品列表 -->
     <view class="product-list" v-if="products.length > 0">
       <view class="product-item" v-for="item in products" :key="item.product_id + '-' + item.spec_name" @click="goToProductDetail(item.product_id)">
-        <image :src="item.image || '/static/test/product1.jpg'" class="product-image" mode="aspectFill"></image>
+        <image :src="item.image || 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'" class="product-image" mode="aspectFill"></image>
         <view class="product-info">
           <text class="product-name">{{ item.product_name }}</text>
           <text class="product-spec" v-if="item.spec_name">{{ item.spec_name }}</text>
@@ -36,7 +36,7 @@
 
     <!-- 空状态 -->
     <view class="empty-state" v-else-if="!loading">
-      <image src="/static/icon/empty-cart.png" class="empty-icon" mode="aspectFit"></image>
+      <image src="https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg" class="empty-icon" mode="aspectFit"></image>
       <text class="empty-text">暂无常购商品</text>
       <text class="empty-tip">下单后这里会显示您购买过的商品</text>
     </view>

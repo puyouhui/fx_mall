@@ -76,6 +76,43 @@ func GetReferralRewardConfig() (*ReferralRewardConfig, error) {
 	return &config, nil
 }
 
+// CreateReferralRewardConfig 创建推荐奖励活动配置
+func CreateReferralRewardConfig(config *ReferralRewardConfig) error {
+	var couponID interface{}
+	if config.CouponID != nil {
+		couponID = *config.CouponID
+	} else {
+		couponID = nil
+	}
+
+	query := `
+		INSERT INTO referral_reward_config (is_enabled, reward_type, reward_value, coupon_id, description, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+	`
+
+	result, err := database.DB.Exec(
+		query,
+		boolToTinyInt(config.IsEnabled),
+		config.RewardType,
+		config.RewardValue,
+		couponID,
+		config.Description,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	// 获取插入的 ID
+	id, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+
+	config.ID = int(id)
+	return nil
+}
+
 // UpdateReferralRewardConfig 更新推荐奖励活动配置
 func UpdateReferralRewardConfig(config *ReferralRewardConfig) error {
 	var couponID interface{}
@@ -133,7 +170,81 @@ func CreateReferralReward(referrerID, newUserID, orderID int, orderNumber string
 		return nil
 	}
 
-	// 获取活动配置
+	// 优先使用新奖励活动配置表 reward_activities 中的“拉新活动”（activity_type = referral）
+	if activity, err := GetEnabledRewardActivityByType("referral"); err != nil {
+		return err
+	} else if activity != nil {
+		// 根据奖励类型创建推荐奖励记录
+		switch activity.RewardType {
+		case "points":
+			// 积分：一条记录，reward_value 为积分数量
+			query := `
+				INSERT INTO referral_rewards (
+					referrer_id, new_user_id, order_id, order_number,
+					reward_type, reward_value, coupon_id, status, created_at, updated_at
+				) VALUES (?, ?, ?, ?, 'points', ?, NULL, 'pending', NOW(), NOW())
+			`
+			_, err = database.DB.Exec(
+				query,
+				referrerID,
+				newUserID,
+				orderID,
+				orderNumber,
+				activity.RewardValue,
+			)
+			return err
+		case "coupon":
+			// 优惠券：支持多张券，为每张券各创建一条记录
+			if len(activity.CouponIDs) == 0 {
+				// 未配置具体券ID，则不创建记录
+				return nil
+			}
+			query := `
+				INSERT INTO referral_rewards (
+					referrer_id, new_user_id, order_id, order_number,
+					reward_type, reward_value, coupon_id, status, created_at, updated_at
+				) VALUES (?, ?, ?, ?, 'coupon', 0, ?, 'pending', NOW(), NOW())
+			`
+			for _, cid := range activity.CouponIDs {
+				if cid <= 0 {
+					continue
+				}
+				if _, err = database.DB.Exec(
+					query,
+					referrerID,
+					newUserID,
+					orderID,
+					orderNumber,
+					cid,
+				); err != nil {
+					return err
+				}
+			}
+			return nil
+		case "amount":
+			// 金额：只做记录，不真正发放
+			query := `
+				INSERT INTO referral_rewards (
+					referrer_id, new_user_id, order_id, order_number,
+					reward_type, reward_value, coupon_id, status, created_at, updated_at
+				) VALUES (?, ?, ?, ?, 'amount', ?, NULL, 'pending', NOW(), NOW())
+			`
+			_, err = database.DB.Exec(
+				query,
+				referrerID,
+				newUserID,
+				orderID,
+				orderNumber,
+				activity.RewardValue,
+			)
+			return err
+		default:
+			// 未知类型，直接忽略
+			return nil
+		}
+	}
+
+	// 兼容旧系统：如果没有配置新的 reward_activities，则继续使用 referral_reward_config
 	config, err := GetReferralRewardConfig()
 	if err != nil {
 		return err
@@ -251,7 +362,8 @@ func issueReferralReward(reward *ReferralReward) error {
 		if reward.CouponID == nil {
 			return fmt.Errorf("优惠券ID为空")
 		}
-		return issueCouponToUser(reward.ReferrerID, *reward.CouponID, 1, "推荐新用户首次下单奖励")
+		// 记录为活动奖励，显示在优惠券管理-发放记录中
+		return issueCouponToUser(reward.ReferrerID, *reward.CouponID, 1, "活动奖励")
 	case "amount":
 		// 发放金额（可以记录到用户余额或通过其他方式发放）
 		// 这里暂时记录到备注中，实际发放逻辑可以根据业务需求实现
@@ -268,6 +380,34 @@ func addUserPoints(userID int, points int, reason string) error {
 	return AddPoints(userID, points, pointsType, nil, nil, reason)
 }
 
+// LogActivityRewardForUser 将某个用户获得的活动奖励同步到推荐奖励记录表（referral_rewards）
+// 这里统一作为“受奖人 = referrer_id”，new_user_id / order 相关字段为0或空，用 remark 标识来源
+func LogActivityRewardForUser(userID int, rewardType string, rewardValue float64, couponID *int, remark string) error {
+	var couponIDValue interface{}
+	if couponID != nil {
+		couponIDValue = *couponID
+	} else {
+		couponIDValue = nil
+	}
+
+	query := `
+		INSERT INTO referral_rewards (
+			referrer_id, new_user_id, order_id, order_number,
+			reward_type, reward_value, coupon_id, status, reward_at, remark, created_at, updated_at
+		) VALUES (?, 0, 0, '', ?, ?, ?, 'completed', NOW(), ?, NOW(), NOW())
+	`
+
+	_, err := database.DB.Exec(
+		query,
+		userID,
+		rewardType,
+		rewardValue,
+		couponIDValue,
+		remark,
+	)
+	return err
+}
+
 // issueCouponToUser 给用户发放优惠券
 func issueCouponToUser(userID, couponID, quantity int, reason string) error {
 	// 检查用户是否存在
@@ -282,8 +422,9 @@ func issueCouponToUser(userID, couponID, quantity int, reason string) error {
 		return fmt.Errorf("优惠券不存在")
 	}
 
-	// 计算过期时间（优惠券的有效期）
-	expiresAt := coupon.ValidTo
+	// 计算过期时间
+	// 拉新奖励场景下，优惠券默认有效期为发放起一年
+	expireTime := time.Now().AddDate(1, 0, 0)
 
 	// 发放优惠券
 	for i := 0; i < quantity; i++ {
@@ -291,7 +432,7 @@ func issueCouponToUser(userID, couponID, quantity int, reason string) error {
 			INSERT INTO user_coupons (user_id, coupon_id, status, expires_at, created_at, updated_at)
 			VALUES (?, ?, 'unused', ?, NOW(), NOW())
 		`
-		_, err = database.DB.Exec(query, userID, couponID, expiresAt)
+		_, err = database.DB.Exec(query, userID, couponID, expireTime)
 		if err != nil {
 			return err
 		}
@@ -304,7 +445,7 @@ func issueCouponToUser(userID, couponID, quantity int, reason string) error {
 			operator_type, operator_id, operator_name, expires_at, created_at
 		) VALUES (?, ?, ?, ?, ?, 'system', 0, '系统', ?, NOW())
 	`
-	_, err = database.DB.Exec(issueLogQuery, userID, couponID, coupon.Name, quantity, reason, expiresAt)
+	_, err = database.DB.Exec(issueLogQuery, userID, couponID, coupon.Name, quantity, reason, expireTime)
 	if err != nil {
 		log.Printf("记录优惠券发放日志失败: %v", err)
 		// 不影响主流程，只记录日志

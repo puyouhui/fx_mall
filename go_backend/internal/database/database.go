@@ -1577,6 +1577,58 @@ func InitDB() error {
 			}
 		}
 
+		// 创建奖励活动配置表（支持多张优惠券）
+		createRewardActivitiesTableSQL := `
+		CREATE TABLE IF NOT EXISTS reward_activities (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    activity_name VARCHAR(100) NOT NULL COMMENT '活动名称',
+		    activity_type ENUM('referral','new_customer') NOT NULL COMMENT '活动类型：referral-拉新活动（奖励老客户），new_customer-新客奖励（奖励新客户）',
+		    is_enabled TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用：0-禁用，1-启用',
+		    reward_type ENUM('points','coupon','amount') NOT NULL DEFAULT 'points' COMMENT '奖励类型：points-积分，coupon-优惠券，amount-金额',
+		    reward_value DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '奖励值：积分数量/金额',
+		    coupon_ids TEXT DEFAULT NULL COMMENT '优惠券ID列表JSON（当reward_type为coupon时使用，例如：[1,2,3]）',
+		    description VARCHAR(500) DEFAULT '' COMMENT '活动说明',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    KEY idx_activity_type (activity_type),
+		    KEY idx_is_enabled (is_enabled)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='奖励活动配置表';
+		`
+
+		if _, err = DB.Exec(createRewardActivitiesTableSQL); err != nil {
+			log.Printf("创建reward_activities表失败: %v", err)
+		} else {
+			log.Println("奖励活动配置表初始化成功")
+		}
+
+		// 兼容旧系统：如果旧表中只有 coupon_id 字段，没有 coupon_ids，则补充字段并迁移数据
+		var rewardCouponIDsExists int
+		checkRewardCouponIDsSQL := `
+			SELECT COUNT(*)
+			FROM information_schema.columns
+			WHERE table_schema = DATABASE()
+			  AND table_name = 'reward_activities'
+			  AND column_name = 'coupon_ids'
+		`
+		if err := DB.QueryRow(checkRewardCouponIDsSQL).Scan(&rewardCouponIDsExists); err == nil && rewardCouponIDsExists == 0 {
+			// 添加 coupon_ids 字段
+			if _, err = DB.Exec(`ALTER TABLE reward_activities ADD COLUMN coupon_ids TEXT DEFAULT NULL COMMENT '优惠券ID列表JSON（当reward_type为coupon时使用，例如：[1,2,3]）' AFTER reward_value`); err != nil {
+				log.Printf("为reward_activities添加coupon_ids字段失败: %v", err)
+			} else {
+				log.Println("已为reward_activities添加coupon_ids字段，开始从coupon_id迁移数据")
+				// 将已有 coupon_id 数据迁移到 coupon_ids JSON 数组中（仅在coupon_ids为空时）
+				if _, err = DB.Exec(`
+					UPDATE reward_activities
+					SET coupon_ids = JSON_ARRAY(coupon_id)
+					WHERE coupon_id IS NOT NULL AND (coupon_ids IS NULL OR coupon_ids = '')
+				`); err != nil {
+					log.Printf("迁移reward_activities表coupon_id到coupon_ids失败: %v", err)
+				} else {
+					log.Println("已将reward_activities表中的coupon_id迁移到coupon_ids（JSON数组）")
+				}
+			}
+		}
+
 		// 创建推荐奖励记录表
 		createReferralRewardsTableSQL := `
 		CREATE TABLE IF NOT EXISTS referral_rewards (
@@ -1593,7 +1645,6 @@ func InitDB() error {
 		    remark VARCHAR(500) DEFAULT '' COMMENT '备注',
 		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-		    UNIQUE KEY uk_order_referrer (order_id, referrer_id) COMMENT '同一订单同一推荐人只能有一条记录',
 		    KEY idx_referrer_id (referrer_id),
 		    KEY idx_new_user_id (new_user_id),
 		    KEY idx_order_id (order_id),
@@ -1606,6 +1657,22 @@ func InitDB() error {
 			log.Printf("创建referral_rewards表失败: %v", err)
 		} else {
 			log.Println("推荐奖励记录表初始化成功")
+		}
+
+		// 如果存在旧的唯一索引 uk_order_referrer，则删除它，以支持一单多条奖励记录（例如多张优惠券）
+		var idxCount int
+		if err = DB.QueryRow(`
+			SELECT COUNT(*)
+			FROM information_schema.statistics
+			WHERE table_schema = DATABASE()
+			  AND table_name = 'referral_rewards'
+			  AND index_name = 'uk_order_referrer'
+		`).Scan(&idxCount); err == nil && idxCount > 0 {
+			if _, err = DB.Exec(`ALTER TABLE referral_rewards DROP INDEX uk_order_referrer`); err != nil {
+				log.Printf("删除referral_rewards表唯一索引uk_order_referrer失败: %v", err)
+			} else {
+				log.Println("已删除referral_rewards表唯一索引uk_order_referrer，支持一单多条奖励记录（例如多张优惠券）")
+			}
 		}
 
 		// 创建积分明细表

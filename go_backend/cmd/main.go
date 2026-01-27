@@ -71,7 +71,7 @@ func main() {
 			miniAppProtectedGroup.PUT("/addresses/:id/default", api.SetDefaultMiniAppAddress) // 设置默认地址
 			miniAppProtectedGroup.POST("/addresses/geocode", api.GeocodeAddress)              // 地址解析（将地址文本转换为经纬度）
 			miniAppProtectedGroup.POST("/addresses/reverse-geocode", api.ReverseGeocode)      // 逆地理编码（将经纬度转换为地址）
-			miniAppProtectedGroup.POST("/addresses/search-poi", api.SearchPOI)                 // POI搜索（使用高德地图API搜索地址）
+			miniAppProtectedGroup.POST("/addresses/search-poi", api.SearchPOI)                // POI搜索（使用高德地图API搜索地址）
 
 			// 发票抬头相关接口
 			miniAppProtectedGroup.GET("/invoice", api.GetMiniAppInvoice)   // 获取用户的发票抬头
@@ -116,8 +116,8 @@ func main() {
 			miniAppProtectedGroup.GET("/favorites/check", api.CheckFavorite)                             // 检查商品是否已收藏
 
 			// 拉新用户接口
-			miniAppProtectedGroup.GET("/referrals", api.GetMiniAppReferralUsers)          // 获取我拉取的用户列表
-			miniAppProtectedGroup.GET("/referrals/stats", api.GetMiniAppReferralStats)    // 获取拉新统计数据
+			miniAppProtectedGroup.GET("/referrals", api.GetMiniAppReferralUsers)                      // 获取我拉取的用户列表
+			miniAppProtectedGroup.GET("/referrals/stats", api.GetMiniAppReferralStats)                // 获取拉新统计数据
 			miniAppProtectedGroup.GET("/referrals/activity-info", api.GetMiniAppReferralActivityInfo) // 获取活动说明
 
 			// 积分接口
@@ -163,12 +163,12 @@ func main() {
 				protectedGroup.GET("/settings/websocket", api.GetWebSocketConfig) // 获取WebSocket配置
 
 				// 分类管理接口
-				protectedGroup.GET("/categories", api.GetAllCategoriesForAdmin)          // 获取所有商品分类（后台管理）
-				protectedGroup.POST("/categories", api.CreateCategory)                   // 创建新的商品分类
-				protectedGroup.PUT("/categories/:id", api.UpdateCategory)                // 根据分类ID更新商品分类信息
-				protectedGroup.DELETE("/categories/:id", api.DeleteCategory)             // 根据分类ID删除商品分类
-				protectedGroup.POST("/categories/upload", api.UploadCategoryImage)       // 上传分类图标
-				protectedGroup.PUT("/categories/sort", api.BatchUpdateCategorySort)      // 批量更新分类排序
+				protectedGroup.GET("/categories", api.GetAllCategoriesForAdmin)     // 获取所有商品分类（后台管理）
+				protectedGroup.POST("/categories", api.CreateCategory)              // 创建新的商品分类
+				protectedGroup.PUT("/categories/:id", api.UpdateCategory)           // 根据分类ID更新商品分类信息
+				protectedGroup.DELETE("/categories/:id", api.DeleteCategory)        // 根据分类ID删除商品分类
+				protectedGroup.POST("/categories/upload", api.UploadCategoryImage)  // 上传分类图标
+				protectedGroup.PUT("/categories/sort", api.BatchUpdateCategorySort) // 批量更新分类排序
 
 				// 轮播图管理接口
 				protectedGroup.GET("/carousels", api.GetAllCarouselsForAdmin)     // 获取所有轮播图（管理后台用）
@@ -203,16 +203,16 @@ func main() {
 				protectedGroup.POST("/products/upload", api.UploadProductImage) // 上传商品图片（必须在 /:id 之前）
 
 				// 图库管理接口
-				protectedGroup.GET("/images", api.ListImages)                               // 获取所有图片列表
-				protectedGroup.POST("/images/upload", api.UploadImageWithCategory)          // 上传图片（支持目录分类）
-				protectedGroup.DELETE("/images/batch", api.BatchDeleteImages)               // 批量删除图片
-				protectedGroup.GET("/products/:id", api.GetProductDetail)                   // 获取商品详情（管理后台）
-				protectedGroup.POST("/products", api.CreateProduct)                         // 创建商品
-				protectedGroup.PUT("/products/:id", api.UpdateProduct)                      // 更新商品
-				protectedGroup.PUT("/products/:id/special", api.UpdateProductSpecialStatus) // 更新商品精选状态
-				protectedGroup.DELETE("/products/:id", api.DeleteProduct)                   // 删除商品
-				protectedGroup.PUT("/products/sort", api.BatchUpdateProductSort)            // 批量更新商品排序
-				protectedGroup.GET("/special-products", api.GetAllSpecialProductsForAdmin)  // 获取所有精选商品（管理后台）
+				protectedGroup.GET("/images", api.ListImages)                                   // 获取所有图片列表
+				protectedGroup.POST("/images/upload", api.UploadImageWithCategory)              // 上传图片（支持目录分类）
+				protectedGroup.DELETE("/images/batch", api.BatchDeleteImages)                   // 批量删除图片
+				protectedGroup.GET("/products/:id", api.GetProductDetail)                       // 获取商品详情（管理后台）
+				protectedGroup.POST("/products", api.CreateProduct)                             // 创建商品
+				protectedGroup.PUT("/products/:id", api.UpdateProduct)                          // 更新商品
+				protectedGroup.PUT("/products/:id/special", api.UpdateProductSpecialStatus)     // 更新商品精选状态
+				protectedGroup.DELETE("/products/:id", api.DeleteProduct)                       // 删除商品
+				protectedGroup.PUT("/products/sort", api.BatchUpdateProductSort)                // 批量更新商品排序
+				protectedGroup.GET("/special-products", api.GetAllSpecialProductsForAdmin)      // 获取所有精选商品（管理后台）
 				protectedGroup.PUT("/special-products/sort", api.BatchUpdateSpecialProductSort) // 批量更新精选商品排序
 
 				// 供应商管理接口
@@ -263,10 +263,10 @@ func main() {
 				protectedGroup.GET("/coupons/usages", api.GetCouponUsageLogs) // 优惠券使用记录列表
 
 				// 订单管理
-				protectedGroup.GET("/orders", api.GetAllOrdersForAdmin)                       // 获取所有订单（后台管理）
-				protectedGroup.GET("/orders/:id", api.GetOrderByIDForAdmin)                   // 获取订单详情（后台管理）
-				protectedGroup.PUT("/orders/:id/status", api.UpdateOrderStatus)               // 更新订单状态（后台管理）
-				protectedGroup.GET("/orders/:id/delivery-fee", api.GetDeliveryFeeCalculation) // 获取配送费计算结果（管理员）
+				protectedGroup.GET("/orders", api.GetAllOrdersForAdmin)                           // 获取所有订单（后台管理）
+				protectedGroup.GET("/orders/:id", api.GetOrderByIDForAdmin)                       // 获取订单详情（后台管理）
+				protectedGroup.PUT("/orders/:id/status", api.UpdateOrderStatus)                   // 更新订单状态（后台管理）
+				protectedGroup.GET("/orders/:id/delivery-fee", api.GetDeliveryFeeCalculation)     // 获取配送费计算结果（管理员）
 				protectedGroup.POST("/orders/:id/recalculate-profit", api.RecalculateOrderProfit) // 强制重新计算订单利润（用于修复老订单）
 
 				// 配送记录管理
@@ -318,7 +318,14 @@ func main() {
 				protectedGroup.PUT("/rich-contents/:id", api.UpdateRichContent)          // 更新富文本内容
 				protectedGroup.PUT("/rich-contents/:id/publish", api.PublishRichContent) // 发布富文本内容
 
-				// 推荐奖励活动管理
+				// 奖励活动管理
+				protectedGroup.GET("/reward-activities", api.GetRewardActivities)         // 获取奖励活动列表
+				protectedGroup.POST("/reward-activities", api.CreateRewardActivity)       // 创建奖励活动
+				protectedGroup.GET("/reward-activities/:id", api.GetRewardActivity)       // 获取单个奖励活动
+				protectedGroup.PUT("/reward-activities/:id", api.UpdateRewardActivity)    // 更新奖励活动
+				protectedGroup.DELETE("/reward-activities/:id", api.DeleteRewardActivity) // 删除奖励活动
+
+				// 推荐奖励活动管理（保留兼容）
 				protectedGroup.GET("/referral-reward/config", api.GetReferralRewardConfig)    // 获取推荐奖励活动配置
 				protectedGroup.PUT("/referral-reward/config", api.UpdateReferralRewardConfig) // 更新推荐奖励活动配置
 				protectedGroup.GET("/referral-reward/rewards", api.GetReferralRewards)        // 获取推荐奖励记录列表
@@ -420,7 +427,7 @@ func main() {
 				employeeProtectedGroup.PUT("/sales/addresses/:id", api.UpdateSalesCustomerAddress)                               // 更新客户地址
 				employeeProtectedGroup.POST("/upload/address-avatar", api.UploadAddressAvatarByEmployee)                         // 上传门头照
 				employeeProtectedGroup.POST("/addresses/reverse-geocode", api.ReverseGeocode)                                    // 逆地理编码（将经纬度转换为地址，用于选点回填）
-				employeeProtectedGroup.POST("/addresses/search-poi", api.SearchPOI)                                                 // POI搜索（使用高德地图API搜索地址）
+				employeeProtectedGroup.POST("/addresses/search-poi", api.SearchPOI)                                              // POI搜索（使用高德地图API搜索地址）
 				employeeProtectedGroup.POST("/sales/orders", api.CreateOrderForCustomer)                                         // 为客户创建订单
 				employeeProtectedGroup.GET("/sales/products", api.GetSalesProducts)                                              // 获取商品列表
 				employeeProtectedGroup.GET("/sales/pending-orders", api.GetMyPendingOrders)                                      // 获取待配送订单列表

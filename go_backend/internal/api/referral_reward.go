@@ -34,10 +34,10 @@ func GetReferralRewardConfig(c *gin.Context) {
 	})
 }
 
-// UpdateReferralRewardConfig 更新推荐奖励活动配置
+// UpdateReferralRewardConfig 更新推荐奖励活动配置（支持创建和更新）
 func UpdateReferralRewardConfig(c *gin.Context) {
 	var req struct {
-		ID          int     `json:"id" binding:"required"`
+		ID          int     `json:"id"` // ID 可选，如果为0或不存在则创建新配置
 		IsEnabled   bool   `json:"is_enabled"`
 		RewardType  string `json:"reward_type" binding:"required,oneof=points coupon amount"`
 		RewardValue float64 `json:"reward_value" binding:"required,min=0"`
@@ -74,6 +74,32 @@ func UpdateReferralRewardConfig(c *gin.Context) {
 		Description: req.Description,
 	}
 
+	// 如果 ID 为 0 或不存在，先检查是否有配置，没有则创建，有则更新
+	if req.ID == 0 {
+		existingConfig, err := model.GetReferralRewardConfig()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取配置失败: " + err.Error()})
+			return
+		}
+		
+		if existingConfig == nil {
+			// 创建新配置
+			if err := model.CreateReferralRewardConfig(config); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建配置失败: " + err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"code":    200,
+				"message": "创建成功",
+			})
+			return
+		} else {
+			// 使用现有配置的 ID 进行更新
+			config.ID = existingConfig.ID
+		}
+	}
+
+	// 更新配置
 	if err := model.UpdateReferralRewardConfig(config); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新配置失败: " + err.Error()})
 		return

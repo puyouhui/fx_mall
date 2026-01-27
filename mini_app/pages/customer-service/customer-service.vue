@@ -40,12 +40,27 @@
 
     <!-- 三个入口按钮 -->
     <view class="action-buttons">
+      <!-- 微信小程序端：使用客服会话能力 -->
+      <!-- #ifdef MP-WEIXIN -->
+      <button
+        class="action-btn"
+        open-type="contact"
+        @contact="handleWxContact"
+        :session-from="wxSessionFrom"
+      >
+        <view class="btn-icon online-service-icon">
+          <uni-icons type="chatbubble" size="32" color="#20CB6B"></uni-icons>
+        </view>
+        <text class="btn-text">在线客服</text>
+      </button>
+      <!-- #else -->
       <view class="action-btn" @click="handleOnlineService">
         <view class="btn-icon online-service-icon">
           <uni-icons type="chatbubble" size="32" color="#20CB6B"></uni-icons>
         </view>
         <text class="btn-text">在线客服</text>
       </view>
+      <!-- #endif -->
       <view class="action-btn" @click="handleComplaint">
         <view class="btn-icon complaint-icon">
           <uni-icons type="email" size="32" color="#FF9500"></uni-icons>
@@ -113,9 +128,20 @@
 
     <!-- 底部联系客服按钮 -->
     <view class="bottom-button">
+      <!-- #ifdef MP-WEIXIN -->
+      <button
+        class="contact-btn"
+        open-type="contact"
+        @contact="handleWxContact"
+        :session-from="wxSessionFrom"
+      >
+        <text class="contact-btn-text">联系客服</text>
+      </button>
+      <!-- #else -->
       <view class="contact-btn" @click="handleContactService">
         <text class="contact-btn-text">联系客服</text>
       </view>
+      <!-- #endif -->
     </view>
   </view>
 </template>
@@ -174,7 +200,13 @@ export default {
             { id: 23, title: '如何联系售后?', answer: '您可以通过"在线客服"或"联系客服"按钮联系我们的售后团队，我们会尽快为您处理。' }
           ]
         }
-      ]
+      ],
+      // 微信客服会话来源
+      wxSessionFrom: JSON.stringify({
+        source: 'mini_app',
+        page: 'customer-service',
+        scene: 'kefu_center'
+      })
     };
   },
   onLoad() {
@@ -235,7 +267,7 @@ export default {
       });
     },
     
-    // 在线客服
+    // 在线客服（非微信小程序端兜底使用）
     handleOnlineService() {
       uni.showToast({
         title: '正在为您转接在线客服...',
@@ -269,7 +301,7 @@ export default {
       // TODO: 跳转到功能反馈页面
     },
     
-    // 联系客服
+    // 联系客服（非微信小程序端兜底使用）
     handleContactService() {
       // 检查当前时间是否在服务时间内
       const now = new Date();
@@ -298,6 +330,14 @@ export default {
           }
         });
       }
+    },
+
+    // 微信小程序客服会话回调
+    handleWxContact(e) {
+      // e.detail.path 和 e.detail.query 为用户点回小程序卡片时带回的路径和参数
+      console.log('wx kefu path:', e.detail.path);
+      console.log('wx kefu query:', e.detail.query);
+      // 如需根据返回路径进行跳转，可在此自行处理
     },
     
     // 加载用户信息和销售员信息
@@ -488,7 +528,21 @@ export default {
   flex-direction: column;
   align-items: center;
   flex: 1;
+  /* 重置 button 默认样式 */
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  line-height: normal;
+  font-size: inherit;
 }
+
+/* 微信小程序 button 组件样式重置 */
+/* #ifdef MP-WEIXIN */
+.action-btn::after {
+  border: none;
+}
+/* #endif */
 
 .btn-icon {
   width: 100rpx;
@@ -715,7 +769,20 @@ export default {
   align-items: center;
   justify-content: center;
   box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  /* 重置 button 默认样式 */
+  border: none;
+  padding: 0;
+  margin: 0;
+  line-height: normal;
+  font-size: inherit;
 }
+
+/* 微信小程序 button 组件样式重置 */
+/* #ifdef MP-WEIXIN */
+.contact-btn::after {
+  border: none;
+}
+/* #endif */
 
 .contact-btn:active {
   opacity: 0.9;

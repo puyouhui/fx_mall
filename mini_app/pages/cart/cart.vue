@@ -59,7 +59,7 @@
 
 			<!-- 空采购单提示 -->
 			<view class="empty-cart" v-else>
-				<image src="/static/empty-cart.png" class="empty-icon"></image>
+				<!-- <image src="https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg" class="empty-icon"></image> -->
 				<text class="empty-text">您的采购单还是空的</text>
 				<text class="empty-subtext">快去选购商品吧~</text>
 			</view>
@@ -240,7 +240,7 @@ export default {
 			userType: 'unknown',
 			loading: false,
 			token: '',
-			defaultImage: '/static/empty-cart.png',
+			defaultImage: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg',
 			statusBarHeight: 0,
 			navBarHeight: 44,
 			menuButtonRect: null,

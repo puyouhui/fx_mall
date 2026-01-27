@@ -288,6 +288,7 @@
 
 <script>
 import { getOrderDetail, getDeliveryEmployeeLocation, cancelOrder } from '../../api/index.js'
+import { getShareConfig, buildSharePath } from '../../utils/shareConfig.js'
 
 export default {
   data() {
@@ -297,7 +298,7 @@ export default {
       orderDetail: null,
       orderId: 0,
       token: '',
-      defaultImage: '/static/default-product.png',
+      defaultImage: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg',
       mapCenter: {
         latitude: 39.90864,
         longitude: 116.39750
@@ -373,20 +374,18 @@ export default {
   },
   // 分享小程序（订单详情页）
   onShareAppMessage(options) {
-    // 获取当前用户ID
-    const userInfo = uni.getStorageSync('miniUserInfo');
-    const userId = userInfo?.id || userInfo?.ID;
+    // 使用 shareConfig 获取分享配置
+    const shareConfig = getShareConfig('order', {
+      orderNumber: this.orderDetail?.order?.order_number || ''
+    });
     
     // 构建分享路径，添加订单ID和分享者ID
-    let path = `/pages/order/detail?id=${this.orderId}`;
-    if (userId) {
-      path += `&referrer_id=${userId}`;
-    }
+    const path = buildSharePath(`/pages/order/detail?id=${this.orderId}`);
     
     return {
-      title: `订单详情 - 订单号：${this.orderDetail?.order?.order_number || ''}`,
+      title: shareConfig.title,
       path: path,
-      imageUrl: '' // 可以设置分享图片
+      imageUrl: shareConfig.imageUrl || ''
     };
   },
   methods: {

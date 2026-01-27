@@ -104,7 +104,7 @@
             </view>
             <view class="special-product-list">
               <view class="product-item" v-for="(product, index) in specialProducts" :key="index" @click="goToProductDetail(product.id)">
-                <image :src="product.images[0] || '/static/test/product1.jpg'" class="product-image" mode="aspectFill"></image>
+                <image :src="product.images[0] || 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'" class="product-image" mode="aspectFill"></image>
                 <view class="product-info">
                   <text class="product-name">{{ product.name }}</text>
                   <view class="product-bottom-info">
@@ -131,7 +131,7 @@
             </view>
             <view class="processing-product-list">
               <view class="product-item" v-for="(product, index) in featuredProducts" :key="index" @click="goToProductDetail(product.id)">
-                <image :src="product.images[0] || '/static/test/product1.jpg'" class="product-image" mode="aspectFill"></image>
+                <image :src="product.images[0] || 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'" class="product-image" mode="aspectFill"></image>
                 <view class="product-info">
                   <text class="product-name">{{ product.name }}</text>
                   <view class="product-bottom-info">
@@ -482,9 +482,9 @@ export default {
     // 生成模拟搜索结果
     generateMockSearchResults(keyword) {
       const mockResults = [
-        { id: 101, name: `精选${keyword}1`, price: '128.00', images: ['/static/test/product1.jpg'] },
-        { id: 102, name: `优质${keyword}2`, price: '98.00', images: ['/static/test/product2.jpg'] },
-        { id: 103, name: `新鲜${keyword}3`, price: '158.00', images: ['/static/test/product3.jpg'] }
+        { id: 101, name: `精选${keyword}1`, price: '128.00', images: ['https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'] },
+        { id: 102, name: `优质${keyword}2`, price: '98.00', images: ['https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'] },
+        { id: 103, name: `新鲜${keyword}3`, price: '158.00', images: ['https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'] }
       ];
       mockResults.forEach(product => {
         this.calculateProductPriceRange(product);

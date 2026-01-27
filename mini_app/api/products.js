@@ -62,9 +62,9 @@ export const getProductDetail = (productId) => {
           stock: 100,
           sales: 500,
           images: [
-            '/static/test/product1-1.jpg',
-            '/static/test/product1-1.jpg',
-            '/static/test/product1-1.jpg'
+            'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg',
+            'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg',
+            'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'
           ],
           specifications: [
             { name: '颜色', value: '黑色' },
@@ -107,7 +107,7 @@ export const getProductsByCategory = (params = { categoryId: 1, pageNum: 1, page
             name: '智能手机',
             price: 2999.99,
             isSpecial: true,
-            images: ['/static/test/product1-1.jpg'],
+            images: ['https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'],
             specs: [
               { id: 1, name: '8GB+128GB', price: 2999.99 },
               { id: 2, name: '8GB+256GB', price: 3299.99 }
@@ -118,7 +118,7 @@ export const getProductsByCategory = (params = { categoryId: 1, pageNum: 1, page
             name: '智能手表',
             price: 899.99,
             isSpecial: false,
-            images: ['/static/test/product1-1.jpg']
+            images: ['https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg']
           }
         ],
         total: 2,
