@@ -8,13 +8,13 @@ const DEFAULT_SHARE_CONFIG = {
   // 首页分享配置
   index: {
     title: '发现一个进货小程序，新用户享专属优惠，快来使用吧~',
-    imageUrl: 'https://mall.sscchh.com/minio/fengxing/carousels/image_1769495292.png' // 可以替换为您的分享封面图
+    imageUrl: 'https://mall.sscchh.com/minio/fengxing/others/image_1769584856.png' // 可以替换为您的分享封面图
   },
   
   // 推荐页面分享配置
   referral: {
     title: '邀请您使用小程序快捷订货，新用户登录还可获得现金奖励~',
-    imageUrl: 'https://mall.sscchh.com/minio/fengxing/carousels/image_1769495292.png' // 可以替换为推荐活动封面图
+    imageUrl: 'https://mall.sscchh.com/minio/fengxing/others/image_1769584856.png' // 可以替换为推荐活动封面图
   },
   
   // 商品详情页分享配置（动态，使用商品信息）
@@ -26,7 +26,7 @@ const DEFAULT_SHARE_CONFIG = {
   // 订单详情页分享配置
   order: {
     title: '订单详情 - 订单号：{orderNumber}',
-    imageUrl: 'https://mall.sscchh.com/minio/fengxing/carousels/image_1769495292.png'
+    imageUrl: 'https://mall.sscchh.com/minio/fengxing/others/image_1769584856.png'
   }
 };
 

@@ -129,6 +129,12 @@
         </swiper-item>
       </swiper>
     </view> -->
+
+    <!-- 备案信息 -->
+    <view class="footer-icp">
+      <text class="footer-company">{{ companyName }}</text>
+      <text class="footer-icp-no">{{ icpFiling }}</text>
+    </view>
     
     <!-- 登录弹框组件 -->
     <LoginModal 
@@ -165,6 +171,8 @@ export default {
       userPoints: 0,
       carousels: [],
       showLoginModal: false,
+      companyName: '橙心选（云南）供应链管理有限公司',
+      icpFiling: '滇ICP备2026001621号-1X',
       functions: [
         { name: '地址管理', icon: 'location', iconPath: '/static/icon/address.png', path: '/pages/address/address', color: '#20CB6B' },
         // { name: '我的账单', icon: 'wallet', iconPath: '/static/icon/bills.png', path: '/pages/bill/bill', color: '#20CB6B' },
@@ -989,6 +997,25 @@ export default {
   font-size: 24rpx;
   color: #555;
   text-align: center;
+}
+
+/* 备案信息 */
+.footer-icp {
+  padding: 40rpx 30rpx 60rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.footer-company {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.footer-icp-no {
+  font-size: 22rpx;
+  color: #bbb;
 }
 
 </style>

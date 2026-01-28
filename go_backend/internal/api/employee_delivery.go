@@ -893,6 +893,111 @@ func CompleteDeliveryOrder(c *gin.Context) {
 	})
 }
 
+// CompleteDeliveryOrderWithoutImages 完成配送（不上传照片，即「忘记拍了」）
+// 配送员端选择「忘记拍了」时调用 PUT /delivery/orders/:id/complete
+func CompleteDeliveryOrderWithoutImages(c *gin.Context) {
+	employee, ok := getEmployeeFromContext(c)
+	if !ok {
+		return
+	}
+
+	if !employee.IsDelivery {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您不是配送员，无权访问此功能"})
+		return
+	}
+
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
+		return
+	}
+
+	order, err := model.GetOrderByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单失败: " + err.Error()})
+		return
+	}
+	if order == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
+		return
+	}
+
+	if order.Status != "delivering" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "只能完成配送中的订单"})
+		return
+	}
+
+	if order.DeliveryEmployeeCode == nil || *order.DeliveryEmployeeCode != employee.EmployeeCode {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "您无权完成此订单的配送"})
+		return
+	}
+
+	tx, err := database.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "开启事务失败: " + err.Error()})
+		return
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	_, err = tx.Exec("UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新订单状态失败: " + err.Error()})
+		return
+	}
+
+	remark := "配送完成（未上传照片）"
+	deliveryLog := &model.DeliveryLog{
+		OrderID:              id,
+		Action:               model.DeliveryLogActionDeliveringCompleted,
+		DeliveryEmployeeCode: &employee.EmployeeCode,
+		ActionTime:           time.Now(),
+		Remark:               &remark,
+	}
+	_ = model.CreateDeliveryLog(deliveryLog)
+
+	_, err = tx.Exec(`
+		INSERT INTO delivery_records (
+			order_id, delivery_employee_code, product_image_url, doorplate_image_url, completed_at, created_at, updated_at
+		) VALUES (?, ?, NULL, NULL, ?, NOW(), NOW())
+	`, id, employee.EmployeeCode, time.Now())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建配送记录失败: " + err.Error()})
+		return
+	}
+
+	if err = tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "提交事务失败: " + err.Error()})
+		return
+	}
+
+	go func() {
+		currentBatchID, batchErr := model.GetCurrentBatchID(employee.EmployeeCode)
+		if batchErr != nil {
+			fmt.Printf("[CompleteDeliveryOrderWithoutImages] 检查批次状态失败: %v\n", batchErr)
+		} else {
+			fmt.Printf("[CompleteDeliveryOrderWithoutImages] 当前批次ID: %s\n", currentBatchID)
+		}
+	}()
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "配送完成",
+		"data": gin.H{
+			"delivery_record": gin.H{
+				"order_id":               id,
+				"delivery_employee_code": employee.EmployeeCode,
+				"product_image_url":      nil,
+				"doorplate_image_url":    nil,
+			},
+		},
+	})
+}
+
 // UpdateOrderAddress 更新订单地址（地址纠错）
 func UpdateOrderAddress(c *gin.Context) {
 	employee, ok := getEmployeeFromContext(c)

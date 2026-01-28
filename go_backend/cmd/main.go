@@ -399,6 +399,7 @@ func main() {
 				employeeProtectedGroup.PUT("/delivery/orders/:id/accept", api.AcceptDeliveryOrder)                       // 接单
 				employeeProtectedGroup.PUT("/delivery/orders/:id/start", api.StartDeliveryOrder)                         // 开始配送
 				employeeProtectedGroup.POST("/delivery/orders/:id/complete", api.CompleteDeliveryOrder)                  // 完成配送（支持上传图片）
+				employeeProtectedGroup.PUT("/delivery/orders/:id/complete", api.CompleteDeliveryOrderWithoutImages)     // 完成配送（不上传照片，忘记拍了）
 				employeeProtectedGroup.PUT("/delivery/orders/:id/address", api.UpdateOrderAddress)                       // 更新订单地址（地址纠错）
 				employeeProtectedGroup.POST("/delivery/orders/:id/report", api.ReportOrderIssue)                         // 问题上报
 				employeeProtectedGroup.GET("/delivery/my-orders", api.GetDeliveryOrders)                                 // 获取我的配送订单（通过status参数筛选）

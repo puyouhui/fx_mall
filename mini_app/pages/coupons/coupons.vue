@@ -83,6 +83,13 @@
       </view>
       <text class="empty-text">{{ getEmptyText() }}</text>
     </view>
+
+    <!-- 底部去使用按钮 -->
+    <view class="bottom-button">
+      <view class="go-use-btn" @click="goToCategory">
+        <text class="go-use-btn-text">去使用</text>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -246,6 +253,13 @@ export default {
         default:
           return '暂无优惠券';
       }
+    },
+    
+    // 跳转到分类页
+    goToCategory() {
+      uni.switchTab({
+        url: '/pages/category/category'
+      });
     }
   }
 };
@@ -255,7 +269,7 @@ export default {
 .coupons-page {
   min-height: 100vh;
   background-color: #f5f5f5;
-  padding-bottom: 40rpx;
+  padding-bottom: calc(128rpx + env(safe-area-inset-bottom));
 }
 
 /* 标签页 */
@@ -485,6 +499,42 @@ export default {
 .empty-text {
   font-size: 28rpx;
   color: #999;
+}
+
+/* 底部去使用按钮 */
+.bottom-button {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 20rpx 30rpx;
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+  background-color: #fff;
+  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
+  z-index: 100;
+}
+
+.go-use-btn {
+  width: 100%;
+  height: 88rpx;
+  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  border-radius: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  transition: all 0.3s;
+}
+
+.go-use-btn:active {
+  opacity: 0.9;
+  transform: scale(0.98);
+}
+
+.go-use-btn-text {
+  font-size: 32rpx;
+  color: #fff;
+  font-weight: 600;
 }
 </style>
 
