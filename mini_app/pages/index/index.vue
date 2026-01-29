@@ -137,21 +137,33 @@
 
 	<ProductSelector ref="productSelector" />
 
-	<!-- 资料完善提示弹窗 -->
-	<view class="profile-modal-overlay" v-if="showProfileModal" @click="handleProfileModalCancel">
-		<view class="profile-modal-content" @click.stop>
-			<view class="profile-modal-header">
-				<text class="profile-modal-title">完善资料</text>
-			</view>
-			<view class="profile-modal-body">
-				<text class="profile-modal-text">为了有更好的购物体验，建议请先完善您的店铺资料~</text>
-			</view>
-			<view class="profile-modal-footer">
-				<view class="profile-modal-btn cancel-btn" @click="handleProfileModalCancel">
-					<text class="profile-modal-btn-text">先看看</text>
+	<!-- 用户编号提示弹窗 -->
+	<view class="user-code-modal-overlay" v-if="showUserCodeModal" @click.stop>
+		<view class="user-code-modal-content" @click.stop>
+			<view class="user-code-success-header">
+				<view class="user-code-success-icon-wrapper">
+					<uni-icons type="checkmarkempty" size="60" color="rgba(255, 255, 255, 0.8)"></uni-icons>
 				</view>
-				<view class="profile-modal-btn confirm-btn" @click="handleProfileModalConfirm">
-					<text class="profile-modal-btn-text">去完善</text>
+				<text class="user-code-success-title">登录成功</text>
+			</view>
+			<view class="user-code-success-body">
+				<view class="user-code-section">
+					<text class="user-code-label">您的用户编号</text>
+					<view class="user-code-display" @click="copyUserCode">
+						<text class="user-code-text">{{ currentUserCode || '暂无' }}</text>
+						<uni-icons type="copy" size="20" color="#20CB6B" class="copy-icon"></uni-icons>
+					</view>
+				</view>
+				<view class="tip-section">
+					<text class="tip-text">请把你的编号告诉业务员，便于帮助您完善信息</text>
+				</view>
+			</view>
+			<view class="user-code-success-footer">
+				<view class="user-code-btn cancel-btn" @click="handleUserCodeModalCancel">
+					<text class="user-code-btn-text">自己填写</text>
+				</view>
+				<view class="user-code-btn confirm-btn" @click="handleUserCodeModalConfirm">
+					<text class="user-code-btn-text">我知道了</text>
 				</view>
 			</view>
 		</view>
@@ -192,7 +204,8 @@ export default {
 				}
 			],
 			isAutoLogging: false, // 是否正在自动登录
-			showProfileModal: false // 是否显示资料完善提示弹窗
+			showUserCodeModal: false, // 是否显示用户编号提示弹窗
+			currentUserCode: '' // 当前用户编号
 		};
 	},
 	onLoad() {
@@ -227,12 +240,12 @@ export default {
 	onShow() {
 		this.updateUserInfo();
 		// 如果弹窗正在显示，检查用户是否已经完善了资料
-		if (this.showProfileModal) {
+		if (this.showUserCodeModal) {
 			const userInfo = uni.getStorageSync('miniUserInfo');
 			const profileCompleted = userInfo && (userInfo.profile_completed || userInfo.profileCompleted);
 			if (profileCompleted) {
 				// 如果已经完善了资料，关闭弹窗
-				this.showProfileModal = false;
+				this.showUserCodeModal = false;
 			}
 		}
 	},
@@ -368,12 +381,16 @@ export default {
 				// 重新计算产品价格
 				this.recalculateAllPrices();
 
-				// 检查是否需要完善资料
+				// 保存用户编号
+				const userCode = user.user_code || user.userCode || '';
+				this.currentUserCode = userCode;
+
+				// 检查是否是新用户（未完善资料）
 				const profileCompleted = user.profile_completed || user.profileCompleted || false;
-				if (!profileCompleted) {
-					// 延迟显示弹窗，让登录提示先消失
+				if (!profileCompleted && userCode) {
+					// 延迟显示用户编号提示弹窗，让登录提示先消失
 					setTimeout(() => {
-						this.showProfileModal = true;
+						this.showUserCodeModal = true;
 					}, 300);
 				}
 			} catch (error) {
@@ -384,17 +401,43 @@ export default {
 			}
 		},
 
-		// 处理资料完善弹窗 - 先看看
-		handleProfileModalCancel() {
-			this.showProfileModal = false;
-		},
-
-		// 处理资料完善弹窗 - 去完善
-		handleProfileModalConfirm() {
-			this.showProfileModal = false;
+		// 处理用户编号弹窗 - 自己填写（灰色按钮）
+		handleUserCodeModalCancel() {
+			this.showUserCodeModal = false;
 			// 跳转到资料填写页面
 			uni.navigateTo({
 				url: '/pages/profile/form'
+			});
+		},
+
+		// 处理用户编号弹窗 - 我知道了（绿色按钮）
+		async handleUserCodeModalConfirm() {
+			// 先复制用户编号
+			await this.copyUserCode();
+			this.showUserCodeModal = false;
+		},
+
+		// 复制用户编号
+		copyUserCode() {
+			return new Promise((resolve, reject) => {
+				if (!this.currentUserCode) {
+					uni.showToast({
+						title: '用户编号为空',
+						icon: 'none'
+					});
+					reject(new Error('用户编号为空'));
+					return;
+				}
+
+				uni.setClipboardData({
+					data: this.currentUserCode,
+					success: () => {
+						resolve();
+					},
+					fail: () => {
+						reject(new Error('复制失败'));
+					}
+				});
 			});
 		},
 
@@ -1297,8 +1340,8 @@ export default {
 	font-size: 24rpx;
 }
 
-/* 资料完善提示弹窗样式 */
-.profile-modal-overlay {
+/* 用户编号提示弹窗样式 */
+.user-code-modal-overlay {
 	position: fixed;
 	top: 0;
 	left: 0;
@@ -1309,64 +1352,176 @@ export default {
 	align-items: center;
 	justify-content: center;
 	z-index: 9999;
+	animation: fadeIn 0.3s ease;
 }
 
-.profile-modal-content {
-	width: 600rpx;
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+.user-code-modal-content {
+	width: 640rpx;
 	background-color: #fff;
 	border-radius: 24rpx;
 	overflow: hidden;
+	box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.12);
+	animation: slideUp 0.3s ease;
 }
 
-.profile-modal-header {
-	padding: 40rpx 40rpx 20rpx;
+@keyframes slideUp {
+	from {
+		transform: translateY(50rpx);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0);
+		opacity: 1;
+	}
+}
+
+/* 成功头部 */
+.user-code-success-header {
+	padding: 60rpx 30rpx 0 30rpx;
 	text-align: center;
+	background: linear-gradient(180deg, #E8F8F0 0%, #fff 100%);
 }
 
-.profile-modal-title {
-	font-size: 36rpx;
+.user-code-success-icon-wrapper {
+	width: 140rpx;
+	height: 140rpx;
+	margin: 0 auto 30rpx;
+	background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 6rpx 20rpx rgba(32, 203, 107, 0.4);
+	animation: scaleIn 0.4s ease;
+}
+
+@keyframes scaleIn {
+	from {
+		transform: scale(0);
+		opacity: 0;
+	}
+	to {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+
+.user-code-success-title {
+	font-size: 44rpx;
 	font-weight: 600;
-	color: #333;
+	color: #20CB6B;
+	display: block;
 }
 
-.profile-modal-body {
-	padding: 20rpx 40rpx 40rpx;
+/* 成功主体 */
+.user-code-success-body {
+	padding: 50rpx 40rpx;
+}
+
+.user-code-section {
+	margin-bottom: 40rpx;
+}
+
+.user-code-label {
+	font-size: 28rpx;
+	color: #999;
+	display: block;
+	text-align: center;
+	margin-bottom: 24rpx;
+}
+
+.user-code-display {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 20rpx 40rpx;
+	background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
+	border: 2rpx solid #20CB6B;
+	border-radius: 16rpx;
+	transition: all 0.3s;
+}
+
+.user-code-display:active {
+	background: linear-gradient(135deg, #D8F5E8 0%, #E8F8F0 100%);
+	transform: scale(0.98);
+	box-shadow: 0 4rpx 12rpx rgba(32, 203, 107, 0.2);
+}
+
+.user-code-text {
+	font-size: 64rpx;
+	font-weight: 700;
+	color: #20CB6B;
+	letter-spacing: 4rpx;
+	font-family: 'Courier New', monospace;
+	flex: 1;
+	text-align: center;
+	line-height: 1.4;
+}
+
+.copy-icon {
+	flex-shrink: 0;
+	opacity: 0.7;
+	transition: opacity 0.3s;
+}
+
+.user-code-display:active .copy-icon {
+	opacity: 1;
+}
+
+.tip-section {
+	padding: 20rpx 0;
 	text-align: center;
 }
 
-.profile-modal-text {
-	font-size: 28rpx;
-	color: #666;
+.tip-text {
+	font-size: 24rpx;
+	color: #999;
 	line-height: 1.6;
+	display: block;
 }
 
-.profile-modal-footer {
+/* 成功底部按钮 */
+.user-code-success-footer {
 	display: flex;
 	border-top: 1rpx solid #f0f0f0;
 }
 
-.profile-modal-btn {
+.user-code-btn {
 	flex: 1;
 	height: 100rpx;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	font-size: 32rpx;
+	transition: all 0.2s;
 }
 
-.profile-modal-btn.cancel-btn {
+.user-code-btn:active {
+	opacity: 0.7;
+}
+
+.user-code-btn.cancel-btn {
 	color: #666;
 	background-color: #f5f5f5;
 	border-right: 1rpx solid #f0f0f0;
 }
 
-.profile-modal-btn.confirm-btn {
+.user-code-btn.confirm-btn {
 	color: #fff;
-	background-color: #20CB6B;
+	background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
 	font-weight: 600;
 }
 
-.profile-modal-btn-text {
+.user-code-btn-text {
 	font-size: 32rpx;
 }
 
