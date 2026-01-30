@@ -303,15 +303,29 @@ func GetSalesEmployees() ([]Employee, error) {
 }
 
 // GetCustomersByEmployeeCode 根据员工码获取绑定的客户列表
-func GetCustomersByEmployeeCode(employeeCode string) ([]map[string]interface{}, error) {
+// profileCompleted: nil表示显示全部，true表示只显示已完善，false表示只显示未完善
+func GetCustomersByEmployeeCode(employeeCode string, profileCompleted *bool) ([]map[string]interface{}, error) {
 	query := `
-		SELECT id, user_code, name, phone, created_at
+		SELECT id, user_code, name, phone, created_at, profile_completed
 		FROM mini_app_users
 		WHERE sales_code = ?
-		ORDER BY created_at DESC
 	`
+	
+	args := []interface{}{employeeCode}
+	
+	// 添加资料完善筛选条件
+	if profileCompleted != nil {
+		if *profileCompleted {
+			query += " AND profile_completed = 1"
+		} else {
+			query += " AND profile_completed = 0"
+		}
+	}
+	// 如果 profileCompleted 为 nil，不添加筛选条件，显示全部
+	
+	query += " ORDER BY created_at DESC"
 
-	rows, err := database.DB.Query(query, employeeCode)
+	rows, err := database.DB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -322,17 +336,19 @@ func GetCustomersByEmployeeCode(employeeCode string) ([]map[string]interface{}, 
 		var id int
 		var userCode, name, phone sql.NullString
 		var createdAt time.Time
+		var profileCompleted sql.NullInt64
 
-		if err := rows.Scan(&id, &userCode, &name, &phone, &createdAt); err != nil {
+		if err := rows.Scan(&id, &userCode, &name, &phone, &createdAt, &profileCompleted); err != nil {
 			return nil, err
 		}
 
 		customer := map[string]interface{}{
-			"id":         id,
-			"user_code":  getStringValue(userCode),
-			"name":       getStringValue(name),
-			"phone":      getStringValue(phone),
-			"created_at": createdAt,
+			"id":                id,
+			"user_code":         getStringValue(userCode),
+			"name":              getStringValue(name),
+			"phone":             getStringValue(phone),
+			"created_at":        createdAt,
+			"profile_completed": profileCompleted.Valid && profileCompleted.Int64 == 1,
 		}
 
 		// 获取用户的默认地址信息

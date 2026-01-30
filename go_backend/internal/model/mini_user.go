@@ -368,7 +368,7 @@ func CreateMiniAppUser(uniqueID string, referrerID *int) (*MiniAppUser, error) {
 }
 
 // GetMiniAppUsers 获取用户列表
-func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int, error) {
+func GetMiniAppUsers(pageNum, pageSize int, keyword string, profileCompleted *bool) ([]MiniAppUser, int, error) {
 	if pageNum < 1 {
 		pageNum = 1
 	}
@@ -378,12 +378,14 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 	offset := (pageNum - 1) * pageSize
 
 	args := make([]interface{}, 0)
-	where := ""
+	conditions := make([]string, 0)
+	
+	// 关键词搜索条件
 	if keyword != "" {
 		like := "%" + keyword + "%"
 		// 支持搜索：用户ID（数字匹配）、唯一ID、用户编号、姓名、电话、地址
 		// 使用 EXISTS 子查询来搜索地址信息
-		where = `WHERE (
+		keywordCondition := `(
 			id = ? OR 
 			unique_id LIKE ? OR 
 			user_code LIKE ? OR 
@@ -395,6 +397,7 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 				AND (name LIKE ? OR contact LIKE ? OR phone LIKE ? OR address LIKE ?)
 			)
 		)`
+		conditions = append(conditions, keywordCondition)
 		// 尝试将关键词转换为数字（用于ID搜索）
 		var idValue int
 		if _, idErr := fmt.Sscanf(keyword, "%d", &idValue); idErr == nil {
@@ -404,6 +407,21 @@ func GetMiniAppUsers(pageNum, pageSize int, keyword string) ([]MiniAppUser, int,
 		}
 		// 添加9个LIKE参数：unique_id, user_code, name, phone, address.name, address.contact, address.phone, address.address
 		args = append(args, like, like, like, like, like, like, like, like)
+	}
+	
+	// 资料完善筛选条件
+	if profileCompleted != nil {
+		if *profileCompleted {
+			conditions = append(conditions, "profile_completed = 1")
+		} else {
+			conditions = append(conditions, "profile_completed = 0")
+		}
+	}
+	
+	// 构建WHERE子句
+	where := ""
+	if len(conditions) > 0 {
+		where = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
 	countQuery := "SELECT COUNT(*) FROM mini_app_users " + where

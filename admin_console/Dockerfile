@@ -22,7 +22,7 @@ COPY dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # 暴露端口
-EXPOSE 5173
+EXPOSE 10080
 
 # 启动 Nginx
 CMD ["/bin/sh", "-c", "nginx -g 'daemon off;'"]

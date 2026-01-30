@@ -155,8 +155,20 @@ func GetMiniAppUsers(c *gin.Context) {
 	pageNum := parseQueryInt(c, "pageNum", 1)
 	pageSize := parseQueryInt(c, "pageSize", 10)
 	keyword := c.Query("keyword")
+	
+	// 获取资料完善筛选参数
+	var profileCompleted *bool
+	if profileCompletedStr := c.Query("profileCompleted"); profileCompletedStr != "" {
+		if profileCompletedStr == "true" {
+			val := true
+			profileCompleted = &val
+		} else if profileCompletedStr == "false" {
+			val := false
+			profileCompleted = &val
+		}
+	}
 
-	users, total, err := model.GetMiniAppUsers(pageNum, pageSize, keyword)
+	users, total, err := model.GetMiniAppUsers(pageNum, pageSize, keyword, profileCompleted)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取用户列表失败: " + err.Error()})
 		return
