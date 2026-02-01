@@ -160,6 +160,14 @@ export default {
     
     this.loadOrders()
   },
+  onShow() {
+    // 页面显示时刷新订单列表（从订单详情页返回时会触发）
+    // 重置分页，重新加载第一页数据
+    this.pageNum = 1
+    this.orders = []
+    this.hasMore = true
+    this.loadOrders()
+  },
   onReady() {
     // 页面渲染完成后，重新获取窗口信息以确保准确
     const systemInfo = uni.getSystemInfoSync()

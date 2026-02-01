@@ -785,7 +785,10 @@ export default {
             duration: 2000
           })
           
-          // 延迟返回，让用户看到成功提示
+          // 刷新订单详情，更新订单状态
+          await this.loadOrderDetail()
+          
+          // 延迟返回，让用户看到成功提示和更新后的状态
           setTimeout(() => {
             uni.navigateBack()
           }, 1500)

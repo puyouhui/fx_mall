@@ -29,6 +29,7 @@ class _CustomerListPageState extends State<CustomerListPage> {
   int _pageNum = 1;
   final int _pageSize = 20;
   String _keyword = '';
+  bool _showAllCustomers = false; // 是否显示全部客户（默认false，只显示已完善的）
   Timer? _searchDebounceTimer;
 
   @override
@@ -80,6 +81,9 @@ class _CustomerListPageState extends State<CustomerListPage> {
         'pageNum': _pageNum.toString(),
         'pageSize': _pageSize.toString(),
         if (_keyword.isNotEmpty) 'keyword': _keyword,
+        // 添加资料完善筛选参数
+        if (!_showAllCustomers) 'profileCompleted': 'true', // 只显示已完善的
+        // 如果 _showAllCustomers 为 true，不传这个参数，后端会返回全部
       },
       parser: (data) => data as Map<String, dynamic>,
     );
@@ -154,6 +158,14 @@ class _CustomerListPageState extends State<CustomerListPage> {
     _loadCustomers(reset: true);
   }
 
+  // 切换显示全部/只显示已完善
+  void _toggleShowAll() {
+    setState(() {
+      _showAllCustomers = !_showAllCustomers;
+    });
+    _loadCustomers(reset: true);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -168,6 +180,23 @@ class _CustomerListPageState extends State<CustomerListPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
+        // 右上角切换按钮
+        actions: [
+          TextButton(
+            onPressed: _toggleShowAll,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
+            child: Text(
+              _showAllCustomers ? '已完善' : '显示全部',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
       body: Container(
         decoration: const BoxDecoration(

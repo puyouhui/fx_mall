@@ -33,6 +33,23 @@ func GetSalesCustomers(c *gin.Context) {
 	pageNum := parseQueryInt(c, "pageNum", 1)
 	pageSize := parseQueryInt(c, "pageSize", 10)
 	keyword := c.Query("keyword")
+	
+	// 获取资料完善筛选参数
+	// 如果传了 profileCompleted=true，只显示已完善的
+	// 如果传了 profileCompleted=false，只显示未完善的
+	// 如果不传这个参数，显示全部（nil）
+	var profileCompleted *bool
+	if profileCompletedStr := c.Query("profileCompleted"); profileCompletedStr != "" {
+		if profileCompletedStr == "true" {
+			val := true
+			profileCompleted = &val
+		} else if profileCompletedStr == "false" {
+			val := false
+			profileCompleted = &val
+		}
+		// 如果参数为空字符串或其他值，profileCompleted 保持为 nil，表示显示全部
+	}
+	// 如果不传参数，profileCompleted 为 nil，表示显示全部
 
 	if pageNum < 1 {
 		pageNum = 1
@@ -41,8 +58,8 @@ func GetSalesCustomers(c *gin.Context) {
 		pageSize = 10
 	}
 
-	// 获取客户列表
-	customers, err := model.GetCustomersByEmployeeCode(employee.EmployeeCode)
+	// 获取客户列表（传入筛选参数）
+	customers, err := model.GetCustomersByEmployeeCode(employee.EmployeeCode, profileCompleted)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取客户列表失败: " + err.Error()})
 		return

@@ -7,6 +7,17 @@
           <span class="sub">查看登录用户唯一ID与基础信息</span>
         </div>
         <div class="actions">
+          <el-select
+            v-model="profileCompletedFilter"
+            placeholder="资料完善"
+            clearable
+            style="width: 180px"
+            @change="handleFilterChange"
+          >
+            <el-option label="已完善" value="true" />
+            <el-option label="未完善" value="false" />
+            <el-option label="全部" value="" />
+          </el-select>
           <el-input
             v-model="searchKeyword"
             placeholder="搜索唯一ID / 姓名 / 电话"
@@ -60,7 +71,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="profile_completed" label="资料完善" min-width="110">
+        <el-table-column prop="profile_completed" label="资料完善" min-width="180">
           <template #default="scope">
             <el-tag :type="scope.row.profile_completed ? 'success' : 'info'">
               {{ scope.row.profile_completed ? '已完善' : '未完善' }}
@@ -786,6 +797,7 @@ import { getCoupons, issueCouponToUser } from '../api/coupons'
 const loading = ref(false)
 const users = ref([])
 const searchKeyword = ref('')
+const profileCompletedFilter = ref('true') // 默认选中已完善
 const pagination = reactive({
   pageNum: 1,
   pageSize: 10,
@@ -950,11 +962,16 @@ const addressEditFormRules = {
 const loadUsers = async () => {
   loading.value = true
   try {
-    const res = await getMiniUsers({
+    const params = {
       pageNum: pagination.pageNum,
       pageSize: pagination.pageSize,
       keyword: searchKeyword.value
-    })
+    }
+    // 添加资料完善筛选参数
+    if (profileCompletedFilter.value !== '') {
+      params.profileCompleted = profileCompletedFilter.value // 传递字符串 'true' 或 'false'
+    }
+    const res = await getMiniUsers(params)
     if (res.code === 200) {
       users.value = Array.isArray(res.data) ? res.data : []
       pagination.total = res.total || users.value.length
@@ -968,6 +985,11 @@ const loadUsers = async () => {
 }
 
 const handleSearch = () => {
+  pagination.pageNum = 1
+  loadUsers()
+}
+
+const handleFilterChange = () => {
   pagination.pageNum = 1
   loadUsers()
 }

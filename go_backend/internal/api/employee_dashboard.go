@@ -34,7 +34,7 @@ func GetEmployeeDashboard(c *gin.Context) {
 
 		// 预览前几个客户（最多3个）
 		customersPreview := make([]map[string]interface{}, 0)
-		if customers, err := model.GetCustomersByEmployeeCode(employee.EmployeeCode); err == nil {
+		if customers, err := model.GetCustomersByEmployeeCode(employee.EmployeeCode, nil); err == nil {
 			for i, cst := range customers {
 				if i >= 3 {
 					break

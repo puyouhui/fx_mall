@@ -7,7 +7,8 @@
 				<view class="header-buttons-left">
 					<view class="header-fg"></view>
 					<view class="header-btn-left" @click="goBack">
-						<uni-icons type="left" size="20" color="#2E2E2E"></uni-icons>
+						<uni-icons v-if="!isFirstPage" type="left" size="20" color="#2E2E2E"></uni-icons>
+						<uni-icons v-else type="home" size="20" color="#2E2E2E"></uni-icons>
 					</view>
 					<view class="header-btn-left" @click="searchProduct">
 						<uni-icons type="search" size="20" color="#2E2E2E"></uni-icons>
@@ -212,9 +213,44 @@
 				</view>
 				<view class="right-actions">
 					<view class="add-to-cart-btn" @click="goToCart">
-						<image src="/static/icon/cart_icon.png" mode="aspectFit" class="cart-icon"></image>
-						去下单
+						<view class="cart-icon-wrapper">
+							<image src="/static/icon/cart_icon.png" mode="aspectFit" class="cart-icon"></image>
+						</view>
+						<text class="cart-btn-text">去下单</text>
+						<!-- <view class="cart-badge" v-if="cartCount > 0">{{ cartCount > 99 ? '99+' : cartCount }}</view> -->
 					</view>
+				</view>
+			</view>
+		</view>
+	</view>
+
+	<!-- 用户编号提示弹窗 -->
+	<view class="user-code-modal-overlay" v-if="showUserCodeModal" @click.stop>
+		<view class="user-code-modal-content" @click.stop>
+			<view class="user-code-success-header">
+				<view class="user-code-success-icon-wrapper">
+					<uni-icons type="checkmarkempty" size="60" color="rgba(255, 255, 255, 0.8)"></uni-icons>
+				</view>
+				<text class="user-code-success-title">登录成功</text>
+			</view>
+			<view class="user-code-success-body">
+				<view class="user-code-section">
+					<text class="user-code-label">您的用户编号</text>
+					<view class="user-code-display" @click="copyUserCode">
+						<text class="user-code-text">{{ currentUserCode || '暂无' }}</text>
+						<uni-icons type="copy" size="20" color="#20CB6B" class="copy-icon"></uni-icons>
+					</view>
+				</view>
+				<view class="tip-section">
+					<text class="tip-text">请把你的编号告诉业务员，便于帮助您完善信息</text>
+				</view>
+			</view>
+			<view class="user-code-success-footer">
+				<view class="user-code-btn cancel-btn" @click="handleUserCodeModalCancel">
+					<text class="user-code-btn-text">自己填写</text>
+				</view>
+				<view class="user-code-btn confirm-btn" @click="handleUserCodeModalConfirm">
+					<text class="user-code-btn-text">我知道了</text>
 				</view>
 			</view>
 		</view>
@@ -223,7 +259,7 @@
 
 <script>
 import { getProductDetail } from '../../api/products';
-import { getMiniUserInfo, addFavorite, deleteFavorite, deleteFavoriteByProductId, checkFavorite } from '../../api/index';
+import { getMiniUserInfo, addFavorite, deleteFavorite, deleteFavoriteByProductId, checkFavorite, miniLogin } from '../../api/index';
 import { fetchPurchaseList, addItemToPurchaseList, updatePurchaseListQuantity, deletePurchaseListItemById } from '../../utils/purchaseList';
 import { getShareConfig, buildSharePath } from '../../utils/shareConfig.js';
 export default {
@@ -259,7 +295,11 @@ export default {
 			hasScrolled: false, // 是否已经滚动
 			userType: null, // 用户类型：'retail' | 'wholesale' | null（未登录）
 			purchaseList: [],
-			token: ''
+			token: '',
+			isFirstPage: false, // 是否是第一个页面（通过分享直接打开）
+			isAutoLogging: false, // 是否正在自动登录
+			showUserCodeModal: false, // 是否显示用户编号提示弹窗
+			currentUserCode: '' // 当前用户编号
 		};
 	},
 	onLoad(options) {
@@ -270,13 +310,31 @@ export default {
 		const systemInfo = uni.getSystemInfoSync();
 		this.statusBarHeight = systemInfo.statusBarHeight;
 
+		// 检查页面栈，判断是否是第一个页面
+		const pages = getCurrentPages();
+		this.isFirstPage = pages.length <= 1;
+
 		if (options && options.id) {
 			this.loadProductDetail(options.id);
 		}
+
+		// 检查并自动登录
+		this.checkAndAutoLogin();
 	},
 	// 页面显示时更新用户信息
 	onShow() {
 		this.updateUserInfo();
+		// 刷新采购单，更新角标数量
+		this.refreshPurchaseList(true);
+		// 如果弹窗正在显示，检查用户是否已经完善了资料
+		if (this.showUserCodeModal) {
+			const userInfo = uni.getStorageSync('miniUserInfo');
+			const profileCompleted = userInfo && (userInfo.profile_completed || userInfo.profileCompleted);
+			if (profileCompleted) {
+				// 如果已经完善了资料，关闭弹窗
+				this.showUserCodeModal = false;
+			}
+		}
 	},
 	onPageScroll(e) {
 		// 监听页面滚动
@@ -851,9 +909,19 @@ export default {
 			});
 		},
 
-		// 返回上一页
+		// 返回上一页或跳转首页
 		goBack() {
-			uni.navigateBack();
+			const pages = getCurrentPages();
+			// 如果页面栈只有一页，说明是第一个页面，跳转到首页
+			if (pages.length <= 1) {
+				// 使用 reLaunch 重新启动到首页（关闭所有页面，打开首页）
+				// 注意：reLaunch 跳转到 tabBar 页面时，路径需要和 pages.json 中的 pagePath 一致
+				uni.reLaunch({
+					url: '/pages/index/index'
+				});
+			} else {
+				uni.navigateBack();
+			}
 		},
 
 		// 搜索商品
@@ -863,6 +931,161 @@ export default {
 			});
 		},
 
+		// 检查并自动登录
+		async checkAndAutoLogin() {
+			// 检查是否已登录
+			const token = uni.getStorageSync('miniUserToken');
+			const userInfo = uni.getStorageSync('miniUserInfo');
+			const uniqueId = uni.getStorageSync('miniUserUniqueId');
+
+			// 如果已有完整的登录信息，不需要重新登录
+			if (token && userInfo && uniqueId) {
+				return;
+			}
+
+			// 如果正在登录中，避免重复触发
+			if (this.isAutoLogging) {
+				return;
+			}
+
+			// 延迟一点执行，让页面先加载完成
+			setTimeout(async () => {
+				try {
+					this.isAutoLogging = true;
+					await this.performAutoLogin();
+				} catch (error) {
+					console.error('自动登录失败:', error);
+					// 静默失败，不打扰用户
+				} finally {
+					this.isAutoLogging = false;
+				}
+			}, 500);
+		},
+
+		// 执行自动登录
+		async performAutoLogin() {
+			uni.showLoading({
+				title: '加载中...',
+				mask: true
+			});
+
+			try {
+				// 调用微信登录
+				const loginRes = await new Promise((resolve, reject) => {
+					uni.login({
+						provider: 'weixin',
+						success: resolve,
+						fail: reject
+					});
+				});
+
+				if (!loginRes || !loginRes.code) {
+					throw new Error('未获取到登录凭证');
+				}
+
+				// 获取本地存储的分享者ID
+				const shareReferrerId = uni.getStorageSync('shareReferrerId');
+				let referrerId = null;
+				if (shareReferrerId) {
+					const id = parseInt(shareReferrerId);
+					if (!isNaN(id) && id > 0) {
+						referrerId = id;
+					}
+				}
+
+				// 调用登录API
+				const resp = await miniLogin(loginRes.code, referrerId);
+				const data = resp?.data || {};
+				const user = data.user || {};
+				const token = data.token || '';
+				const uniqueId = user.unique_id || user.uniqueId;
+
+				if (!uniqueId) {
+					throw new Error('未返回用户唯一ID');
+				}
+
+				// 登录成功后，清除分享者ID（只绑定一次）
+				if (referrerId) {
+					uni.removeStorageSync('shareReferrerId');
+				}
+
+				// 保存用户信息
+				if (user) {
+					uni.setStorageSync('miniUserInfo', user);
+					if (uniqueId) {
+						uni.setStorageSync('miniUserUniqueId', uniqueId);
+					}
+				}
+
+				if (token) {
+					uni.setStorageSync('miniUserToken', token);
+				}
+
+				// 更新用户类型
+				this.userType = user.user_type || null;
+
+				// 重新计算产品价格
+				this.calculatePriceRange();
+
+				// 保存用户编号
+				const userCode = user.user_code || user.userCode || '';
+				this.currentUserCode = userCode;
+
+				// 检查是否是新用户（未完善资料）
+				const profileCompleted = user.profile_completed || user.profileCompleted || false;
+				if (!profileCompleted && userCode) {
+					// 延迟显示用户编号提示弹窗，让登录提示先消失
+					setTimeout(() => {
+						this.showUserCodeModal = true;
+					}, 300);
+				}
+			} catch (error) {
+				console.error('自动登录失败:', error);
+				// 静默失败，不显示错误提示，避免打扰用户
+			} finally {
+				uni.hideLoading();
+			}
+		},
+
+		// 处理用户编号弹窗 - 自己填写（灰色按钮）
+		handleUserCodeModalCancel() {
+			this.showUserCodeModal = false;
+			// 跳转到资料填写页面
+			uni.navigateTo({
+				url: '/pages/profile/form'
+			});
+		},
+
+		// 处理用户编号弹窗 - 我知道了（绿色按钮）
+		async handleUserCodeModalConfirm() {
+			// 先复制用户编号
+			await this.copyUserCode();
+			this.showUserCodeModal = false;
+		},
+
+		// 复制用户编号
+		copyUserCode() {
+			return new Promise((resolve, reject) => {
+				if (!this.currentUserCode) {
+					uni.showToast({
+						title: '用户编号为空',
+						icon: 'none'
+					});
+					reject(new Error('用户编号为空'));
+					return;
+				}
+
+				uni.setClipboardData({
+					data: this.currentUserCode,
+					success: () => {
+						resolve();
+					},
+					fail: () => {
+						reject(new Error('复制失败'));
+					}
+				});
+			});
+		},
 
 		// 检查收藏状态
 		async checkFavoriteStatus() {
@@ -1602,12 +1825,43 @@ export default {
 	display: flex;
 	justify-content: center;
 	align-items: center;
+	position: relative;
+}
+
+.cart-icon-wrapper {
+	margin-right: 14rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .cart-icon {
 	width: 36rpx;
 	height: 36rpx;
-	margin-right: 14rpx;
+}
+
+.cart-btn-text {
+	display: inline-block;
+}
+
+.cart-badge {
+	position: absolute;
+	top: 8rpx;
+	right: 20rpx;
+	min-width: 32rpx;
+	height: 32rpx;
+	background-color: #FF4444;
+	color: #fff;
+	border-radius: 16rpx;
+	font-size: 20rpx;
+	font-weight: bold;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 8rpx;
+	box-sizing: border-box;
+	border: 2rpx solid #fff;
+	line-height: 1;
 }
 
 .login-btn {
@@ -1694,5 +1948,190 @@ export default {
 
 .action-text {
 	padding-top: -10rpx;
+}
+
+/* 用户编号提示弹窗样式 */
+.user-code-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 9999;
+	animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+.user-code-modal-content {
+	width: 640rpx;
+	background-color: #fff;
+	border-radius: 24rpx;
+	overflow: hidden;
+	box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.12);
+	animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+	from {
+		transform: translateY(50rpx);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0);
+		opacity: 1;
+	}
+}
+
+/* 成功头部 */
+.user-code-success-header {
+	padding: 60rpx 30rpx 0 30rpx;
+	text-align: center;
+	background: linear-gradient(180deg, #E8F8F0 0%, #fff 100%);
+}
+
+.user-code-success-icon-wrapper {
+	width: 140rpx;
+	height: 140rpx;
+	margin: 0 auto 30rpx;
+	background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 6rpx 20rpx rgba(32, 203, 107, 0.4);
+	animation: scaleIn 0.4s ease;
+}
+
+@keyframes scaleIn {
+	from {
+		transform: scale(0);
+		opacity: 0;
+	}
+	to {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+
+.user-code-success-title {
+	font-size: 44rpx;
+	font-weight: 600;
+	color: #20CB6B;
+	display: block;
+}
+
+/* 成功主体 */
+.user-code-success-body {
+	padding: 50rpx 40rpx;
+}
+
+.user-code-section {
+	margin-bottom: 40rpx;
+}
+
+.user-code-label {
+	font-size: 28rpx;
+	color: #999;
+	display: block;
+	text-align: center;
+	margin-bottom: 24rpx;
+}
+
+.user-code-display {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 20rpx 40rpx;
+	background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
+	border: 2rpx solid #20CB6B;
+	border-radius: 16rpx;
+	transition: all 0.3s;
+}
+
+.user-code-display:active {
+	background: linear-gradient(135deg, #D8F5E8 0%, #E8F8F0 100%);
+	transform: scale(0.98);
+	box-shadow: 0 4rpx 12rpx rgba(32, 203, 107, 0.2);
+}
+
+.user-code-text {
+	font-size: 64rpx;
+	font-weight: 700;
+	color: #20CB6B;
+	letter-spacing: 4rpx;
+	font-family: 'Courier New', monospace;
+	flex: 1;
+	text-align: center;
+	line-height: 1.4;
+}
+
+.copy-icon {
+	flex-shrink: 0;
+	opacity: 0.7;
+	transition: opacity 0.3s;
+}
+
+.user-code-display:active .copy-icon {
+	opacity: 1;
+}
+
+.tip-section {
+	padding: 20rpx 0;
+	text-align: center;
+}
+
+.tip-text {
+	font-size: 24rpx;
+	color: #999;
+	line-height: 1.6;
+	display: block;
+}
+
+/* 成功底部按钮 */
+.user-code-success-footer {
+	display: flex;
+	border-top: 1rpx solid #f0f0f0;
+}
+
+.user-code-btn {
+	flex: 1;
+	height: 100rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 32rpx;
+	transition: all 0.2s;
+}
+
+.user-code-btn:active {
+	opacity: 0.7;
+}
+
+.user-code-btn.cancel-btn {
+	color: #666;
+	background-color: #f5f5f5;
+	border-right: 1rpx solid #f0f0f0;
+}
+
+.user-code-btn.confirm-btn {
+	color: #fff;
+	background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+	font-weight: 600;
+}
+
+.user-code-btn-text {
+	font-size: 32rpx;
 }
 </style>

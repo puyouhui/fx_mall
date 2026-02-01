@@ -185,7 +185,8 @@ export default {
 			scrollTop: 0, // 商品列表滚动位置
 			scrollTopKey: 0, // 用于强制重置滚动位置
 			isAutoSwitching: false, // 是否正在自动切换分类
-			lastScrollTime: 0, // 上次滚动时间，用于防抖
+			lastScrollTime: 0, // 上次触底时间，用于间隔计算
+			scrollToLowerCount: 0, // 一定时间内触底次数（用于“二次触底再切换”）
 
 			// 布局相关
 			categoriesContainerHeight: 100, // 分类容器固定高度
@@ -757,11 +758,9 @@ export default {
 
 		// 滚动到底部时触发
 		onScrollToLower() {
-			// 防抖处理：800ms 内只触发一次，避免频繁切换
+			// 计算距上次触底的时间间隔
 			const now = Date.now();
-			if (now - this.lastScrollTime < 800) {
-				return;
-			}
+			const interval = now - this.lastScrollTime;
 			this.lastScrollTime = now;
 
 			// 如果正在自动切换，忽略此次触发
@@ -778,6 +777,28 @@ export default {
 			if (!this.currentProducts || this.currentProducts.length === 0) {
 				return;
 			}
+
+			// 1 秒内连续两次触底才执行自动切换：
+			// 第一次触底只给出提示，第二次触底才真正切换分类
+			if (interval < 1000) {
+				this.scrollToLowerCount += 1;
+			} else {
+				// 超过 1 秒重新计数
+				this.scrollToLowerCount = 1;
+			}
+
+			// 第一次触底：仅提示，不切换
+			if (this.scrollToLowerCount === 1) {
+				return;
+			}
+
+			// 第二次及以上连续触底：执行自动切换
+			if (this.scrollToLowerCount < 2) {
+				return;
+			}
+
+			// 重置计数，避免后续误触
+			this.scrollToLowerCount = 0;
 
 			// 找到当前分类在列表中的索引
 			const currentIndex = this.secondaryCategories.findIndex(cat => {

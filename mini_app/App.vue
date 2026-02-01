@@ -14,6 +14,11 @@
 					console.log('保存分享者ID:', referrerId)
 				}
 			}
+			
+			// 检查小程序版本更新（仅微信小程序）
+			// #ifdef MP-WEIXIN
+			this.checkForUpdate()
+			// #endif
 		},
 		onShow: function(options) {
 			console.log('App Show', options)
@@ -29,6 +34,52 @@
 		},
 		onHide: function() {
 			console.log('App Hide')
+		},
+		methods: {
+			// 检查小程序版本更新（仅微信小程序）
+			checkForUpdate() {
+				// #ifdef MP-WEIXIN
+				if (typeof wx !== 'undefined' && wx.getUpdateManager) {
+					const updateManager = wx.getUpdateManager()
+					
+					// 检查是否有新版本
+					updateManager.onCheckForUpdate(function (res) {
+						// 请求完新版本信息的回调
+						console.log('检查更新结果:', res.hasUpdate)
+						if (res.hasUpdate) {
+							console.log('发现新版本，开始下载...')
+						}
+					})
+					
+					// 新版本下载完成
+					updateManager.onUpdateReady(function () {
+						wx.showModal({
+							title: '更新提示',
+							content: '新版本已经准备好，是否重启应用？',
+							showCancel: true,
+							cancelText: '稍后',
+							confirmText: '立即重启',
+							success(res) {
+								if (res.confirm) {
+									// 新的版本已经下载好，调用 applyUpdate 应用新版本并重启
+									updateManager.applyUpdate()
+								}
+							}
+						})
+					})
+					
+					// 新版本下载失败
+					updateManager.onUpdateFailed(function () {
+						console.error('新版本下载失败')
+						wx.showToast({
+							title: '更新失败，请稍后重试',
+							icon: 'none',
+							duration: 2000
+						})
+					})
+				}
+				// #endif
+			}
 		}
 	}
 </script>

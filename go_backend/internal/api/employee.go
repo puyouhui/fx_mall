@@ -40,7 +40,7 @@ func GetEmployees(c *gin.Context) {
 		// 如果是销售员，获取绑定的客户信息
 		if emp.IsSales {
 			customerCount, _ := model.CountCustomersByEmployeeCode(emp.EmployeeCode)
-			customers, _ := model.GetCustomersByEmployeeCode(emp.EmployeeCode)
+			customers, _ := model.GetCustomersByEmployeeCode(emp.EmployeeCode, nil)
 			empData["customer_count"] = customerCount
 			empData["customers"] = customers
 		} else {
