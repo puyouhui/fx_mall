@@ -481,6 +481,107 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
+
+        <!-- 微信支付配置 Tab -->
+        <el-tab-pane label="微信支付" name="wechat-pay">
+          <el-form
+            ref="wechatPayFormRef"
+            :model="wechatPayForm"
+            label-width="180px"
+            class="wechat-pay-form"
+          >
+            <el-alert
+              title="微信支付配置说明"
+              type="info"
+              :closable="false"
+              style="margin-bottom: 20px"
+            >
+              <template #default>
+                <div style="line-height: 1.8;">
+                  <p>• 需在 <a href="https://pay.weixin.qq.com/" target="_blank">微信支付商户平台</a> 申请并获取商户号、APIv3 密钥、商户证书</p>
+                  <p>• 商户证书私钥：apiclient_key.pem 文件的完整内容（包含 -----BEGIN/END----- 行）</p>
+                  <p>• 证书序列号：在商户平台【API安全】-【API证书】中查看</p>
+                  <p>• 回调地址需为公网可访问的 HTTPS 地址，格式如：https://您的域名/api/mini/wechat-pay/notify</p>
+                  <p>• 需在商户平台【产品中心】-【开发配置】中配置支付授权目录和回调地址</p>
+                </div>
+              </template>
+            </el-alert>
+
+            <el-form-item label="商户号">
+              <el-input
+                v-model="wechatPayForm.mch_id"
+                placeholder="微信支付商户号"
+                style="width: 400px"
+                clearable
+              />
+            </el-form-item>
+
+            <el-form-item label="小程序 AppID">
+              <el-input
+                v-model="wechatPayForm.app_id"
+                placeholder="与商户号绑定的小程序 AppID"
+                style="width: 400px"
+                clearable
+              />
+            </el-form-item>
+
+            <el-form-item label="APIv3 密钥">
+              <el-input
+                v-model="wechatPayForm.api_v3_key"
+                type="password"
+                placeholder="32位 APIv3 密钥"
+                style="width: 400px"
+                show-password
+                clearable
+              />
+              <div style="margin-top: 8px; color: #909399; font-size: 12px;">
+                商户平台【API安全】-【APIv3密钥】中设置
+              </div>
+            </el-form-item>
+
+            <el-form-item label="商户证书序列号">
+              <el-input
+                v-model="wechatPayForm.serial_no"
+                placeholder="API 证书序列号"
+                style="width: 400px"
+                clearable
+              />
+            </el-form-item>
+
+            <el-form-item label="商户私钥（PEM）">
+              <el-input
+                v-model="wechatPayForm.private_key"
+                type="textarea"
+                placeholder="apiclient_key.pem 文件完整内容，包含 -----BEGIN PRIVATE KEY----- 等行"
+                :rows="8"
+                style="width: 500px"
+              />
+            </el-form-item>
+
+            <el-form-item label="支付回调地址">
+              <el-input
+                v-model="wechatPayForm.notify_url"
+                placeholder="https://您的域名/api/mini/wechat-pay/notify"
+                style="width: 500px"
+                clearable
+              />
+              <div style="margin-top: 8px; color: #909399; font-size: 12px;">
+                需公网 HTTPS，微信支付成功后会调用此地址
+              </div>
+            </el-form-item>
+
+            <el-form-item>
+              <el-button
+                type="primary"
+                :loading="wechatPayLoading"
+                @click="handleSaveWechatPaySettings"
+              >
+                保存配置
+              </el-button>
+              <el-button @click="handleResetWechatPayForm">重置</el-button>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
   </div>
@@ -500,11 +601,13 @@ const mapFormRef = ref(null)
 const orderFormRef = ref(null)
 const deliveryFeeFormRef = ref(null)
 const printerFormRef = ref(null)
+const wechatPayFormRef = ref(null)
 const passwordLoading = ref(false)
 const mapLoading = ref(false)
 const orderLoading = ref(false)
 const deliveryFeeLoading = ref(false)
 const printerLoading = ref(false)
+const wechatPayLoading = ref(false)
 
 const passwordForm = reactive({
   old_password: '',
@@ -519,6 +622,15 @@ const mapForm = reactive({
 
 const printerForm = reactive({
   address: ''
+})
+
+const wechatPayForm = reactive({
+  mch_id: '',
+  app_id: '',
+  api_v3_key: '',
+  serial_no: '',
+  private_key: '',
+  notify_url: ''
 })
 
 const orderForm = reactive({
@@ -855,12 +967,62 @@ const handleResetPrinterForm = () => {
   ElMessage.success('已重置为默认地址')
 }
 
-// 页面加载时获取地图设置、订单设置、配送费计算设置和打印机设置
+// 加载微信支付设置
+const loadWechatPaySettings = async () => {
+  try {
+    const response = await getSystemSettings()
+    if (response.code === 200 && response.data) {
+      const data = response.data
+      wechatPayForm.mch_id = data.wechat_pay_mch_id || ''
+      wechatPayForm.app_id = data.wechat_pay_app_id || ''
+      wechatPayForm.api_v3_key = data.wechat_pay_api_v3_key || ''
+      wechatPayForm.serial_no = data.wechat_pay_serial_no || ''
+      wechatPayForm.private_key = data.wechat_pay_private_key || ''
+      wechatPayForm.notify_url = data.wechat_pay_notify_url || ''
+    }
+  } catch (error) {
+    console.error('加载微信支付设置失败:', error)
+  }
+}
+
+// 保存微信支付设置
+const handleSaveWechatPaySettings = async () => {
+  try {
+    wechatPayLoading.value = true
+    const settings = {
+      wechat_pay_mch_id: (wechatPayForm.mch_id || '').trim(),
+      wechat_pay_app_id: (wechatPayForm.app_id || '').trim(),
+      wechat_pay_api_v3_key: (wechatPayForm.api_v3_key || '').trim(),
+      wechat_pay_serial_no: (wechatPayForm.serial_no || '').trim(),
+      wechat_pay_private_key: (wechatPayForm.private_key || '').trim(),
+      wechat_pay_notify_url: (wechatPayForm.notify_url || '').trim()
+    }
+    const response = await updateSystemSettings(settings)
+    if (response && response.code === 200) {
+      ElMessage.success('微信支付配置保存成功')
+    } else {
+      ElMessage.error(response?.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('保存微信支付设置失败:', error)
+    ElMessage.error('保存失败，请稍后再试')
+  } finally {
+    wechatPayLoading.value = false
+  }
+}
+
+// 重置微信支付表单
+const handleResetWechatPayForm = () => {
+  loadWechatPaySettings()
+}
+
+// 页面加载时获取地图设置、订单设置、配送费计算设置、打印机设置和微信支付设置
 onMounted(() => {
   loadMapSettings()
   loadOrderSettings()
   loadDeliveryFeeSettings()
   loadPrinterSettings()
+  loadWechatPaySettings()
 })
 </script>
 

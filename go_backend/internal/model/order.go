@@ -42,6 +42,8 @@ type Order struct {
 	IsLocked             bool       `json:"is_locked"`                        // 是否被锁定（修改中）
 	LockedBy             *string    `json:"locked_by,omitempty"`              // 锁定者员工码
 	LockedAt             *time.Time `json:"locked_at,omitempty"`              // 锁定时间
+	PaymentMethod        string     `json:"payment_method"`                   // 支付方式: online-在线支付, cod-货到付款（老数据默认cod）
+	PaidAt               *time.Time `json:"paid_at,omitempty"`                // 支付完成时间（老数据为NULL）
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 }
@@ -84,6 +86,7 @@ type OrderCreationOptions struct {
 	PriceModifications  map[int]PriceModificationInfo // 改价映射（采购单项ID -> 改价信息）
 	DeliveryFeeCouponID int                           // 免配送费券的用户优惠券ID（在事务内处理）
 	AmountCouponID      int                           // 金额券的用户优惠券ID（在事务内处理）
+	PaymentMethod       string                        // 支付方式: online-在线支付, cod-货到付款（默认cod兼容老流程）
 }
 
 // GenerateOrderNumber 生成订单编号
@@ -118,6 +121,10 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	outOfStockStrategy := opts.OutOfStockStrategy
 	if outOfStockStrategy == "" {
 		outOfStockStrategy = "contact_me"
+	}
+	paymentMethod := opts.PaymentMethod
+	if paymentMethod == "" || (paymentMethod != "online" && paymentMethod != "cod") {
+		paymentMethod = "cod" // 默认为货到付款，兼容老数据
 	}
 	trustReceipt := opts.TrustReceipt
 	hidePrice := opts.HidePrice
@@ -168,12 +175,13 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 		INSERT INTO orders (
 			order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount, coupon_discount, is_urgent, urgent_fee, total_amount,
 			remark, out_of_stock_strategy, trust_receipt, hide_price, require_phone_contact, expected_delivery_at,
-			created_at, updated_at
-		) VALUES (NULL, ?, ?, 'pending_delivery', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
+			payment_method, created_at, updated_at
+		) VALUES (NULL, ?, ?, 'pending_delivery', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NOW(), NOW())
 	`,
 		userID, addressID,
 		goodsAmount, deliveryFee, pointsDiscount, couponDiscount, boolToTinyInt(isUrgent), urgentFee, totalAmount,
 		opts.Remark, outOfStockStrategy, boolToTinyInt(trustReceipt), boolToTinyInt(hidePrice), boolToTinyInt(requirePhoneContact),
+		paymentMethod,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -376,17 +384,21 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	var order Order
 	var expectedDelivery sql.NullTime
 	var weatherInfo sql.NullString
+	var paidAt sql.NullTime
+	var paymentMethodVal string
 	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
 	err = database.DB.QueryRow(`
 		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
-		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, created_at, updated_at
+		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated,
+		       payment_method, paid_at, created_at, updated_at
 		FROM orders WHERE id = ?
 	`, orderID).Scan(
 		&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
 		&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
 		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
-		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &order.CreatedAt, &order.UpdatedAt,
+		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt,
+		&paymentMethodVal, &paidAt, &order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -396,11 +408,16 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	order.HidePrice = hidePriceTinyInt == 1
 	order.RequirePhoneContact = requirePhoneContactTinyInt == 1
 	order.IsIsolated = isIsolatedTinyInt == 1
+	order.PaymentMethod = paymentMethodVal
+	if paymentMethodVal == "" {
+		order.PaymentMethod = "cod" // 老数据兼容
+	}
 	if weatherInfo.Valid {
 		order.WeatherInfo = &weatherInfo.String
 	}
-	if err != nil {
-		return nil, nil, err
+	if paidAt.Valid {
+		t := paidAt.Time
+		order.PaidAt = &t
 	}
 	if expectedDelivery.Valid {
 		t := expectedDelivery.Time
@@ -515,7 +532,8 @@ func GetOrdersWithPaginationAdvanced(pageNum, pageSize int, keyword string, stat
 	query := `
 		SELECT id, order_number, user_id, address_id, status, delivery_employee_code, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
-		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, created_at, updated_at
+		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated,
+		       payment_method, paid_at, created_at, updated_at
 		FROM orders WHERE ` + where + ` ORDER BY id DESC LIMIT ? OFFSET ?`
 	args = append(args, pageSize, offset)
 
@@ -530,13 +548,16 @@ func GetOrdersWithPaginationAdvanced(pageNum, pageSize int, keyword string, stat
 		var expectedDelivery sql.NullTime
 		var weatherInfo sql.NullString
 		var deliveryEmployeeCode sql.NullString
+		var paidAt sql.NullTime
+		var paymentMethodVal string
 		var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
 
 		err := rows.Scan(
 			&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &deliveryEmployeeCode, &order.GoodsAmount, &order.DeliveryFee,
 			&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
 			&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
-			&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &order.CreatedAt, &order.UpdatedAt,
+			&expectedDelivery, &weatherInfo, &isIsolatedTinyInt,
+			&paymentMethodVal, &paidAt, &order.CreatedAt, &order.UpdatedAt,
 		)
 		if deliveryEmployeeCode.Valid {
 			code := deliveryEmployeeCode.String
@@ -544,6 +565,14 @@ func GetOrdersWithPaginationAdvanced(pageNum, pageSize int, keyword string, stat
 		}
 		if err != nil {
 			return nil, 0, err
+		}
+		order.PaymentMethod = paymentMethodVal
+		if order.PaymentMethod == "" {
+			order.PaymentMethod = "cod"
+		}
+		if paidAt.Valid {
+			t := paidAt.Time
+			order.PaidAt = &t
 		}
 		order.IsUrgent = isUrgentTinyInt == 1
 		order.TrustReceipt = trustReceiptTinyInt == 1
@@ -569,12 +598,15 @@ func GetOrderByID(id int) (*Order, error) {
 	var order Order
 	var expectedDelivery sql.NullTime
 	var weatherInfo sql.NullString
+	var paidAt sql.NullTime
+	var paymentMethodVal string
 
 	query := `
 		SELECT id, order_number, user_id, address_id, status, delivery_employee_code, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
 		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, 
-		       is_locked, locked_by, locked_at, order_profit, settlement_date, delivery_fee_settled, created_at, updated_at
+		       is_locked, locked_by, locked_at, order_profit, settlement_date, delivery_fee_settled,
+		       payment_method, paid_at, created_at, updated_at
 		FROM orders WHERE id = ?
 	`
 	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt, isLockedTinyInt, deliveryFeeSettledTinyInt int
@@ -586,7 +618,8 @@ func GetOrderByID(id int) (*Order, error) {
 		&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
 		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
 		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &isLockedTinyInt, &lockedBy, &lockedAt,
-		&orderProfit, &settlementDate, &deliveryFeeSettledTinyInt, &order.CreatedAt, &order.UpdatedAt,
+		&orderProfit, &settlementDate, &deliveryFeeSettledTinyInt,
+		&paymentMethodVal, &paidAt, &order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -601,6 +634,14 @@ func GetOrderByID(id int) (*Order, error) {
 	order.IsIsolated = isIsolatedTinyInt == 1
 	order.IsLocked = isLockedTinyInt == 1
 	order.DeliveryFeeSettled = deliveryFeeSettledTinyInt == 1
+	order.PaymentMethod = paymentMethodVal
+	if order.PaymentMethod == "" {
+		order.PaymentMethod = "cod"
+	}
+	if paidAt.Valid {
+		t := paidAt.Time
+		order.PaidAt = &t
+	}
 	if expectedDelivery.Valid {
 		t := expectedDelivery.Time
 		order.ExpectedDeliveryAt = &t
@@ -628,6 +669,130 @@ func GetOrderByID(id int) (*Order, error) {
 	}
 
 	return &order, nil
+}
+
+// GetOrderByOrderNumber 根据订单编号获取订单
+func GetOrderByOrderNumber(orderNumber string) (*Order, error) {
+	if orderNumber == "" {
+		return nil, nil
+	}
+	var order Order
+	var expectedDelivery sql.NullTime
+	var weatherInfo sql.NullString
+	var paidAt sql.NullTime
+	var paymentMethodVal string
+
+	query := `
+		SELECT id, order_number, user_id, address_id, status, delivery_employee_code, goods_amount, delivery_fee, points_discount,
+		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
+		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, 
+		       is_locked, locked_by, locked_at, order_profit, settlement_date, delivery_fee_settled,
+		       payment_method, paid_at, created_at, updated_at
+		FROM orders WHERE order_number = ?
+	`
+	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt, isLockedTinyInt, deliveryFeeSettledTinyInt int
+	var deliveryEmployeeCode, lockedBy sql.NullString
+	var lockedAt, settlementDate sql.NullTime
+	var orderProfit sql.NullFloat64
+	err := database.DB.QueryRow(query, orderNumber).Scan(
+		&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &deliveryEmployeeCode, &order.GoodsAmount, &order.DeliveryFee,
+		&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
+		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
+		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &isLockedTinyInt, &lockedBy, &lockedAt,
+		&orderProfit, &settlementDate, &deliveryFeeSettledTinyInt,
+		&paymentMethodVal, &paidAt, &order.CreatedAt, &order.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	order.IsUrgent = isUrgentTinyInt == 1
+	order.TrustReceipt = trustReceiptTinyInt == 1
+	order.HidePrice = hidePriceTinyInt == 1
+	order.RequirePhoneContact = requirePhoneContactTinyInt == 1
+	order.IsIsolated = isIsolatedTinyInt == 1
+	order.IsLocked = isLockedTinyInt == 1
+	order.DeliveryFeeSettled = deliveryFeeSettledTinyInt == 1
+	order.PaymentMethod = paymentMethodVal
+	if order.PaymentMethod == "" {
+		order.PaymentMethod = "cod"
+	}
+	if paidAt.Valid {
+		t := paidAt.Time
+		order.PaidAt = &t
+	}
+	if expectedDelivery.Valid {
+		t := expectedDelivery.Time
+		order.ExpectedDeliveryAt = &t
+	}
+	if weatherInfo.Valid {
+		order.WeatherInfo = &weatherInfo.String
+	}
+	if deliveryEmployeeCode.Valid {
+		order.DeliveryEmployeeCode = &deliveryEmployeeCode.String
+	}
+	if lockedBy.Valid {
+		order.LockedBy = &lockedBy.String
+	}
+	if lockedAt.Valid {
+		t := lockedAt.Time
+		order.LockedAt = &t
+	}
+	if orderProfit.Valid {
+		profit := orderProfit.Float64
+		order.OrderProfit = &profit
+	}
+	if settlementDate.Valid {
+		t := settlementDate.Time
+		order.SettlementDate = &t
+	}
+
+	return &order, nil
+}
+
+// MarkOrderPaidByWechatPay 微信支付回调成功后标记订单已支付
+// 更新 paid_at，若状态为 delivered/shipped 则设为 paid 并触发结算
+func MarkOrderPaidByWechatPay(orderID int, transactionID string) error {
+	order, err := GetOrderByID(orderID)
+	if err != nil || order == nil {
+		return fmt.Errorf("订单不存在")
+	}
+	if order.PaidAt != nil {
+		return nil // 已支付，幂等
+	}
+
+	now := time.Now()
+	// 更新 paid_at，若已送达则同时更新 status 为 paid
+	_, err = database.DB.Exec(`
+		UPDATE orders
+		SET paid_at = ?, status = CASE WHEN status IN ('delivered', 'shipped') THEN 'paid' ELSE status END, updated_at = NOW()
+		WHERE id = ? AND (paid_at IS NULL)
+	`, now, orderID)
+	if err != nil {
+		return err
+	}
+
+	// 若状态变为 paid，需触发结算（与 order_admin 一致）
+	order, _ = GetOrderByID(orderID)
+	if order != nil && order.Status == "paid" {
+		// 设置 settlement_date
+		_, _ = database.DB.Exec("UPDATE orders SET settlement_date = ? WHERE id = ? AND settlement_date IS NULL", now, orderID)
+		// 异步执行结算逻辑
+		go func(oid int) {
+			time.Sleep(100 * time.Millisecond)
+			ord, _ := GetOrderByID(oid)
+			if ord == nil {
+				return
+			}
+			_ = ProcessOrderSettlement(oid)
+			_ = ProcessReferralReward(oid)
+			_ = AddPointsForOrder(ord.UserID, oid, ord.OrderNumber, ord.TotalAmount)
+		}(orderID)
+	}
+
+	return nil
 }
 
 // GetOrderItemsByOrderID 根据订单ID获取订单明细

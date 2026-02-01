@@ -463,6 +463,20 @@ export const cancelOrder = (token, orderId) => {
 };
 
 /**
+ * 获取微信支付预支付参数（调起支付）
+ * @param {number} orderId - 订单ID
+ * @param {string} token - 用户token
+ * @returns Promise 包含 timeStamp、nonceStr、package、signType、paySign，用于 wx.requestPayment
+ */
+export const getWechatPayPrepay = (orderId, token) => {
+  return post(`/mini-app/users/orders/${orderId}/wechat-pay/prepay`, {}, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
  * 删除地址
  * @param {number} addressId - 地址ID
  * @param {string} token - 用户token

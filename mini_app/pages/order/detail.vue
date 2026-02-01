@@ -269,6 +269,14 @@
           <uni-icons type="phone" size="18" color="#fff"></uni-icons>
           <text>联系配送员</text>
         </view>
+        <view 
+          class="action-btn pay-btn"
+          v-if="showPayBtn"
+          @click="handlePayOrder"
+        >
+          <uni-icons type="wallet" size="18" color="#fff"></uni-icons>
+          <text>{{ paying ? '支付中...' : '去付款' }}</text>
+        </view>
       </view>
     </view>
 
@@ -287,7 +295,7 @@
 </template>
 
 <script>
-import { getOrderDetail, getDeliveryEmployeeLocation, cancelOrder } from '../../api/index.js'
+import { getOrderDetail, getDeliveryEmployeeLocation, cancelOrder, getWechatPayPrepay } from '../../api/index.js'
 import { getShareConfig, buildSharePath } from '../../utils/shareConfig.js'
 
 export default {
@@ -304,7 +312,8 @@ export default {
         longitude: 116.39750
       },
       mapMarkers: [],
-      mapScale: 6 // 地图缩放级别
+      mapScale: 6, // 地图缩放级别
+      paying: false // 支付中
     }
   },
   computed: {
@@ -336,12 +345,20 @@ export default {
       return status === 'delivering' && 
              this.orderDetail?.delivery_employee?.phone
     },
+    // 是否显示去付款按钮（未支付且未取消的订单）
+    showPayBtn() {
+      const order = this.orderDetail?.order
+      if (!order) return false
+      if (order.status === 'cancelled') return false
+      if (order.status === 'paid' || order.paid_at) return false
+      return Number(order.total_amount || 0) > 0
+    },
     // 是否显示底部操作按钮
     showActionFooter() {
-      // 如果有销售员电话，或者可以取消订单，或者有配送员电话（接单后到配送中），则显示底部按钮
       return (this.orderDetail?.sales_employee?.phone) || 
              this.canCancelOrder || 
-             this.showContactDeliveryBtn
+             this.showContactDeliveryBtn ||
+             this.showPayBtn
     }
   },
   onLoad(options) {
@@ -594,6 +611,43 @@ export default {
           })
         }
       })
+    },
+    async handlePayOrder() {
+      if (this.paying || !this.orderId || !this.token) return
+      this.paying = true
+      try {
+        const res = await getWechatPayPrepay(this.orderId, this.token)
+        if (!res || res.code !== 200 || !res.data) {
+          uni.showToast({ title: res?.message || '获取支付参数失败', icon: 'none' })
+          return
+        }
+        const { timeStamp, nonceStr, package: packageVal, signType, paySign } = res.data
+        await new Promise((resolve, reject) => {
+          uni.requestPayment({
+            provider: 'wxpay',
+            timeStamp: String(timeStamp),
+            nonceStr,
+            package: packageVal,
+            signType: signType || 'RSA',
+            paySign,
+            success: () => resolve(),
+            fail: (err) => {
+              if (err.errMsg && err.errMsg.includes('cancel')) {
+                uni.showToast({ title: '已取消支付', icon: 'none' })
+              } else {
+                uni.showToast({ title: err.errMsg || '支付失败', icon: 'none' })
+              }
+              reject(err)
+            }
+          })
+        })
+        uni.showToast({ title: '支付成功', icon: 'success' })
+        this.loadOrderDetail()
+      } catch (e) {
+        console.error('支付失败:', e)
+      } finally {
+        this.paying = false
+      }
     },
     formatStatus(status) {
       const statusMap = {

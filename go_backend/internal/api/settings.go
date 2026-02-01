@@ -183,6 +183,12 @@ func getSettingDescription(key string) string {
 		"delivery_profit_threshold":    "利润分成阈值（元）",
 		"delivery_profit_share_rate":   "利润分成比例（8%）",
 		"delivery_max_profit_share":    "利润分成上限（元）",
+		"wechat_pay_mch_id":            "微信支付商户号",
+		"wechat_pay_app_id":            "微信支付小程序AppID",
+		"wechat_pay_api_v3_key":        "微信支付APIv3密钥",
+		"wechat_pay_serial_no":         "商户API证书序列号",
+		"wechat_pay_private_key":       "商户API证书私钥（PEM格式）",
+		"wechat_pay_notify_url":        "支付结果回调地址",
 	}
 	if desc, ok := descriptions[key]; ok {
 		return desc

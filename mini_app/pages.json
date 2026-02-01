@@ -136,6 +136,14 @@
       }
     },
     {
+      "path": "pages/order/checkout",
+      "style": {
+        "navigationBarTitleText": "收银台",
+        "navigationBarBackgroundColor": "#FFFFFF",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
       "path": "pages/order/list",
       "style": {
         "navigationStyle": "custom"

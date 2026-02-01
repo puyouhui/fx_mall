@@ -30,6 +30,7 @@ type CreateOrderRequest struct {
 	DeliveryCouponID    int     `json:"delivery_coupon_id"`    // 指定免配送费券
 	AmountCouponID      int     `json:"amount_coupon_id"`      // 指定金额券
 	IsUrgent            bool    `json:"is_urgent"`             // 是否加急订单
+	PaymentMethod       string  `json:"payment_method"`         // 支付方式: online-在线支付, cod-货到付款（不传或空默认 cod，兼容老版本）
 }
 
 // CreateOrderFromCart 从当前采购单创建订单
@@ -193,6 +194,12 @@ func CreateOrderFromCart(c *gin.Context) {
 		}
 	}
 
+	// 支付方式：不传或非 online/cod 时默认为货到付款，兼容老版本
+	paymentMethod := strings.TrimSpace(req.PaymentMethod)
+	if paymentMethod != "online" && paymentMethod != "cod" {
+		paymentMethod = "cod"
+	}
+
 	// 使用模型层事务函数创建订单并落库
 	options := model.OrderCreationOptions{
 		Remark:              req.Remark,
@@ -206,6 +213,7 @@ func CreateOrderFromCart(c *gin.Context) {
 		UrgentFee:           urgentFee,
 		DeliveryFeeCouponID: 0,
 		AmountCouponID:      0,
+		PaymentMethod:       paymentMethod,
 	}
 
 	// 设置优惠券ID（在事务内处理）
@@ -328,7 +336,8 @@ func GetUserOrders(c *gin.Context) {
 	query := `
 		SELECT o.id, o.order_number, o.user_id, o.address_id, o.status, o.goods_amount, o.delivery_fee, o.points_discount,
 		       o.coupon_discount, o.is_urgent, o.urgent_fee, o.total_amount, o.remark, o.out_of_stock_strategy, o.trust_receipt,
-		       o.hide_price, o.require_phone_contact, o.expected_delivery_at, o.weather_info, o.is_isolated, o.created_at, o.updated_at,
+		       o.hide_price, o.require_phone_contact, o.expected_delivery_at, o.weather_info, o.is_isolated,
+		       o.payment_method, o.paid_at, o.created_at, o.updated_at,
 		       a.name AS address_name
 		FROM orders o
 		LEFT JOIN mini_app_addresses a ON o.address_id = a.id
@@ -348,13 +357,16 @@ func GetUserOrders(c *gin.Context) {
 		var expectedDelivery sql.NullTime
 		var weatherInfo sql.NullString
 		var addressName sql.NullString
+		var paidAt sql.NullTime
+		var paymentMethodVal string
 		var isUrgentTinyInt, trustReceiptTinyInt, hidePriceTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
 
 		err := rows.Scan(
 			&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
 			&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
 			&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
-			&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &order.CreatedAt, &order.UpdatedAt, &addressName,
+			&expectedDelivery, &weatherInfo, &isIsolatedTinyInt,
+			&paymentMethodVal, &paidAt, &order.CreatedAt, &order.UpdatedAt, &addressName,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "解析订单数据失败: " + err.Error()})
@@ -366,6 +378,14 @@ func GetUserOrders(c *gin.Context) {
 		order.HidePrice = hidePriceTinyInt == 1
 		order.RequirePhoneContact = requirePhoneContactTinyInt == 1
 		order.IsIsolated = isIsolatedTinyInt == 1
+		order.PaymentMethod = paymentMethodVal
+		if order.PaymentMethod == "" {
+			order.PaymentMethod = "cod"
+		}
+		if paidAt.Valid {
+			t := paidAt.Time
+			order.PaidAt = &t
+		}
 		if expectedDelivery.Valid {
 			t := expectedDelivery.Time
 			order.ExpectedDeliveryAt = &t
@@ -398,6 +418,8 @@ func GetUserOrders(c *gin.Context) {
 			"id":              order.ID,
 			"order_number":    order.OrderNumber,
 			"status":          order.Status,
+			"payment_method":  order.PaymentMethod,
+			"paid_at":         order.PaidAt,
 			"goods_amount":    order.GoodsAmount,
 			"delivery_fee":    order.DeliveryFee,
 			"points_discount": order.PointsDiscount,

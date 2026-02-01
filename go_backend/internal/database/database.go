@@ -842,6 +842,8 @@ func InitDB() error {
 		    delivery_fee_calculation JSON DEFAULT NULL COMMENT '配送费计算结果（JSON格式，存储基础配送费、补贴、利润分成等）',
 		    order_profit DECIMAL(10,2) DEFAULT NULL COMMENT '订单总利润（商品金额-商品成本）',
 		    net_profit DECIMAL(10,2) DEFAULT NULL COMMENT '净利润（总利润-配送费成本）',
+		    payment_method VARCHAR(20) NOT NULL DEFAULT 'cod' COMMENT '支付方式: online-在线支付, cod-货到付款',
+		    paid_at DATETIME DEFAULT NULL COMMENT '支付完成时间（微信回调或后台标记）',
 		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 		    KEY idx_user_id (user_id),
@@ -1040,6 +1042,30 @@ func InitDB() error {
 				log.Printf("添加locked_at字段失败: %v", err)
 			} else {
 				log.Println("已添加locked_at字段到orders表")
+			}
+		}
+
+		// 检查 payment_method 字段（支付方式，兼容老数据默认为货到付款）
+		var paymentMethodExists int
+		checkPaymentMethodQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'payment_method'`
+		if err := DB.QueryRow(checkPaymentMethodQuery).Scan(&paymentMethodExists); err == nil && paymentMethodExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN payment_method VARCHAR(20) NOT NULL DEFAULT 'cod' COMMENT '支付方式: online-在线支付, cod-货到付款'`); err != nil {
+				log.Printf("添加payment_method字段失败: %v", err)
+			} else {
+				log.Println("已添加payment_method字段到orders表")
+			}
+		}
+
+		// 检查 paid_at 字段（支付完成时间）
+		var paidAtExists int
+		checkPaidAtQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'paid_at'`
+		if err := DB.QueryRow(checkPaidAtQuery).Scan(&paidAtExists); err == nil && paidAtExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN paid_at DATETIME DEFAULT NULL COMMENT '支付完成时间（微信回调或后台标记）'`); err != nil {
+				log.Printf("添加paid_at字段失败: %v", err)
+			} else {
+				log.Println("已添加paid_at字段到orders表")
 			}
 		}
 
@@ -1280,6 +1306,13 @@ func InitDB() error {
 			{"delivery_profit_threshold", "25.0", "利润分成阈值（元）"},
 			{"delivery_profit_share_rate", "0.08", "利润分成比例（8%）"},
 			{"delivery_max_profit_share", "50.0", "利润分成上限（元）"},
+			// 微信支付配置
+			{"wechat_pay_mch_id", "", "微信支付商户号"},
+			{"wechat_pay_app_id", "", "微信支付小程序AppID（与商户号绑定的小程序）"},
+			{"wechat_pay_api_v3_key", "", "微信支付APIv3密钥（32位）"},
+			{"wechat_pay_serial_no", "", "商户API证书序列号"},
+			{"wechat_pay_private_key", "", "商户API证书私钥（PEM格式，apiclient_key.pem内容）"},
+			{"wechat_pay_notify_url", "", "支付结果回调地址（需公网可访问，如https://域名/api/mini/wechat-pay/notify）"},
 		}
 
 		for _, setting := range initSystemSettings {

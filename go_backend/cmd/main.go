@@ -89,10 +89,11 @@ func main() {
 			miniAppProtectedGroup.GET("/frequent-products", api.GetFrequentProducts)
 
 			// 订单接口
-			miniAppProtectedGroup.POST("/orders", api.CreateOrderFromCart)        // 从当前采购单创建订单
-			miniAppProtectedGroup.GET("/orders", api.GetUserOrders)               // 获取用户订单列表
-			miniAppProtectedGroup.GET("/orders/:id", api.GetUserOrderDetail)      // 获取订单详情
-			miniAppProtectedGroup.POST("/orders/:id/cancel", api.CancelUserOrder) // 取消订单
+			miniAppProtectedGroup.POST("/orders", api.CreateOrderFromCart)              // 从当前采购单创建订单
+			miniAppProtectedGroup.GET("/orders", api.GetUserOrders)                     // 获取用户订单列表
+			miniAppProtectedGroup.POST("/orders/:id/wechat-pay/prepay", api.WeChatPayPrepay) // 微信支付预支付（调起支付）
+			miniAppProtectedGroup.GET("/orders/:id", api.GetUserOrderDetail)            // 获取订单详情
+			miniAppProtectedGroup.POST("/orders/:id/cancel", api.CancelUserOrder)       // 取消订单
 
 			// 配送员位置接口（小程序端查看配送员位置）
 			miniAppProtectedGroup.GET("/delivery-employee-location/:code", api.GetEmployeeLocationByCode) // 根据员工码获取配送员位置
@@ -123,6 +124,9 @@ func main() {
 			// 积分接口
 			miniAppProtectedGroup.GET("/points/logs", api.GetPointsLogs) // 获取用户积分明细列表
 		}
+
+		// 微信支付回调（微信服务器调用，无需鉴权，需公网 HTTPS）
+		apiGroup.POST("/wechat-pay/notify", api.WeChatPayNotify)
 
 		// 供应商合作申请接口（不需要登录也可以提交）
 		apiGroup.POST("/supplier-applications", api.CreateSupplierApplication) // 创建供应商合作申请
