@@ -1400,6 +1400,22 @@ func CancelSalesOrder(c *gin.Context) {
 		return
 	}
 
+	// 若为已支付的微信支付订单（在线支付或货到付款提前通过去付款支付），先发起退款
+	if order.NeedWechatRefundOnCancel() {
+		refundID, refundErr := RequestWechatRefund(order, "")
+		if refundErr != nil {
+			log.Printf("[CancelSalesOrder] 订单 %d 微信退款失败: %v", id, refundErr)
+			c.JSON(http.StatusOK, gin.H{
+				"code":    500,
+				"message": "退款申请失败: " + refundErr.Error() + "，请稍后重试或联系客服",
+			})
+			return
+		}
+		if err := model.RequestWechatRefundForOrder(id, refundID); err != nil {
+			log.Printf("[CancelSalesOrder] 更新订单退款状态失败: %v", err)
+		}
+	}
+
 	// 更新订单状态为已取消
 	err = model.UpdateOrderStatus(id, "cancelled")
 	if err != nil {

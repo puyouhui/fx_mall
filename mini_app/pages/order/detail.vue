@@ -53,6 +53,10 @@
               <view class="status-tag" v-if="orderDetail.order?.order_type">
                 <text>{{ orderDetail.order.order_type }}</text>
               </view>
+              <view class="payment-countdown" v-if="showPaymentCountdown">
+                <text class="countdown-label">剩余支付时间</text>
+                <text class="countdown-value">{{ paymentCountdownText }}</text>
+              </view>
             </view>
           </view>
         </view>
@@ -242,40 +246,32 @@
 
     </view>
 
-    <!-- 底部操作按钮 -->
+    <!-- 底部操作按钮（参照商品详情：左侧图标+文字，右侧主按钮） -->
     <view class="action-footer" v-if="orderDetail && showActionFooter">
-      <view class="action-buttons">
-        <view 
-          class="action-btn" 
-          v-if="orderDetail.sales_employee && orderDetail.sales_employee.phone"
-          @click="contactSales"
-        >
-          <uni-icons type="phone" size="18" color="#fff"></uni-icons>
-          <text>联系销售员</text>
+      <view class="action-footer-container">
+        <view class="action-footer-left">
+          <view class="action-icon-btn" @click="goToCustomerService">
+            <uni-icons type="chat" size="28" color="#2C2C2C"></uni-icons>
+            <text class="action-icon-text">客服</text>
+          </view>
+          <view 
+            v-if="canCancelOrder"
+            class="action-icon-btn" 
+            @click="handleCancelOrder"
+          >
+            <uni-icons type="closeempty" size="28" color="#2C2C2C"></uni-icons>
+            <text class="action-icon-text">取消</text>
+          </view>
         </view>
-        <view 
-          class="action-btn cancel-btn" 
-          v-if="canCancelOrder"
-          @click="handleCancelOrder"
-        >
-        <uni-icons type="closeempty" size="18" color="#fff"></uni-icons>
-          <text>取消订单</text>
+        <view class="action-footer-right" v-if="showPayBtn">
+          <view class="action-main-btn" @click="handlePayOrder">
+            <text>{{ paying ? '支付中...' : '去付款' }}</text>
+          </view>
         </view>
-        <view 
-          class="action-btn" 
-          v-if="showContactDeliveryBtn"
-          @click="contactDelivery"
-        >
-          <uni-icons type="phone" size="18" color="#fff"></uni-icons>
-          <text>联系配送员</text>
-        </view>
-        <view 
-          class="action-btn pay-btn"
-          v-if="showPayBtn"
-          @click="handlePayOrder"
-        >
-          <uni-icons type="wallet" size="18" color="#fff"></uni-icons>
-          <text>{{ paying ? '支付中...' : '去付款' }}</text>
+        <view class="action-footer-right" v-else-if="showContactDeliveryBtn">
+          <view class="action-main-btn" @click="contactDelivery">
+            <text>联系配送员</text>
+          </view>
         </view>
       </view>
     </view>
@@ -313,19 +309,25 @@ export default {
       },
       mapMarkers: [],
       mapScale: 6, // 地图缩放级别
-      paying: false // 支付中
+      paying: false, // 支付中
+      paymentDeadlineAt: null, // 支付截止时间 ISO 字符串
+      paymentCountdownText: '--:--',
+      countdownTimer: null
     }
   },
   computed: {
+    showPaymentCountdown() {
+      return this.orderDetail?.order?.status === 'pending_payment' && this.paymentDeadlineAt
+    },
     showMap() {
       const status = this.orderDetail?.order?.status
       // 地图只在配送中状态显示（配送员取货后才显示）
       return status === 'delivering'
     },
-    // 是否可以取消订单（配送员接单之前：pending_delivery 或 pending_pickup）
+    // 是否可以取消订单（待支付、配送员接单之前：pending_payment、pending_delivery、pending_pickup）
     canCancelOrder() {
       const status = this.orderDetail?.order?.status
-      return status === 'pending_delivery' || status === 'pending' || status === 'pending_pickup'
+      return status === 'pending_payment' || status === 'pending_delivery' || status === 'pending' || status === 'pending_pickup'
     },
     // 是否显示配送员信息（接单后到配送完时显示）
     showDeliveryEmployee() {
@@ -355,8 +357,7 @@ export default {
     },
     // 是否显示底部操作按钮
     showActionFooter() {
-      return (this.orderDetail?.sales_employee?.phone) || 
-             this.canCancelOrder || 
+      return this.canCancelOrder || 
              this.showContactDeliveryBtn ||
              this.showPayBtn
     }
@@ -389,6 +390,9 @@ export default {
     
     this.loadOrderDetail()
   },
+  onUnload() {
+    this.clearCountdownTimer()
+  },
   // 分享小程序（订单详情页）
   onShareAppMessage(options) {
     // 使用 shareConfig 获取分享配置
@@ -407,7 +411,39 @@ export default {
   },
   methods: {
     goBack() {
+      this.clearCountdownTimer()
       uni.navigateBack()
+    },
+    startPaymentCountdown() {
+      this.clearCountdownTimer()
+      if (!this.paymentDeadlineAt || this.orderDetail?.order?.status !== 'pending_payment') return
+      const dateStr = String(this.paymentDeadlineAt).replace(/-/g, '/').replace('T', ' ')
+      const deadline = new Date(dateStr)
+      if (isNaN(deadline.getTime())) {
+        this.paymentCountdownText = '--:--'
+        return
+      }
+      const updateCountdown = () => {
+        const now = new Date()
+        const diff = Math.max(0, Math.floor((deadline - now) / 1000))
+        if (diff <= 0) {
+          this.paymentCountdownText = '已超时'
+          this.clearCountdownTimer()
+          this.loadOrderDetail()
+          return
+        }
+        const m = Math.floor(diff / 60)
+        const s = diff % 60
+        this.paymentCountdownText = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+      }
+      updateCountdown()
+      this.countdownTimer = setInterval(updateCountdown, 1000)
+    },
+    clearCountdownTimer() {
+      if (this.countdownTimer) {
+        clearInterval(this.countdownTimer)
+        this.countdownTimer = null
+      }
     },
     async loadOrderDetail() {
       try {
@@ -415,6 +451,8 @@ export default {
         const res = await getOrderDetail(this.token, this.orderId)
         if (res && res.code === 200 && res.data) {
           this.orderDetail = res.data
+          this.paymentDeadlineAt = res.data.payment_deadline_at || null
+          this.startPaymentCountdown()
           // 调试：打印订单详情
           console.log('订单详情:', JSON.stringify(this.orderDetail, null, 2))
           console.log('订单状态:', this.orderDetail?.order?.status)
@@ -592,26 +630,6 @@ export default {
         }
       })
     },
-    contactSales() {
-      if (!this.orderDetail?.sales_employee?.phone) {
-        uni.showToast({
-          title: '销售员联系方式不可用',
-          icon: 'none'
-        })
-        return
-      }
-      
-      uni.makePhoneCall({
-        phoneNumber: this.orderDetail.sales_employee.phone,
-        fail: (err) => {
-          console.error('拨打电话失败:', err)
-          uni.showToast({
-            title: '拨打电话失败',
-            icon: 'none'
-          })
-        }
-      })
-    },
     async handlePayOrder() {
       if (this.paying || !this.orderId || !this.token) return
       this.paying = true
@@ -651,14 +669,15 @@ export default {
     },
     formatStatus(status) {
       const statusMap = {
-        'pending': '订单正在分拣中心分拣中...',
-        'pending_delivery': '订单正在分拣中心分拣中...',
-        'pending_pickup': '订单分拣完成，待配送',
+        'pending': '订单正在中心分拣中...',
+        'pending_payment': '待支付',
+        'pending_delivery': '订单正在中心分拣中...',
+        'pending_pickup': '分拣已完成，待配送',
         'delivering': '正在配送中...',
         'delivered': '订单已送达',
         'shipped': '订单已送达',
-        'paid': '订单已收款',
-        'completed': '订单已收款',
+        'paid': '订单已完成',
+        'completed': '订单已完成',
         'cancelled': '订单已取消'
       }
       return statusMap[status] || status
@@ -666,6 +685,7 @@ export default {
     formatStatusShort(status) {
       const statusMap = {
         'pending': '分拣中',
+        'pending_payment': '待支付',
         'pending_delivery': '分拣中',
         'pending_pickup': '待配送',
         'delivering': '配送中',
@@ -680,6 +700,7 @@ export default {
     getStatusIcon(status) {
       const iconMap = {
         'pending': 'shop',
+        'pending_payment': 'wallet',
         'pending_delivery': 'shop',
         'delivering': 'car',
         'delivered': 'checkmarkempty',
@@ -693,6 +714,7 @@ export default {
     getStatusColor(status) {
       const colorMap = {
         'pending': '#ff4d4f',
+        'pending_payment': '#fa8c16',
         'pending_delivery': '#ff4d4f',
         'delivering': '#1890ff',
         'delivered': '#fa8c16',
@@ -741,11 +763,19 @@ export default {
     },
     // 取消订单
     async handleCancelOrder() {
-      const orderNumber = this.orderDetail?.order?.order_number || ''
+      const order = this.orderDetail?.order || {}
       const salesPhone = this.orderDetail?.sales_employee?.phone || ''
-      
+      const totalAmount = Number(order.total_amount || 0)
+      const isPaid = !!order.paid_at
+
       // 构建提示内容
       let content = `确定要取消订单吗？\n`
+      if (totalAmount > 0) {
+        content += `订单金额：¥${this.formatMoney(totalAmount)}\n`
+        if (isPaid) {
+          content += `已支付订单，取消后将原路退款 ¥${this.formatMoney(totalAmount)}，预计1-3工作日到账。\n`
+        }
+      }
       if (salesPhone) {
         content += `如需修改订单，可联系销售员：${salesPhone}\n`
       } else if (this.orderDetail?.sales_employee) {
@@ -1601,6 +1631,25 @@ export default {
   width: fit-content;
 }
 
+.payment-countdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  margin-top: 8rpx;
+}
+
+.countdown-label {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.countdown-value {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 4rpx;
+}
+
 .status-actions {
   display: flex;
   gap: 20rpx;
@@ -1665,49 +1714,73 @@ export default {
 }
 
 .action-footer {
+  width: 100%;
+  background-color: #fff;
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  background-color: #fff;
-  padding: 20rpx 30rpx;
-  padding-bottom: calc(env(safe-area-inset-bottom));
-  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.08);
+  border-top: 1rpx solid #eee;
+  padding: 15rpx 0 10rpx 0;
+  padding-bottom: calc(10rpx + env(safe-area-inset-bottom));
   z-index: 999;
   box-sizing: border-box;
 }
 
-.action-buttons {
-  display: flex;
-  gap: 20rpx;
-  justify-content: space-between;
-}
-
-.action-btn {
-  flex: 1;
-  height: 88rpx;
-  background-color: #20CB6B;
-  border-radius: 44rpx;
+.action-footer-container {
+  width: 100%;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-  font-size: 32rpx;
-  font-weight: 500;
-  color: #fff;
+  justify-content: space-between;
+  padding: 0 30rpx;
+  box-sizing: border-box;
 }
 
-.action-btn:active {
+.action-footer-left {
+  width: 30%;
+  display: flex;
+  gap: 24rpx;
+  padding-left: 12rpx;
+}
+
+.action-icon-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+}
+
+.action-icon-text {
+  font-size: 22rpx;
+  color: #2C2C2C;
+  margin-top: 4rpx;
+}
+
+.action-footer-right {
+  width: 40%;
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 10rpx;
+}
+
+.action-main-btn {
+  width: 90%;
+  background-color: #20CB6B;
+  color: #fff;
+  font-size: 32rpx;
+  font-weight: bold;
+  padding: 24rpx 48rpx;
+  border-radius: 60rpx;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.action-main-btn:active {
   background-color: #1AB85A;
 }
 
-.action-btn.cancel-btn {
-  background-color: #ff4d4f;
-}
-
-.action-btn.cancel-btn:active {
-  background-color: #ff3333;
-}
 
 .customer-service-tip {
   display: flex;

@@ -1,16 +1,22 @@
 <template>
   <view class="checkout-page">
-    <!-- 导航栏 -->
-    <view class="checkout-navbar" :style="{ paddingTop: statusBarHeight + 'px' }">
-      <view class="navbar-content">
-        <view class="navbar-left" @click="goBack">
-          <uni-icons type="left" size="22" color="#333"></uni-icons>
+    <!-- 自定义导航栏 -->
+    <view class="custom-navbar">
+      <view class="navbar-fixed" style="background-color: #fff; border-bottom: 1rpx solid #eee;">
+        <view :style="{ height: statusBarHeight + 'px' }"></view>
+        <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
+          <view class="navbar-left" @click="goBack">
+            <uni-icons type="left" size="20" color="#333"></uni-icons>
+          </view>
+          <view class="navbar-title">
+            <text class="navbar-title-text">收银台</text>
+          </view>
+          <view class="navbar-right"></view>
         </view>
-        <view class="navbar-title">收银台</view>
       </view>
     </view>
 
-    <view class="checkout-content" :style="{ paddingTop: (statusBarHeight + 44) + 'px' }">
+    <view class="checkout-content" :style="{ paddingTop: (statusBarHeight + navBarHeight) + 'px' }">
       <!-- 订单信息 -->
       <view class="section order-summary-section">
         <view class="section-title">订单信息</view>
@@ -98,6 +104,7 @@ export default {
   data() {
     return {
       statusBarHeight: 0,
+      navBarHeight: 44,
       token: '',
       checkoutData: null,
       paymentMethod: 'online', // online | cod
@@ -110,6 +117,7 @@ export default {
   onLoad() {
     const systemInfo = uni.getSystemInfoSync()
     this.statusBarHeight = systemInfo.statusBarHeight || 0
+    this.getMenuButtonInfo()
     this.token = uni.getStorageSync('miniUserToken') || ''
     
     if (!this.token) {
@@ -118,8 +126,8 @@ export default {
       return
     }
 
-    const data = uni.getStorageSync(CHECKOUT_STORAGE_KEY)
-    if (!data || !data.payload) {
+    let data = uni.getStorageSync(CHECKOUT_STORAGE_KEY)
+    if (!data) {
       uni.showToast({ title: '订单数据已过期，请重新提交', icon: 'none' })
       setTimeout(() => uni.navigateBack(), 1500)
       return
@@ -127,6 +135,11 @@ export default {
 
     try {
       this.checkoutData = typeof data === 'string' ? JSON.parse(data) : data
+      if (!this.checkoutData || !this.checkoutData.payload) {
+        uni.showToast({ title: '订单数据已过期，请重新提交', icon: 'none' })
+        setTimeout(() => uni.navigateBack(), 1500)
+        return
+      }
       this.firstGoodsName = this.checkoutData.firstGoodsName || '商品'
       this.totalQuantity = this.checkoutData.totalQuantity || 0
       this.totalAmount = this.checkoutData.totalAmount || '0.00'
@@ -137,6 +150,16 @@ export default {
     }
   },
   methods: {
+    getMenuButtonInfo() {
+      try {
+        // #ifndef H5 || APP-PLUS || MP-ALIPAY
+        const menuButtonInfo = uni.getMenuButtonBoundingClientRect()
+        this.navBarHeight = (menuButtonInfo.bottom - this.statusBarHeight) + (menuButtonInfo.top - this.statusBarHeight)
+        // #endif
+      } catch (e) {
+        console.error('获取胶囊按钮信息失败:', e)
+      }
+    },
     goBack() {
       uni.navigateBack()
     },
@@ -231,34 +254,52 @@ export default {
   background-color: #F5F6FA;
 }
 
-.checkout-navbar {
+.custom-navbar {
+  position: relative;
+  z-index: 1000;
+}
+
+.navbar-fixed {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 100;
-  background: #fff;
-  border-bottom: 1rpx solid #eee;
+  z-index: 1000;
 }
 
 .navbar-content {
-  height: 88rpx;
   display: flex;
   align-items: center;
-  padding: 0 24rpx;
+  justify-content: space-between;
+  padding: 0 20rpx;
+  box-sizing: border-box;
 }
 
 .navbar-left {
-  padding: 16rpx;
-  margin-left: -16rpx;
+  width: 60rpx;
+  height: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .navbar-title {
   flex: 1;
-  text-align: center;
-  font-size: 36rpx;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navbar-title-text {
+  font-size: 32rpx;
+  font-weight: 500;
   color: #333;
+}
+
+.navbar-right {
+  width: 60rpx;
+  flex-shrink: 0;
 }
 
 .checkout-content {

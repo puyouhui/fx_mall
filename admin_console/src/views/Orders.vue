@@ -11,6 +11,7 @@
             style="width: 200px; margin-right: 10px;" />
           <el-select v-model="statusFilter" placeholder="订单状态" clearable style="width: 150px; margin-right: 10px;"
             @change="handleSearch">
+            <el-option label="待支付" value="pending_payment" />
             <el-option label="待配送" value="pending_delivery" />
             <el-option label="待取货" value="pending_pickup" />
             <el-option label="配送中" value="delivering" />
@@ -166,7 +167,7 @@
                 </template>
               </el-dropdown>
               <el-dropdown
-                @command="(cmd) => handleOrderAction(scope.row.id, scope.row.status, cmd)" trigger="click"
+                @command="(cmd) => handleOrderAction(scope.row, cmd)" trigger="click"
                 placement="bottom-end">
                 <el-button type="primary" link>
                   操作
@@ -188,6 +189,19 @@
                     </el-dropdown-item>
                     <el-dropdown-item v-if="canShowStatusActions(scope.row.status) && isPendingDelivery(scope.row.status)" command="cancelled" divided>
                       取消订单
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                      v-if="scope.row.status !== 'cancelled' && (scope.row.total_amount || 0) > 0"
+                      command="manual_refund"
+                      divided
+                    >
+                      手动退款
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                      v-if="scope.row.status !== 'cancelled' && (scope.row.total_amount || 0) > 0"
+                      command="aftersale_refund"
+                    >
+                      售后处理
                     </el-dropdown-item>
                     <el-dropdown-item command="recalculate" divided>
                       强制重新计算
@@ -675,6 +689,22 @@
       </div>
       <template #footer>
         <el-button @click="detailDialogVisible = false">关闭</el-button>
+        <el-button
+          v-if="orderDetail?.order && orderDetail.order.status !== 'cancelled' && (orderDetail.order.total_amount || 0) > 0"
+          type="warning"
+          :loading="manualRefundLoading"
+          @click="handleManualRefund"
+        >
+          手动退款
+        </el-button>
+        <el-button
+          v-if="orderDetail?.order && orderDetail.order.status !== 'cancelled' && (orderDetail.order.total_amount || 0) > 0"
+          type="info"
+          :loading="aftersaleRefundLoading"
+          @click="openAftersaleRefundDialog(orderDetail.order)"
+        >
+          售后处理
+        </el-button>
         <el-dropdown @command="(cmd) => handlePrintCommandFromDetail(cmd)" trigger="click">
           <el-button type="primary">
             打印
@@ -725,14 +755,62 @@
         <el-button @click="itemsDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 售后处理/售后退款对话框 -->
+    <el-dialog
+      v-model="aftersaleRefundDialogVisible"
+      title="售后处理"
+      width="500px"
+      destroy-on-close
+      @close="resetAftersaleRefundForm"
+    >
+      <el-form ref="aftersaleRefundFormRef" :model="aftersaleRefundForm" :rules="aftersaleRefundRules" label-width="100px">
+        <el-form-item label="订单实付">
+          <span class="aftersale-order-total">¥{{ formatMoney(aftersaleOrder?.total_amount || 0) }}</span>
+        </el-form-item>
+        <el-form-item label="退款金额" prop="refund_amount">
+          <el-input-number
+            v-model="aftersaleRefundForm.refund_amount"
+            :min="0"
+            :max="aftersaleOrder?.total_amount || 99999"
+            :precision="2"
+            :step="1"
+            placeholder="0表示全额"
+            style="width: 100%"
+          />
+          <div style="margin-top: 6px; font-size: 12px; color: #909399;">
+            支持部分退款，填0表示全额退款
+          </div>
+        </el-form-item>
+        <el-form-item label="退款原因" prop="reason">
+          <el-input
+            v-model="aftersaleRefundForm.reason"
+            type="textarea"
+            :rows="4"
+            placeholder="请填写退款原因和详情，将展示给用户"
+          />
+        </el-form-item>
+        <el-form-item label="同时取消订单" v-if="isFullRefund">
+          <el-checkbox v-model="aftersaleRefundForm.cancel_order">
+            全额退款后取消订单
+          </el-checkbox>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="aftersaleRefundDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="aftersaleRefundLoading" @click="submitAftersaleRefund">
+          确认退款
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, QuestionFilled } from '@element-plus/icons-vue'
-import { getOrders, getOrderDetail, updateOrderStatus, recalculateOrderProfit } from '../api/orders'
+import { getOrders, getOrderDetail, updateOrderStatus, recalculateOrderProfit, manualRefundOrder, refundOrderWithDetails } from '../api/orders'
 import { hiprint } from 'vue-plugin-hiprint'
 import { getPrinterAddress, getPrintOptions, isOnlineEnvironment } from '../utils/printer'
 
@@ -748,6 +826,24 @@ const pagination = reactive({
 
 // 订单详情相关
 const detailDialogVisible = ref(false)
+const manualRefundLoading = ref(false)
+const aftersaleRefundLoading = ref(false)
+const aftersaleRefundDialogVisible = ref(false)
+const aftersaleOrder = ref(null) // { id, total_amount }
+const aftersaleRefundFormRef = ref(null)
+const aftersaleRefundForm = reactive({
+  refund_amount: 0,
+  reason: '',
+  cancel_order: false
+})
+const aftersaleRefundRules = {
+  reason: [{ required: true, message: '请填写退款原因', trigger: 'blur' }]
+}
+const isFullRefund = computed(() => {
+  const amt = aftersaleRefundForm.refund_amount
+  const total = aftersaleOrder.value?.total_amount || 0
+  return amt <= 0 || amt >= total - 0.01
+})
 const detailLoading = ref(false)
 const orderDetail = ref(null)
 const activeTab = ref('basic') // 当前激活的标签页
@@ -848,6 +944,7 @@ const formatDeliveryLogAction = (action) => {
 const formatStatus = (status) => {
   const statusMap = {
     'pending': '待配送',           // 兼容旧状态
+    'pending_payment': '待支付',
     'pending_delivery': '待配送',
     'pending_pickup': '待取货',
     'delivering': '配送中',
@@ -863,6 +960,7 @@ const formatStatus = (status) => {
 const getStatusType = (status) => {
   const typeMap = {
     'pending': 'danger',             // 兼容旧状态 - 待配送 - 红色
+    'pending_payment': 'warning',    // 待支付 - 橙色
     'pending_delivery': 'danger',    // 待配送 - 红色
     'pending_pickup': 'warning',     // 待取货 - 橙色
     'delivering': 'primary',         // 配送中 - 蓝色
@@ -945,10 +1043,25 @@ const isPendingDelivery = (status) => {
 }
 
 // 处理订单操作（包括状态变更和其他操作）
-const handleOrderAction = async (orderId, currentStatus, command) => {
+const handleOrderAction = async (row, command) => {
+  const orderId = row.id
+  const currentStatus = row.status
+
   // 如果是重新计算，调用重新计算函数
   if (command === 'recalculate') {
     await handleRecalculateProfit(orderId)
+    return
+  }
+
+  // 如果是手动退款
+  if (command === 'manual_refund') {
+    await doManualRefund(orderId)
+    return
+  }
+
+  // 如果是售后处理
+  if (command === 'aftersale_refund') {
+    openAftersaleRefundDialog({ id: orderId, total_amount: row.total_amount })
     return
   }
 
@@ -990,6 +1103,96 @@ const handleOrderAction = async (orderId, currentStatus, command) => {
       console.error('更新订单状态失败:', error)
       ElMessage.error(`${actionName}失败，请稍后再试`)
     }
+  }
+}
+
+// 执行手动退款
+const doManualRefund = async (orderId) => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要对此订单发起微信退款吗？\n\n适用于：用户已支付但订单仍显示未支付（如支付回调未同步）的情况。\n退款将原路返回，预计1-3工作日到账，订单将标记为已取消。',
+      '确认手动退款',
+      {
+        confirmButtonText: '确定退款',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    manualRefundLoading.value = true
+    const res = await manualRefundOrder(orderId)
+    if (res && res.code === 200) {
+      ElMessage.success(res.message || '退款已受理')
+      if (detailDialogVisible.value && orderDetail.value?.order?.id === orderId) {
+        detailDialogVisible.value = false
+      }
+      loadOrders()
+    } else {
+      ElMessage.error(res?.message || '退款失败')
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('手动退款失败:', error)
+      ElMessage.error(error?.response?.data?.message || error?.message || '退款失败，请稍后再试')
+    }
+  } finally {
+    manualRefundLoading.value = false
+  }
+}
+
+// 从订单详情对话框点击手动退款
+const handleManualRefund = () => {
+  const orderId = orderDetail.value?.order?.id
+  if (orderId) {
+    doManualRefund(orderId)
+  }
+}
+
+// 打开售后处理对话框（从详情或列表）
+const openAftersaleRefundDialog = (order) => {
+  if (!order || !order.id) return
+  aftersaleOrder.value = { id: order.id, total_amount: order.total_amount || 0 }
+  aftersaleRefundForm.refund_amount = order.total_amount || 0
+  aftersaleRefundForm.reason = ''
+  aftersaleRefundForm.cancel_order = false
+  aftersaleRefundDialogVisible.value = true
+}
+
+const resetAftersaleRefundForm = () => {
+  aftersaleOrder.value = null
+  aftersaleRefundForm.refund_amount = 0
+  aftersaleRefundForm.reason = ''
+  aftersaleRefundForm.cancel_order = false
+}
+
+const submitAftersaleRefund = async () => {
+  if (!aftersaleOrder.value?.id) return
+  try {
+    await aftersaleRefundFormRef.value?.validate()
+  } catch {
+    return
+  }
+  try {
+    aftersaleRefundLoading.value = true
+    const res = await refundOrderWithDetails(aftersaleOrder.value.id, {
+      refund_amount: aftersaleRefundForm.refund_amount,
+      reason: aftersaleRefundForm.reason.trim(),
+      cancel_order: aftersaleRefundForm.cancel_order
+    })
+    if (res && res.code === 200) {
+      ElMessage.success(res.message || '退款已受理')
+      aftersaleRefundDialogVisible.value = false
+      loadOrders()
+      if (detailDialogVisible.value && orderDetail.value?.order?.id === aftersaleOrder.value.id) {
+        handleViewDetail(aftersaleOrder.value.id)
+      }
+    } else {
+      ElMessage.error(res?.message || '退款失败')
+    }
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.message || error?.message || '退款失败，请稍后再试')
+  } finally {
+    aftersaleRefundLoading.value = false
   }
 }
 
@@ -1939,6 +2142,12 @@ onMounted(() => {
   font-size: 18px;
   font-weight: 700;
   color: #ff4d4f;
+}
+
+.aftersale-order-total {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f56c6c;
 }
 
 .rider-fee-label {

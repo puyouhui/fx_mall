@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"go_backend/internal/api"
 	"go_backend/internal/config"
 	"go_backend/internal/database"
+	"go_backend/internal/model"
 	"go_backend/internal/utils"
 
 	"github.com/gin-contrib/cors"
@@ -272,6 +274,8 @@ func main() {
 				protectedGroup.PUT("/orders/:id/status", api.UpdateOrderStatus)                   // 更新订单状态（后台管理）
 				protectedGroup.GET("/orders/:id/delivery-fee", api.GetDeliveryFeeCalculation)     // 获取配送费计算结果（管理员）
 				protectedGroup.POST("/orders/:id/recalculate-profit", api.RecalculateOrderProfit) // 强制重新计算订单利润（用于修复老订单）
+				protectedGroup.POST("/orders/:id/manual-refund", api.AdminManualRefund)           // 管理员手动退款（支付回调未同步等异常）
+				protectedGroup.POST("/orders/:id/refund-with-details", api.AdminRefundWithDetails) // 售后退款（指定金额、原因）
 
 				// 配送记录管理
 				protectedGroup.GET("/delivery-records", api.GetAllDeliveryRecordsForAdmin)                     // 获取所有配送记录（后台管理）
@@ -459,6 +463,25 @@ func main() {
 			}
 		}
 	}
+
+	// 启动待支付订单超时取消定时任务（每分钟执行一次）
+	go func() {
+		// 启动时立即执行一次
+		if n, err := model.CancelExpiredPendingPaymentOrders(); err != nil {
+			log.Printf("[定时任务] 取消超时待支付订单失败: %v", err)
+		} else if n > 0 {
+			log.Printf("[定时任务] 已自动取消 %d 个超时待支付订单", n)
+		}
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			if n, err := model.CancelExpiredPendingPaymentOrders(); err != nil {
+				log.Printf("[定时任务] 取消超时待支付订单失败: %v", err)
+			} else if n > 0 {
+				log.Printf("[定时任务] 已自动取消 %d 个超时待支付订单", n)
+			}
+		}
+	}()
 
 	// 启动服务器
 	port := config.Config.Server.Port

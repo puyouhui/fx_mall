@@ -95,6 +95,20 @@
               </div>
             </el-form-item>
 
+            <el-form-item label="待支付超时时间（分钟）">
+              <el-input-number
+                v-model="orderForm.pending_payment_timeout"
+                :min="5"
+                :max="60"
+                :step="1"
+                placeholder="15"
+                style="width: 300px"
+              />
+              <div style="margin-top: 8px; color: #909399; font-size: 12px;">
+                在线支付订单超时未支付将自动取消，默认15分钟
+              </div>
+            </el-form-item>
+
             <el-form-item>
               <el-button
                 type="primary"
@@ -501,6 +515,7 @@
                   <p>• 需在 <a href="https://pay.weixin.qq.com/" target="_blank">微信支付商户平台</a> 申请并获取商户号、APIv3 密钥、商户证书</p>
                   <p>• 商户证书私钥：apiclient_key.pem 文件的完整内容（包含 -----BEGIN/END----- 行）</p>
                   <p>• 证书序列号：在商户平台【API安全】-【API证书】中查看</p>
+                  <p>• <strong>新商户必填</strong>：若提示「无可用的平台证书」，请在【账户中心-API安全】申请微信支付公钥，下载 pub_key.pem 并填写下方「微信支付公钥ID」和「微信支付公钥」</p>
                   <p>• 回调地址需为公网可访问的 HTTPS 地址，格式如：https://您的域名/api/mini/wechat-pay/notify</p>
                   <p>• 需在商户平台【产品中心】-【开发配置】中配置支付授权目录和回调地址</p>
                 </div>
@@ -554,6 +569,28 @@
                 type="textarea"
                 placeholder="apiclient_key.pem 文件完整内容，包含 -----BEGIN PRIVATE KEY----- 等行"
                 :rows="8"
+                style="width: 500px"
+              />
+            </el-form-item>
+
+            <el-form-item label="微信支付公钥ID">
+              <el-input
+                v-model="wechatPayForm.public_key_id"
+                placeholder="PUB_KEY_ID_xxx（新商户必填，在商户平台申请公钥后获得）"
+                style="width: 500px"
+                clearable
+              />
+              <div style="margin-top: 8px; color: #909399; font-size: 12px;">
+                提示「无可用的平台证书」时必填。商户平台【账户中心-API安全】申请公钥后可见
+              </div>
+            </el-form-item>
+
+            <el-form-item label="微信支付公钥（PEM）">
+              <el-input
+                v-model="wechatPayForm.public_key"
+                type="textarea"
+                placeholder="pub_key.pem 文件完整内容（新商户必填）"
+                :rows="6"
                 style="width: 500px"
               />
             </el-form-item>
@@ -628,13 +665,16 @@ const wechatPayForm = reactive({
   mch_id: '',
   app_id: '',
   api_v3_key: '',
+  public_key_id: '',
+  public_key: '',
   serial_no: '',
   private_key: '',
   notify_url: ''
 })
 
 const orderForm = reactive({
-  urgent_fee: 0
+  urgent_fee: 0,
+  pending_payment_timeout: 15
 })
 
 const deliveryFeeForm = reactive({
@@ -787,6 +827,8 @@ const loadOrderSettings = async () => {
     if (response.code === 200 && response.data) {
       const urgentFee = response.data.order_urgent_fee || '0'
       orderForm.urgent_fee = parseFloat(urgentFee) || 0
+      const timeout = response.data.order_pending_payment_timeout || '15'
+      orderForm.pending_payment_timeout = parseInt(timeout, 10) || 15
     }
   } catch (error) {
     console.error('加载订单设置失败:', error)
@@ -809,7 +851,8 @@ const handleSaveOrderSettings = async () => {
     console.log('保存订单设置，加急费用:', urgentFeeValue)
     
     const response = await updateSystemSettings({
-      order_urgent_fee: urgentFeeValue.toString()
+      order_urgent_fee: urgentFeeValue.toString(),
+      order_pending_payment_timeout: (orderForm.pending_payment_timeout || 15).toString()
     })
     
     console.log('保存订单设置响应:', response)
@@ -978,6 +1021,8 @@ const loadWechatPaySettings = async () => {
       wechatPayForm.api_v3_key = data.wechat_pay_api_v3_key || ''
       wechatPayForm.serial_no = data.wechat_pay_serial_no || ''
       wechatPayForm.private_key = data.wechat_pay_private_key || ''
+      wechatPayForm.public_key_id = data.wechat_pay_public_key_id || ''
+      wechatPayForm.public_key = data.wechat_pay_public_key || ''
       wechatPayForm.notify_url = data.wechat_pay_notify_url || ''
     }
   } catch (error) {
@@ -995,6 +1040,8 @@ const handleSaveWechatPaySettings = async () => {
       wechat_pay_api_v3_key: (wechatPayForm.api_v3_key || '').trim(),
       wechat_pay_serial_no: (wechatPayForm.serial_no || '').trim(),
       wechat_pay_private_key: (wechatPayForm.private_key || '').trim(),
+      wechat_pay_public_key_id: (wechatPayForm.public_key_id || '').trim(),
+      wechat_pay_public_key: (wechatPayForm.public_key || '').trim(),
       wechat_pay_notify_url: (wechatPayForm.notify_url || '').trim()
     }
     const response = await updateSystemSettings(settings)

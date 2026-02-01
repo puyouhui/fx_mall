@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,6 +45,9 @@ type Order struct {
 	LockedAt             *time.Time `json:"locked_at,omitempty"`              // 锁定时间
 	PaymentMethod        string     `json:"payment_method"`                   // 支付方式: online-在线支付, cod-货到付款（老数据默认cod）
 	PaidAt               *time.Time `json:"paid_at,omitempty"`                // 支付完成时间（老数据为NULL）
+	WechatTransactionID  *string    `json:"wechat_transaction_id,omitempty"`  // 微信支付单号（有值表示通过微信支付，取消时可退款）
+	RefundStatus         *string    `json:"refund_status,omitempty"`          // 退款状态: NULL-无, processing-处理中, success-成功, failed-失败
+	WechatRefundID       *string    `json:"wechat_refund_id,omitempty"`       // 微信退款单号
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 }
@@ -169,6 +173,12 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 		}
 	}()
 
+	// 在线支付订单初始为待支付，支付成功后才进入配送流程；货到付款直接进入待配送
+	initialStatus := "pending_delivery"
+	if paymentMethod == "online" {
+		initialStatus = "pending_payment"
+	}
+
 	// 先插入订单主表（不包含订单编号，使用NULL，兼容老数据）
 	// 注意：order_number字段在CREATE TABLE中没有NOT NULL约束，允许NULL值
 	res, err := tx.Exec(`
@@ -176,9 +186,9 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 			order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount, coupon_discount, is_urgent, urgent_fee, total_amount,
 			remark, out_of_stock_strategy, trust_receipt, hide_price, require_phone_contact, expected_delivery_at,
 			payment_method, created_at, updated_at
-		) VALUES (NULL, ?, ?, 'pending_delivery', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NOW(), NOW())
+		) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NOW(), NOW())
 	`,
-		userID, addressID,
+		userID, addressID, initialStatus,
 		goodsAmount, deliveryFee, pointsDiscount, couponDiscount, boolToTinyInt(isUrgent), urgentFee, totalAmount,
 		opts.Remark, outOfStockStrategy, boolToTinyInt(trustReceipt), boolToTinyInt(hidePrice), boolToTinyInt(requirePhoneContact),
 		paymentMethod,
@@ -600,13 +610,14 @@ func GetOrderByID(id int) (*Order, error) {
 	var weatherInfo sql.NullString
 	var paidAt sql.NullTime
 	var paymentMethodVal string
+	var refundStatus, wechatRefundID, wechatTransactionID sql.NullString
 
 	query := `
 		SELECT id, order_number, user_id, address_id, status, delivery_employee_code, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
 		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, 
 		       is_locked, locked_by, locked_at, order_profit, settlement_date, delivery_fee_settled,
-		       payment_method, paid_at, created_at, updated_at
+		       payment_method, paid_at, wechat_transaction_id, refund_status, wechat_refund_id, created_at, updated_at
 		FROM orders WHERE id = ?
 	`
 	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt, isLockedTinyInt, deliveryFeeSettledTinyInt int
@@ -619,7 +630,7 @@ func GetOrderByID(id int) (*Order, error) {
 		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
 		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &isLockedTinyInt, &lockedBy, &lockedAt,
 		&orderProfit, &settlementDate, &deliveryFeeSettledTinyInt,
-		&paymentMethodVal, &paidAt, &order.CreatedAt, &order.UpdatedAt,
+		&paymentMethodVal, &paidAt, &wechatTransactionID, &refundStatus, &wechatRefundID, &order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -667,8 +678,34 @@ func GetOrderByID(id int) (*Order, error) {
 		t := settlementDate.Time
 		order.SettlementDate = &t
 	}
+	if wechatTransactionID.Valid && wechatTransactionID.String != "" {
+		s := wechatTransactionID.String
+		order.WechatTransactionID = &s
+	}
+	if refundStatus.Valid {
+		s := refundStatus.String
+		order.RefundStatus = &s
+	}
+	if wechatRefundID.Valid {
+		s := wechatRefundID.String
+		order.WechatRefundID = &s
+	}
 
 	return &order, nil
+}
+
+// NeedWechatRefundOnCancel 判断取消订单时是否需要发起微信退款
+// 条件：已支付且为微信支付（在线支付或货到付款提前通过去付款支付）
+func (o *Order) NeedWechatRefundOnCancel() bool {
+	if o.PaidAt == nil || o.TotalAmount <= 0 {
+		return false
+	}
+	// 在线支付订单：只能通过微信支付，一定退款
+	if o.PaymentMethod == "online" {
+		return true
+	}
+	// 货到付款订单：仅当有微信支付单号时（用户通过去付款支付）才退款
+	return o.WechatTransactionID != nil && *o.WechatTransactionID != ""
 }
 
 // GetOrderByOrderNumber 根据订单编号获取订单
@@ -681,13 +718,14 @@ func GetOrderByOrderNumber(orderNumber string) (*Order, error) {
 	var weatherInfo sql.NullString
 	var paidAt sql.NullTime
 	var paymentMethodVal string
+	var refundStatus, wechatRefundID, wechatTransactionID sql.NullString
 
 	query := `
 		SELECT id, order_number, user_id, address_id, status, delivery_employee_code, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
 		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, 
 		       is_locked, locked_by, locked_at, order_profit, settlement_date, delivery_fee_settled,
-		       payment_method, paid_at, created_at, updated_at
+		       payment_method, paid_at, wechat_transaction_id, refund_status, wechat_refund_id, created_at, updated_at
 		FROM orders WHERE order_number = ?
 	`
 	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt, isLockedTinyInt, deliveryFeeSettledTinyInt int
@@ -700,7 +738,7 @@ func GetOrderByOrderNumber(orderNumber string) (*Order, error) {
 		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
 		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &isLockedTinyInt, &lockedBy, &lockedAt,
 		&orderProfit, &settlementDate, &deliveryFeeSettledTinyInt,
-		&paymentMethodVal, &paidAt, &order.CreatedAt, &order.UpdatedAt,
+		&paymentMethodVal, &paidAt, &wechatTransactionID, &refundStatus, &wechatRefundID, &order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -747,6 +785,18 @@ func GetOrderByOrderNumber(orderNumber string) (*Order, error) {
 	if settlementDate.Valid {
 		t := settlementDate.Time
 		order.SettlementDate = &t
+	}
+	if wechatTransactionID.Valid && wechatTransactionID.String != "" {
+		s := wechatTransactionID.String
+		order.WechatTransactionID = &s
+	}
+	if refundStatus.Valid {
+		s := refundStatus.String
+		order.RefundStatus = &s
+	}
+	if wechatRefundID.Valid {
+		s := wechatRefundID.String
+		order.WechatRefundID = &s
 	}
 
 	return &order, nil
@@ -764,12 +814,16 @@ func MarkOrderPaidByWechatPay(orderID int, transactionID string) error {
 	}
 
 	now := time.Now()
-	// 更新 paid_at，若已送达则同时更新 status 为 paid
+	// 更新 paid_at、wechat_transaction_id；若为待支付则进入配送流程(pending_delivery)，若已送达则设为 paid
 	_, err = database.DB.Exec(`
 		UPDATE orders
-		SET paid_at = ?, status = CASE WHEN status IN ('delivered', 'shipped') THEN 'paid' ELSE status END, updated_at = NOW()
+		SET paid_at = ?, wechat_transaction_id = ?, status = CASE
+			WHEN status IN ('delivered', 'shipped') THEN 'paid'
+			WHEN status = 'pending_payment' THEN 'pending_delivery'
+			ELSE status
+		END, updated_at = NOW()
 		WHERE id = ? AND (paid_at IS NULL)
-	`, now, orderID)
+	`, now, transactionID, orderID)
 	if err != nil {
 		return err
 	}
@@ -793,6 +847,32 @@ func MarkOrderPaidByWechatPay(orderID int, transactionID string) error {
 	}
 
 	return nil
+}
+
+// RequestWechatRefundForOrder 发起微信退款后更新订单退款信息
+func RequestWechatRefundForOrder(orderID int, wechatRefundID string) error {
+	_, err := database.DB.Exec(`
+		UPDATE orders
+		SET refund_status = 'processing', wechat_refund_id = ?, updated_at = NOW()
+		WHERE id = ?
+	`, wechatRefundID, orderID)
+	return err
+}
+
+// MarkOrderRefundSuccess 标记订单退款成功（退款回调或查询确认后调用）
+func MarkOrderRefundSuccess(orderID int) error {
+	_, err := database.DB.Exec(`
+		UPDATE orders SET refund_status = 'success', updated_at = NOW() WHERE id = ?
+	`, orderID)
+	return err
+}
+
+// MarkOrderRefundFailed 标记订单退款失败
+func MarkOrderRefundFailed(orderID int) error {
+	_, err := database.DB.Exec(`
+		UPDATE orders SET refund_status = 'failed', updated_at = NOW() WHERE id = ?
+	`, orderID)
+	return err
 }
 
 // GetOrderItemsByOrderID 根据订单ID获取订单明细
@@ -1461,6 +1541,46 @@ func GetRecentOrdersByUserID(userID int, limit int) ([]map[string]interface{}, e
 	return orders, nil
 }
 
+// CancelExpiredPendingPaymentOrders 取消超时的待支付订单（供定时任务调用）
+func CancelExpiredPendingPaymentOrders() (int, error) {
+	timeoutMin, _ := GetSystemSetting("order_pending_payment_timeout")
+	if timeoutMin == "" {
+		timeoutMin = "15"
+	}
+	minutes, err := strconv.Atoi(timeoutMin)
+	if err != nil || minutes <= 0 {
+		minutes = 15
+	}
+	// 查询超时的待支付订单
+	rows, err := database.DB.Query(`
+		SELECT id FROM orders
+		WHERE status = 'pending_payment'
+		  AND created_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)
+	`, minutes)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var orderIDs []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		orderIDs = append(orderIDs, id)
+	}
+
+	for _, orderID := range orderIDs {
+		_ = UpdateOrderStatus(orderID, "cancelled")
+		// 清理分成记录
+		go func(oid int) {
+			_ = CancelOrderCommissions(oid)
+		}(orderID)
+	}
+	return len(orderIDs), nil
+}
+
 // UpdateOrderStatus 更新订单状态
 func UpdateOrderStatus(orderID int, newStatus string) error {
 	query := "UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?"
@@ -1575,7 +1695,7 @@ func LockOrder(orderID int, employeeCode string) error {
 	}
 
 	// 检查订单状态
-	if status != "pending_delivery" && status != "pending" {
+	if status != "pending_payment" && status != "pending_delivery" && status != "pending" {
 		return fmt.Errorf("订单状态不允许修改（当前状态：%s）", status)
 	}
 

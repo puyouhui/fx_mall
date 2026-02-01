@@ -1069,6 +1069,42 @@ func InitDB() error {
 			}
 		}
 
+		// 检查 refund_status 字段（退款状态）
+		var refundStatusExists int
+		checkRefundStatusQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'refund_status'`
+		if err := DB.QueryRow(checkRefundStatusQuery).Scan(&refundStatusExists); err == nil && refundStatusExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN refund_status VARCHAR(20) DEFAULT NULL COMMENT '退款状态: NULL-无, processing-处理中, success-成功, failed-失败'`); err != nil {
+				log.Printf("添加refund_status字段失败: %v", err)
+			} else {
+				log.Println("已添加refund_status字段到orders表")
+			}
+		}
+
+		// 检查 wechat_refund_id 字段（微信退款单号）
+		var wechatRefundIdExists int
+		checkWechatRefundIdQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'wechat_refund_id'`
+		if err := DB.QueryRow(checkWechatRefundIdQuery).Scan(&wechatRefundIdExists); err == nil && wechatRefundIdExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN wechat_refund_id VARCHAR(64) DEFAULT NULL COMMENT '微信退款单号'`); err != nil {
+				log.Printf("添加wechat_refund_id字段失败: %v", err)
+			} else {
+				log.Println("已添加wechat_refund_id字段到orders表")
+			}
+		}
+
+		// 检查 wechat_transaction_id 字段（微信支付单号，用于判断是否为微信支付以支持退款）
+		var wechatTransactionIdExists int
+		checkWechatTransactionIdQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'wechat_transaction_id'`
+		if err := DB.QueryRow(checkWechatTransactionIdQuery).Scan(&wechatTransactionIdExists); err == nil && wechatTransactionIdExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders ADD COLUMN wechat_transaction_id VARCHAR(64) DEFAULT NULL COMMENT '微信支付单号（有值表示通过微信支付，取消时可退款）'`); err != nil {
+				log.Printf("添加wechat_transaction_id字段失败: %v", err)
+			} else {
+				log.Println("已添加wechat_transaction_id字段到orders表")
+			}
+		}
+
 		// 检查 order_items 表的 is_picked 字段
 		var isPickedExists int
 		checkIsPickedQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
@@ -1291,6 +1327,7 @@ func InitDB() error {
 			{"map_amap_key", "", "高德地图API Key"},
 			{"map_tencent_key", "", "腾讯地图API Key"},
 			{"order_urgent_fee", "0", "加急订单费用（元）"},
+			{"order_pending_payment_timeout", "15", "待支付订单超时自动取消时间（分钟）"},
 			// 配送费计算配置
 			{"delivery_base_fee", "4.0", "基础配送费（元）"},
 			{"delivery_isolated_distance", "8.0", "孤立订单判断距离（公里）"},
@@ -1313,6 +1350,9 @@ func InitDB() error {
 			{"wechat_pay_serial_no", "", "商户API证书序列号"},
 			{"wechat_pay_private_key", "", "商户API证书私钥（PEM格式，apiclient_key.pem内容）"},
 			{"wechat_pay_notify_url", "", "支付结果回调地址（需公网可访问，如https://域名/api/mini/wechat-pay/notify）"},
+			{"wechat_pay_refund_notify_url", "", "退款结果回调地址（可选，如https://域名/api/mini/wechat-pay/refund-notify）"},
+			{"wechat_pay_public_key_id", "", "微信支付公钥ID（PUB_KEY_ID_开头，新商户需在商户平台-API安全申请）"},
+			{"wechat_pay_public_key", "", "微信支付公钥（pub_key.pem内容，新商户需配置以替代平台证书）"},
 		}
 
 		for _, setting := range initSystemSettings {

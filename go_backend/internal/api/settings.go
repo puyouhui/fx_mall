@@ -169,6 +169,7 @@ func getSettingDescription(key string) string {
 		"map_amap_key":                 "高德地图API Key",
 		"map_tencent_key":              "腾讯地图API Key",
 		"order_urgent_fee":             "加急订单费用（元）",
+		"order_pending_payment_timeout": "待支付订单超时自动取消时间（分钟）",
 		"delivery_base_fee":            "基础配送费（元）",
 		"delivery_isolated_distance":   "孤立订单判断距离（公里）",
 		"delivery_isolated_subsidy":    "孤立订单补贴（元）",
@@ -189,6 +190,8 @@ func getSettingDescription(key string) string {
 		"wechat_pay_serial_no":         "商户API证书序列号",
 		"wechat_pay_private_key":       "商户API证书私钥（PEM格式）",
 		"wechat_pay_notify_url":        "支付结果回调地址",
+		"wechat_pay_public_key_id":     "微信支付公钥ID（新商户必填）",
+		"wechat_pay_public_key":        "微信支付公钥PEM内容（新商户必填）",
 	}
 	if desc, ok := descriptions[key]; ok {
 		return desc

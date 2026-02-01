@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"go_backend/internal/model"
 
@@ -22,12 +23,14 @@ import (
 
 // wechatPayConfig 微信支付配置
 type wechatPayConfig struct {
-	MchID          string
-	AppID          string
-	APIv3Key       string
-	SerialNo       string
-	PrivateKeyPEM  string
-	NotifyURL      string
+	MchID             string
+	AppID             string
+	APIv3Key          string
+	SerialNo          string
+	PrivateKeyPEM     string
+	NotifyURL         string
+	PublicKeyID       string // 微信支付公钥ID（PUB_KEY_ID_开头，新商户必填）
+	PublicKeyPEM      string // 微信支付公钥（新商户需在商户平台申请后下载 pub_key.pem）
 }
 
 // getWechatPayConfig 从系统设置获取微信支付配置
@@ -38,6 +41,8 @@ func getWechatPayConfig() (*wechatPayConfig, error) {
 	serialNo, _ := model.GetSystemSetting("wechat_pay_serial_no")
 	privateKeyPEM, _ := model.GetSystemSetting("wechat_pay_private_key")
 	notifyURL, _ := model.GetSystemSetting("wechat_pay_notify_url")
+	publicKeyID, _ := model.GetSystemSetting("wechat_pay_public_key_id")
+	publicKeyPEM, _ := model.GetSystemSetting("wechat_pay_public_key")
 
 	if mchID == "" || appID == "" || apiV3Key == "" || serialNo == "" || privateKeyPEM == "" || notifyURL == "" {
 		return nil, fmt.Errorf("微信支付配置不完整，请在后台【系统设置-微信支付】中配置")
@@ -50,6 +55,8 @@ func getWechatPayConfig() (*wechatPayConfig, error) {
 		SerialNo:      serialNo,
 		PrivateKeyPEM: privateKeyPEM,
 		NotifyURL:     notifyURL,
+		PublicKeyID:   strings.TrimSpace(publicKeyID),
+		PublicKeyPEM:  strings.TrimSpace(publicKeyPEM),
 	}, nil
 }
 
@@ -109,18 +116,32 @@ func WeChatPayPrepay(c *gin.Context) {
 	mchPrivateKey, err := utils.LoadPrivateKey(cfg.PrivateKeyPEM)
 	if err != nil {
 		log.Printf("[WeChatPayPrepay] 加载私钥失败: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "微信支付配置错误，请联系管理员"})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "微信支付私钥配置错误，请检查 apiclient_key.pem 格式是否正确"})
 		return
 	}
 
 	ctx := c.Request.Context()
-	opts := []core.ClientOption{
-		option.WithWechatPayAutoAuthCipher(cfg.MchID, cfg.SerialNo, mchPrivateKey, cfg.APIv3Key),
+	var opts []core.ClientOption
+	// 新商户需配置微信支付公钥（无可用的平台证书时使用）
+	if cfg.PublicKeyID != "" && cfg.PublicKeyPEM != "" {
+		wechatPubKey, err := utils.LoadPublicKey(cfg.PublicKeyPEM)
+		if err != nil {
+			log.Printf("[WeChatPayPrepay] 加载微信支付公钥失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "微信支付公钥配置错误，请检查 pub_key.pem 格式"})
+			return
+		}
+		opts = []core.ClientOption{
+			option.WithWechatPayPublicKeyAuthCipher(cfg.MchID, cfg.SerialNo, mchPrivateKey, cfg.PublicKeyID, wechatPubKey),
+		}
+	} else {
+		opts = []core.ClientOption{
+			option.WithWechatPayAutoAuthCipher(cfg.MchID, cfg.SerialNo, mchPrivateKey, cfg.APIv3Key),
+		}
 	}
 	client, err := core.NewClient(ctx, opts...)
 	if err != nil {
 		log.Printf("[WeChatPayPrepay] 初始化微信支付客户端失败: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "微信支付服务异常"})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "微信支付服务异常: " + err.Error()})
 		return
 	}
 
@@ -147,7 +168,7 @@ func WeChatPayPrepay(c *gin.Context) {
 
 	if err != nil {
 		log.Printf("[WeChatPayPrepay] 调用微信支付预下单失败: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "发起支付失败，请稍后重试"})
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "发起支付失败: " + err.Error()})
 		return
 	}
 
@@ -182,16 +203,27 @@ func WeChatPayNotify(c *gin.Context) {
 	}
 
 	ctx := context.Background()
-	// 注册平台证书下载器
-	err = downloader.MgrInstance().RegisterDownloaderWithPrivateKey(ctx, mchPrivateKey, cfg.SerialNo, cfg.MchID, cfg.APIv3Key)
-	if err != nil {
-		log.Printf("[WeChatPayNotify] 注册下载器失败: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "初始化失败"})
-		return
+	var handler *notify.Handler
+	if cfg.PublicKeyID != "" && cfg.PublicKeyPEM != "" {
+		// 使用微信支付公钥验签（新商户）
+		wechatPubKey, err := utils.LoadPublicKey(cfg.PublicKeyPEM)
+		if err != nil {
+			log.Printf("[WeChatPayNotify] 加载微信支付公钥失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "公钥配置错误"})
+			return
+		}
+		handler = notify.NewNotifyHandler(cfg.APIv3Key, verifiers.NewSHA256WithRSAPubkeyVerifier(cfg.PublicKeyID, *wechatPubKey))
+	} else {
+		// 使用平台证书验签（老商户）
+		err = downloader.MgrInstance().RegisterDownloaderWithPrivateKey(ctx, mchPrivateKey, cfg.SerialNo, cfg.MchID, cfg.APIv3Key)
+		if err != nil {
+			log.Printf("[WeChatPayNotify] 注册下载器失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "初始化失败"})
+			return
+		}
+		certificateVisitor := downloader.MgrInstance().GetCertificateVisitor(cfg.MchID)
+		handler = notify.NewNotifyHandler(cfg.APIv3Key, verifiers.NewSHA256WithRSAVerifier(certificateVisitor))
 	}
-
-	certificateVisitor := downloader.MgrInstance().GetCertificateVisitor(cfg.MchID)
-	handler := notify.NewNotifyHandler(cfg.APIv3Key, verifiers.NewSHA256WithRSAVerifier(certificateVisitor))
 
 	transaction := new(payments.Transaction)
 	_, err = handler.ParseNotifyRequest(ctx, c.Request, transaction)

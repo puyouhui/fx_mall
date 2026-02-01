@@ -27,6 +27,13 @@
       </view>
       <view 
         class="status-tab" 
+        :class="{ active: currentStatus === 'pending_payment' }"
+        @click="switchStatus('pending_payment')"
+      >
+        待支付
+      </view>
+      <view 
+        class="status-tab" 
         :class="{ active: currentStatus === 'pending_delivery' }"
         @click="switchStatus('pending_delivery')"
       >
@@ -246,6 +253,7 @@ export default {
     formatStatus(status) {
       const statusMap = {
         'pending': '待配送',
+        'pending_payment': '待支付',
         'pending_delivery': '待配送',
         'pending_pickup': '待配送',
         'delivering': '配送中',
@@ -260,6 +268,7 @@ export default {
     getStatusClass(status) {
       const classMap = {
         'pending': 'status-green',
+        'pending_payment': 'status-orange',
         'pending_delivery': 'status-green',
         'pending_pickup': 'status-yellow',
         'delivering': 'status-green',
@@ -490,6 +499,10 @@ export default {
 .order-status {
   font-size: 24rpx;
   font-weight: 600;
+}
+
+.status-orange {
+  color: #fa8c16;
 }
 
 .status-yellow {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"go_backend/internal/database"
 	"go_backend/internal/model"
@@ -556,14 +557,30 @@ func GetUserOrderDetail(c *gin.Context) {
 		addressData["longitude"] = address.Longitude
 	}
 
+	// 待支付订单返回支付截止时间（用于前端倒计时）
+	var paymentDeadlineAt interface{} = nil
+	if order.Status == "pending_payment" {
+		timeoutMin, _ := model.GetSystemSetting("order_pending_payment_timeout")
+		if timeoutMin == "" {
+			timeoutMin = "15"
+		}
+		minutes, _ := strconv.Atoi(timeoutMin)
+		if minutes <= 0 {
+			minutes = 15
+		}
+		deadline := order.CreatedAt.Add(time.Duration(minutes) * time.Minute)
+		paymentDeadlineAt = deadline.Format("2006-01-02T15:04:05")
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,
 		"data": gin.H{
-			"order":             order,
-			"order_items":       items,
-			"address":           addressData,
-			"sales_employee":    salesEmployeeData,
-			"delivery_employee": deliveryEmployeeData,
+			"order":               order,
+			"order_items":         items,
+			"address":             addressData,
+			"sales_employee":      salesEmployeeData,
+			"delivery_employee":   deliveryEmployeeData,
+			"payment_deadline_at": paymentDeadlineAt,
 		},
 		"message": "获取成功",
 	})
@@ -605,13 +622,29 @@ func CancelUserOrder(c *gin.Context) {
 		return
 	}
 
-	// 验证订单状态是否可以取消（配送员接单之前：pending_delivery 或 pending_pickup）
-	if order.Status != "pending_delivery" && order.Status != "pending" && order.Status != "pending_pickup" {
+	// 验证订单状态是否可以取消（待支付、配送员接单之前：pending_payment、pending_delivery、pending_pickup）
+	if order.Status != "pending_payment" && order.Status != "pending_delivery" && order.Status != "pending" && order.Status != "pending_pickup" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
 			"message": "订单状态不允许取消（只能取消待配送或待取货状态的订单）",
 		})
 		return
+	}
+
+	// 若为已支付的微信支付订单（在线支付或货到付款提前通过去付款支付），先发起退款
+	if order.NeedWechatRefundOnCancel() {
+		refundID, refundErr := RequestWechatRefund(order, "")
+		if refundErr != nil {
+			log.Printf("[CancelUserOrder] 订单 %d 微信退款失败: %v", id, refundErr)
+			c.JSON(http.StatusOK, gin.H{
+				"code":    500,
+				"message": "退款申请失败: " + refundErr.Error() + "，请稍后重试或联系客服",
+			})
+			return
+		}
+		if err := model.RequestWechatRefundForOrder(id, refundID); err != nil {
+			log.Printf("[CancelUserOrder] 更新订单退款状态失败: %v", err)
+		}
 	}
 
 	// 更新订单状态为已取消

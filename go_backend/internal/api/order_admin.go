@@ -773,8 +773,9 @@ func isValidStatusTransition(currentStatus, newStatus string) bool {
 		currentStatus = "pending_delivery"
 	}
 
-	// 允许的状态流转
+	// 允许的状态流转（pending_payment 在线支付待支付，支付成功后变为 pending_delivery）
 	transitions := map[string][]string{
+		"pending_payment":  {"pending_delivery", "cancelled"}, // 待支付：可手动标记已支付进入配送，或取消
 		"pending_delivery": {"pending_pickup", "cancelled"},
 		"pending_pickup":   {"delivering", "cancelled"},
 		"delivering":       {"delivered"}, // 配送中不能取消
@@ -797,6 +798,161 @@ func isValidStatusTransition(currentStatus, newStatus string) bool {
 	}
 
 	return false
+}
+
+// AdminManualRefund 管理员手动退款（用于支付回调未同步等异常场景）
+// POST /api/admin/orders/:id/manual-refund
+func AdminManualRefund(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
+		return
+	}
+
+	order, err := model.GetOrderByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单失败: " + err.Error()})
+		return
+	}
+	if order == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
+		return
+	}
+
+	if order.TotalAmount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单金额为0，无需退款"})
+		return
+	}
+
+	// 发起微信退款（无论 paid_at 是否已同步，都尝试退款，用于支付回调未同步的场景）
+	refundID, refundErr := RequestWechatRefund(order, "支付回调未同步，管理员手动退款")
+	if refundErr != nil {
+		log.Printf("[AdminManualRefund] 订单 %d 微信退款失败: %v", id, refundErr)
+		c.JSON(http.StatusOK, gin.H{
+			"code":    500,
+			"message": "退款失败: " + refundErr.Error() + "。请确认用户已通过微信支付，或检查微信商户平台",
+		})
+		return
+	}
+
+	// 更新退款状态
+	if err := model.RequestWechatRefundForOrder(id, refundID); err != nil {
+		log.Printf("[AdminManualRefund] 更新订单退款状态失败: %v", err)
+	}
+
+	// 更新订单状态为已取消
+	if err := model.UpdateOrderStatus(id, "cancelled"); err != nil {
+		log.Printf("[AdminManualRefund] 更新订单状态失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "退款已受理，但更新订单状态失败"})
+		return
+	}
+
+	// 清理分成记录
+	go func(orderID int) {
+		if err := model.CancelOrderCommissions(orderID); err != nil {
+			log.Printf("手动退款-取消订单 %d 的分成记录失败: %v", orderID, err)
+		}
+	}(id)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "退款已受理，预计1-3工作日到账。订单已取消。",
+	})
+}
+
+// AdminRefundWithDetailsReq 售后退款请求
+type AdminRefundWithDetailsReq struct {
+	RefundAmount float64 `json:"refund_amount"` // 退款金额（元），0 或空表示全额
+	Reason       string  `json:"reason"`        // 退款原因和详情描述
+	CancelOrder  bool    `json:"cancel_order"`  // 是否同时取消订单（仅全额退款时有效）
+}
+
+// AdminRefundWithDetails 售后退款：支持指定金额、自定义原因，可选取消订单
+// POST /api/admin/orders/:id/refund-with-details
+func AdminRefundWithDetails(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
+		return
+	}
+
+	var req AdminRefundWithDetailsReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误: " + err.Error()})
+		return
+	}
+
+	order, err := model.GetOrderByID(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单失败: " + err.Error()})
+		return
+	}
+	if order == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
+		return
+	}
+
+	if order.TotalAmount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单金额为0，无需退款"})
+		return
+	}
+
+	refundAmount := req.RefundAmount
+	if refundAmount <= 0 {
+		refundAmount = order.TotalAmount
+	}
+	if refundAmount > order.TotalAmount {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": fmt.Sprintf("退款金额不能超过订单实付金额 ¥%.2f", order.TotalAmount)})
+		return
+	}
+
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		reason = "售后退款"
+	}
+
+	refundID, refundErr := RequestWechatRefundWithOptions(order, RefundOptions{
+		RefundAmount: refundAmount,
+		Reason:       reason,
+	})
+	if refundErr != nil {
+		log.Printf("[AdminRefundWithDetails] 订单 %d 微信退款失败: %v", id, refundErr)
+		c.JSON(http.StatusOK, gin.H{
+			"code":    500,
+			"message": "退款失败: " + refundErr.Error(),
+		})
+		return
+	}
+
+	if err := model.RequestWechatRefundForOrder(id, refundID); err != nil {
+		log.Printf("[AdminRefundWithDetails] 更新订单退款状态失败: %v", err)
+	}
+
+	// 全额退款且勾选了取消订单时，更新状态为已取消
+	if req.CancelOrder && refundAmount >= order.TotalAmount-0.01 {
+		if err := model.UpdateOrderStatus(id, "cancelled"); err != nil {
+			log.Printf("[AdminRefundWithDetails] 更新订单状态失败: %v", err)
+		} else {
+			go func(orderID int) {
+				if err := model.CancelOrderCommissions(orderID); err != nil {
+					log.Printf("售后退款-取消订单 %d 的分成记录失败: %v", orderID, err)
+				}
+			}(id)
+		}
+	}
+
+	msg := "退款已受理，预计1-3工作日到账"
+	if req.CancelOrder && refundAmount >= order.TotalAmount-0.01 {
+		msg += "。订单已取消。"
+	}
+	msg += "。"
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": msg,
+	})
 }
 
 // RecalculateOrderProfit 强制重新计算订单利润（用于修复老订单）
