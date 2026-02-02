@@ -91,11 +91,13 @@ func main() {
 			miniAppProtectedGroup.GET("/frequent-products", api.GetFrequentProducts)
 
 			// 订单接口
-			miniAppProtectedGroup.POST("/orders", api.CreateOrderFromCart)              // 从当前采购单创建订单
+			miniAppProtectedGroup.POST("/orders", api.CreateOrderFromCart)              // 从当前采购单创建订单（货到付款用）
+			miniAppProtectedGroup.POST("/wechat-pay/prepay-from-checkout", api.WeChatPrepayFromCheckout) // 在线支付预支付（不创建订单，支付成功后在回调创建）
 			miniAppProtectedGroup.GET("/orders", api.GetUserOrders)                     // 获取用户订单列表
-			miniAppProtectedGroup.POST("/orders/:id/wechat-pay/prepay", api.WeChatPayPrepay) // 微信支付预支付（调起支付）
-			miniAppProtectedGroup.GET("/orders/:id", api.GetUserOrderDetail)            // 获取订单详情
-			miniAppProtectedGroup.POST("/orders/:id/cancel", api.CancelUserOrder)       // 取消订单
+			miniAppProtectedGroup.POST("/orders/:id/wechat-pay/prepay", api.WeChatPayPrepay) // 微信支付预支付（货到付款订单转为在线支付时用）
+			miniAppProtectedGroup.GET("/orders/:id", api.GetUserOrderDetail)                    // 获取订单详情
+			miniAppProtectedGroup.GET("/orders/:id/wechat-confirm-receive-info", api.GetWechatConfirmReceiveInfo) // 微信确认收货组件参数
+			miniAppProtectedGroup.POST("/orders/:id/cancel", api.CancelUserOrder)               // 取消订单
 
 			// 配送员位置接口（小程序端查看配送员位置）
 			miniAppProtectedGroup.GET("/delivery-employee-location/:code", api.GetEmployeeLocationByCode) // 根据员工码获取配送员位置
@@ -129,6 +131,8 @@ func main() {
 
 		// 微信支付回调（微信服务器调用，无需鉴权，需公网 HTTPS）
 		apiGroup.POST("/wechat-pay/notify", api.WeChatPayNotify)
+		// 微信退款结果回调（需配置 wechat_pay_refund_notify_url）
+		apiGroup.POST("/wechat-pay/refund-notify", api.WeChatRefundNotify)
 
 		// 供应商合作申请接口（不需要登录也可以提交）
 		apiGroup.POST("/supplier-applications", api.CreateSupplierApplication) // 创建供应商合作申请
@@ -276,6 +280,10 @@ func main() {
 				protectedGroup.POST("/orders/:id/recalculate-profit", api.RecalculateOrderProfit) // 强制重新计算订单利润（用于修复老订单）
 				protectedGroup.POST("/orders/:id/manual-refund", api.AdminManualRefund)           // 管理员手动退款（支付回调未同步等异常）
 				protectedGroup.POST("/orders/:id/refund-with-details", api.AdminRefundWithDetails) // 售后退款（指定金额、原因）
+				protectedGroup.POST("/orders/:id/upload-wechat-shipping", api.AdminUploadWechatShipping) // 手动录入微信发货信息（补录）
+
+				// 微信订单中心配置
+				protectedGroup.POST("/wechat/order-detail-path", api.AdminUpdateOrderDetailPath) // 配置「小程序购物订单」跳转路径
 
 				// 配送记录管理
 				protectedGroup.GET("/delivery-records", api.GetAllDeliveryRecordsForAdmin)                     // 获取所有配送记录（后台管理）

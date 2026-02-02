@@ -217,7 +217,7 @@ export default {
         { value: 'ship_available', label: '有货就发，缺货商品不发' },
         { value: 'contact_me', label: '由客服或配送员联系我确认' }
       ],
-      trustReceipt: false,
+      trustReceipt: true,
       hidePrice: false,
       requirePhoneContact: true,
       expectedDeliveryText: '尽快送达',

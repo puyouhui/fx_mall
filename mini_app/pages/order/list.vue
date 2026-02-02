@@ -27,13 +27,6 @@
       </view>
       <view 
         class="status-tab" 
-        :class="{ active: currentStatus === 'pending_payment' }"
-        @click="switchStatus('pending_payment')"
-      >
-        待支付
-      </view>
-      <view 
-        class="status-tab" 
         :class="{ active: currentStatus === 'pending_delivery' }"
         @click="switchStatus('pending_delivery')"
       >
@@ -169,7 +162,6 @@ export default {
   },
   onShow() {
     // 页面显示时刷新订单列表（从订单详情页返回时会触发）
-    // 重置分页，重新加载第一页数据
     this.pageNum = 1
     this.orders = []
     this.hasMore = true

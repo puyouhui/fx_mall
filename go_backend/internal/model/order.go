@@ -444,6 +444,191 @@ func boolToTinyInt(v bool) int {
 	return 0
 }
 
+// CreateOrderFromCachedPrepay 从预支付缓存创建订单（支付回调时调用）
+// orderNumber 即 out_trade_no；transactionID 为微信支付单号；直接创建为已支付、待配送状态
+func CreateOrderFromCachedPrepay(orderNumber, transactionID string, entry *CachedPrepayEntry) (*Order, []OrderItem, error) {
+	if entry == nil || len(entry.Items) == 0 {
+		return nil, nil, fmt.Errorf("缓存数据无效")
+	}
+	if entry.Summary == nil {
+		return nil, nil, fmt.Errorf("配送费汇总为空")
+	}
+	userID := entry.UserID
+	addressID := entry.AddressID
+	items := entry.Items
+	summary := entry.Summary
+	opts := entry.Options
+	userType := entry.UserType
+	if userType == "" {
+		userType = "retail"
+	}
+
+	outOfStockStrategy := opts.OutOfStockStrategy
+	if outOfStockStrategy == "" {
+		outOfStockStrategy = "contact_me"
+	}
+	trustReceipt := opts.TrustReceipt
+	hidePrice := opts.HidePrice
+	requirePhoneContact := opts.RequirePhoneContact
+	pointsDiscount := opts.PointsDiscount
+	couponDiscount := opts.CouponDiscount
+	isUrgent := opts.IsUrgent
+	urgentFee := opts.UrgentFee
+
+	goodsAmount := summary.TotalAmount
+	deliveryFee := summary.DeliveryFee
+	if summary.IsFreeShipping {
+		deliveryFee = 0
+	}
+	if pointsDiscount < 0 {
+		pointsDiscount = 0
+	}
+	if couponDiscount < 0 {
+		couponDiscount = 0
+	}
+	if !isUrgent {
+		urgentFee = 0
+	}
+	totalAmount := goodsAmount + deliveryFee + urgentFee - pointsDiscount - couponDiscount
+	if totalAmount < 0 {
+		totalAmount = 0
+	}
+
+	now := time.Now()
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// 使用与 CreateOrderFromPurchaseList 相同的列顺序，避免列数不匹配错误
+	// 先插入基础字段，再 UPDATE 设置 paid_at 和 wechat_transaction_id
+	res, err := tx.Exec(`
+		INSERT INTO orders (
+			order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount, coupon_discount, is_urgent, urgent_fee, total_amount,
+			remark, out_of_stock_strategy, trust_receipt, hide_price, require_phone_contact, expected_delivery_at,
+			payment_method, created_at, updated_at
+		) VALUES (?, ?, ?, 'pending_delivery', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'online', NOW(), NOW())
+	`,
+		orderNumber, userID, addressID,
+		goodsAmount, deliveryFee, pointsDiscount, couponDiscount, boolToTinyInt(isUrgent), urgentFee, totalAmount,
+		opts.Remark, outOfStockStrategy, boolToTinyInt(trustReceipt), boolToTinyInt(hidePrice), boolToTinyInt(requirePhoneContact),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	orderID64, err := res.LastInsertId()
+	if err != nil {
+		return nil, nil, err
+	}
+	orderID := int(orderID64)
+
+	// 立即更新为已支付状态
+	_, err = tx.Exec(`UPDATE orders SET paid_at = ?, wechat_transaction_id = ? WHERE id = ?`, now, transactionID, orderID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("更新支付信息失败: %v", err)
+	}
+
+	itemStmt, err := tx.Prepare(`
+		INSERT INTO order_items (
+			order_id, product_id, product_name, spec_name, spec_snapshot, quantity, unit_price, subtotal, image,
+			original_unit_price, is_price_modified, price_modification_reason
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = itemStmt.Close() }()
+
+	orderItems := make([]OrderItem, 0, len(items))
+	for _, it := range items {
+		var originalPrice float64
+		if userType == "wholesale" {
+			originalPrice = it.SpecSnapshot.WholesalePrice
+			if originalPrice <= 0 {
+				originalPrice = it.SpecSnapshot.RetailPrice
+			}
+		} else {
+			originalPrice = it.SpecSnapshot.RetailPrice
+			if originalPrice <= 0 {
+				originalPrice = it.SpecSnapshot.WholesalePrice
+			}
+		}
+		if originalPrice <= 0 {
+			originalPrice = it.SpecSnapshot.Cost
+		}
+		if originalPrice < 0 {
+			originalPrice = 0
+		}
+		price := originalPrice
+		subtotal := price * float64(it.Quantity)
+		specSnapshotJSON, _ := json.Marshal(it.SpecSnapshot)
+		_, err = itemStmt.Exec(orderID, it.ProductID, it.ProductName, it.SpecName, string(specSnapshotJSON), it.Quantity, price, subtotal, it.ProductImage, &originalPrice, 0, nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		orderItems = append(orderItems, OrderItem{
+			OrderID: orderID, ProductID: it.ProductID, ProductName: it.ProductName, SpecName: it.SpecName,
+			SpecSnapshot: &it.SpecSnapshot, Quantity: it.Quantity, UnitPrice: price, Subtotal: subtotal, Image: it.ProductImage,
+		})
+	}
+
+	if opts.DeliveryFeeCouponID > 0 {
+		if err := UseCouponByUserCouponIDInTx(tx, opts.DeliveryFeeCouponID, orderID); err != nil {
+			return nil, nil, fmt.Errorf("使用免配送费券失败: %v", err)
+		}
+	}
+	if opts.AmountCouponID > 0 {
+		if err := UseCouponByUserCouponIDInTx(tx, opts.AmountCouponID, orderID); err != nil {
+			return nil, nil, fmt.Errorf("使用金额券失败: %v", err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, nil, err
+	}
+
+	remark := "订单创建（支付成功）"
+	_ = CreateDeliveryLog(&DeliveryLog{OrderID: orderID, Action: DeliveryLogActionCreated, ActionTime: now, Remark: &remark})
+
+	go func() {
+		var count int
+		_ = database.DB.QueryRow("SELECT COUNT(*) FROM orders WHERE user_id = ? AND id != ? AND status != 'cancelled'", userID, orderID).Scan(&count)
+		if count == 0 {
+			user, _ := GetMiniAppUserByID(userID)
+			if user != nil && user.ReferrerID != nil {
+				_ = CreateReferralReward(*user.ReferrerID, userID, orderID, orderNumber)
+			}
+		}
+	}()
+
+	go func() {
+		_ = UpdateOrderDeliveryInfo(orderID)
+		_ = CalculateAndStoreOrderProfitWithRetry(orderID, 3)
+	}()
+
+	order, err := GetOrderByID(orderID)
+	if err != nil || order == nil {
+		return nil, orderItems, fmt.Errorf("订单创建成功但查询失败")
+	}
+	return order, orderItems, nil
+}
+
+// CachedPrepayEntry 预支付缓存条目（model 层结构，与 api.PrepayCacheEntry 对应）
+type CachedPrepayEntry struct {
+	UserID    int
+	AddressID int
+	UserType  string
+	Items     []PurchaseListItem
+	Summary   *DeliveryFeeSummary
+	Options   OrderCreationOptions
+	ItemIDs   []int
+}
+
 // GetOrdersWithPagination 获取订单列表（支持分页和搜索）
 func GetOrdersWithPagination(pageNum, pageSize int, keyword string, status string) ([]Order, int, error) {
 	return GetOrdersWithPaginationAdvanced(pageNum, pageSize, keyword, status, nil, "", "")

@@ -31,6 +31,18 @@
 					console.log('保存分享者ID:', referrerId)
 				}
 			}
+			// 微信确认收货组件回调（appId: wx1183b055aeec94d1）
+			if (options && options.referrerInfo && options.referrerInfo.appId === 'wx1183b055aeec94d1') {
+				const extra = options.referrerInfo.extraData || {}
+				const status = extra.status || ''
+				const reqData = extra.req_extradata || {}
+				uni.$emit('wechatConfirmReceiveDone', {
+					status,
+					errormsg: extra.errormsg,
+					merchant_trade_no: reqData.merchant_trade_no,
+					transaction_id: reqData.transaction_id
+				})
+			}
 		},
 		onHide: function() {
 			console.log('App Hide')

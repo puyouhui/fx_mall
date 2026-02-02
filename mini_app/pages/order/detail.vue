@@ -273,6 +273,11 @@
             <text>联系配送员</text>
           </view>
         </view>
+        <view class="action-footer-right" v-else-if="showConfirmReceiveBtn">
+          <view class="action-main-btn" @click="handleOpenConfirmReceive">
+            <text>{{ confirmReceiveLoading ? '打开中...' : '确认收货' }}</text>
+          </view>
+        </view>
       </view>
     </view>
 
@@ -291,7 +296,7 @@
 </template>
 
 <script>
-import { getOrderDetail, getDeliveryEmployeeLocation, cancelOrder, getWechatPayPrepay } from '../../api/index.js'
+import { getOrderDetail, getDeliveryEmployeeLocation, cancelOrder, getWechatPayPrepay, getWechatConfirmReceiveInfo } from '../../api/index.js'
 import { getShareConfig, buildSharePath } from '../../utils/shareConfig.js'
 
 export default {
@@ -312,7 +317,11 @@ export default {
       paying: false, // 支付中
       paymentDeadlineAt: null, // 支付截止时间 ISO 字符串
       paymentCountdownText: '--:--',
-      countdownTimer: null
+      countdownTimer: null,
+      confirmReceiveLoading: false,
+      fromPayment: false, // 支付成功跳转，需轮询等待订单创建
+      paymentPollTimer: null,
+      paymentPollCount: 0
     }
   },
   computed: {
@@ -355,11 +364,18 @@ export default {
       if (order.status === 'paid' || order.paid_at) return false
       return Number(order.total_amount || 0) > 0
     },
+    // 是否显示确认收货按钮（已送达/已收款，微信支付订单可调起确认收货组件）
+    showConfirmReceiveBtn() {
+      const order = this.orderDetail?.order
+      if (!order) return false
+      return order.status === 'delivered' || order.status === 'shipped' || order.status === 'paid'
+    },
     // 是否显示底部操作按钮
     showActionFooter() {
       return this.canCancelOrder || 
              this.showContactDeliveryBtn ||
-             this.showPayBtn
+             this.showPayBtn ||
+             this.showConfirmReceiveBtn
     }
   },
   onLoad(options) {
@@ -375,11 +391,13 @@ export default {
     }
     
     this.token = uni.getStorageSync('miniUserToken')
-    this.orderId = parseInt(options.id) || 0
-    
-    if (!this.orderId) {
+    // 支持订单ID（数字）或订单编号（从「小程序购物订单」跳转时微信用 order_number 作为 id）
+    const idParam = options.id || options.scene || ''
+    this.orderId = idParam
+    this.fromPayment = options.fromPayment === '1'
+    if (!idParam) {
       uni.showToast({
-        title: '订单ID无效',
+        title: '订单参数无效',
         icon: 'none'
       })
       setTimeout(() => {
@@ -389,9 +407,13 @@ export default {
     }
     
     this.loadOrderDetail()
+    // 监听微信确认收货组件回调
+    uni.$on('wechatConfirmReceiveDone', this.onWechatConfirmReceiveDone)
   },
   onUnload() {
     this.clearCountdownTimer()
+    this.clearPaymentPoll()
+    uni.$off('wechatConfirmReceiveDone', this.onWechatConfirmReceiveDone)
   },
   // 分享小程序（订单详情页）
   onShareAppMessage(options) {
@@ -400,8 +422,9 @@ export default {
       orderNumber: this.orderDetail?.order?.order_number || ''
     });
     
-    // 构建分享路径，添加订单ID和分享者ID
-    const path = buildSharePath(`/pages/order/detail?id=${this.orderId}`);
+    // 构建分享路径，优先使用订单编号（与「小程序购物订单」跳转一致），否则用 id
+    const shareId = this.orderDetail?.order?.order_number || this.orderId
+    const path = buildSharePath(`/pages/order/detail?id=${shareId}`)
     
     return {
       title: shareConfig.title,
@@ -413,6 +436,18 @@ export default {
     goBack() {
       this.clearCountdownTimer()
       uni.navigateBack()
+    },
+    onWechatConfirmReceiveDone(payload) {
+      if (!payload || !this.orderDetail?.order) return
+      const orderNumber = this.orderDetail.order.order_number
+      const match = payload.merchant_trade_no === orderNumber || String(this.orderId) === String(orderNumber)
+      if (!match) return
+      if (payload.status === 'success') {
+        uni.showToast({ title: '确认收货成功', icon: 'success' })
+        this.loadOrderDetail()
+      } else if (payload.status === 'fail') {
+        uni.showToast({ title: payload.errormsg || '确认收货失败', icon: 'none' })
+      }
     },
     startPaymentCountdown() {
       this.clearCountdownTimer()
@@ -447,8 +482,8 @@ export default {
     },
     async loadOrderDetail() {
       try {
-        uni.showLoading({ title: '加载中...' })
-        const res = await getOrderDetail(this.token, this.orderId)
+        uni.showLoading({ title: this.fromPayment ? '订单生成中...' : '加载中...' })
+        const res = await getOrderDetail(this.token, this.orderId, this.fromPayment ? { silent: true } : {})
         if (res && res.code === 200 && res.data) {
           this.orderDetail = res.data
           this.paymentDeadlineAt = res.data.payment_deadline_at || null
@@ -464,25 +499,67 @@ export default {
             this.loadDeliveryEmployeeLocation()
           }
         } else {
-          uni.showToast({
-            title: res?.message || '获取订单详情失败',
-            icon: 'none'
-          })
-          setTimeout(() => {
-            uni.navigateBack()
-          }, 1500)
+          if (this.fromPayment) {
+            this.startPaymentPoll()
+          } else {
+            uni.showToast({ title: res?.message || '获取订单详情失败', icon: 'none' })
+            setTimeout(() => uni.navigateBack(), 1500)
+          }
         }
       } catch (error) {
         console.error('获取订单详情失败:', error)
-        uni.showToast({
-          title: '获取订单详情失败',
-          icon: 'none'
-        })
-        setTimeout(() => {
-          uni.navigateBack()
-        }, 1500)
+        if (this.fromPayment) {
+          this.startPaymentPoll()
+        } else {
+          uni.showToast({ title: '获取订单详情失败', icon: 'none' })
+          setTimeout(() => uni.navigateBack(), 1500)
+        }
       } finally {
         uni.hideLoading()
+      }
+    },
+    startPaymentPoll() {
+      this.clearPaymentPoll()
+      this.paymentPollCount = 0
+      const maxAttempts = 15
+      uni.showLoading({ title: '订单生成中...' })
+      const doPoll = async () => {
+        this.paymentPollCount++
+        try {
+          const res = await getOrderDetail(this.token, this.orderId, { silent: true })
+          if (res && res.code === 200 && res.data) {
+            this.clearPaymentPoll()
+            this.orderDetail = res.data
+            this.paymentDeadlineAt = res.data.payment_deadline_at || null
+            this.startPaymentCountdown()
+            this.initMap()
+            if (this.orderDetail?.order?.status === 'delivering' && this.orderDetail?.delivery_employee?.employee_code) {
+              this.loadDeliveryEmployeeLocation()
+            }
+            uni.hideLoading()
+            uni.showToast({ title: '订单已生成', icon: 'success' })
+            this.fromPayment = false
+            return
+          }
+        } catch (e) {
+          console.log('轮询获取订单失败:', e)
+        }
+        if (this.paymentPollCount >= maxAttempts) {
+          this.clearPaymentPoll()
+          uni.hideLoading()
+          uni.showToast({ title: '订单生成较慢，请稍后从订单列表查看', icon: 'none', duration: 3000 })
+          this.fromPayment = false
+          setTimeout(() => uni.navigateBack(), 2000)
+          return
+        }
+        this.paymentPollTimer = setTimeout(doPoll, 2000)
+      }
+      this.paymentPollTimer = setTimeout(doPoll, 2000)
+    },
+    clearPaymentPoll() {
+      if (this.paymentPollTimer) {
+        clearTimeout(this.paymentPollTimer)
+        this.paymentPollTimer = null
       }
     },
     initMap() {
@@ -629,6 +706,43 @@ export default {
           })
         }
       })
+    },
+    // 打开微信确认收货组件（wx.openBusinessView）
+    async handleOpenConfirmReceive() {
+      if (this.confirmReceiveLoading || !this.orderId || !this.token) return
+      this.confirmReceiveLoading = true
+      try {
+        const res = await getWechatConfirmReceiveInfo(this.orderId, this.token)
+        if (!res || res.code !== 200 || !res.data) {
+          uni.showToast({ title: res?.message || '获取失败', icon: 'none' })
+          return
+        }
+        const { transaction_id, merchant_id, merchant_trade_no } = res.data
+        const wxObj = typeof wx !== 'undefined' ? wx : uni
+        if (!wxObj.openBusinessView) {
+          uni.showToast({ title: '当前环境不支持确认收货', icon: 'none' })
+          return
+        }
+        wxObj.openBusinessView({
+          businessType: 'weappOrderConfirm',
+          extraData: {
+            transaction_id,
+            merchant_id,
+            merchant_trade_no
+          },
+          success: () => {
+            // 组件关闭后会触发 App.onShow，由 App 处理回调并刷新
+          },
+          fail: (err) => {
+            console.error('打开确认收货组件失败:', err)
+            uni.showToast({ title: err.errMsg || '打开失败', icon: 'none' })
+          }
+        })
+      } catch (e) {
+        uni.showToast({ title: e?.message || '操作失败', icon: 'none' })
+      } finally {
+        this.confirmReceiveLoading = false
+      }
     },
     async handlePayOrder() {
       if (this.paying || !this.orderId || !this.token) return

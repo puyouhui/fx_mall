@@ -415,10 +415,26 @@ export const getUserOrders = (token, params = {}) => {
 /**
  * 获取订单详情
  * @param {string} token - 用户token
- * @param {number} orderId - 订单ID
+ * @param {number|string} orderId - 订单ID或订单编号
+ * @param {object} options - 可选，如 { silent: true } 静默请求（不弹出错误提示）
  */
-export const getOrderDetail = (token, orderId) => {
+export const getOrderDetail = (token, orderId, options = {}) => {
   return get(`/mini-app/users/orders/${orderId}`, {}, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    ...options
+  });
+};
+
+/**
+ * 获取微信确认收货组件参数（用于 wx.openBusinessView）
+ * @param {string} orderIdOrNumber - 订单ID或订单编号
+ * @param {string} token - 用户token
+ * @returns Promise { transaction_id, merchant_id, merchant_trade_no }
+ */
+export const getWechatConfirmReceiveInfo = (orderIdOrNumber, token) => {
+  return get(`/mini-app/users/orders/${orderIdOrNumber}/wechat-confirm-receive-info`, {}, {
     header: {
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     }
@@ -463,13 +479,27 @@ export const cancelOrder = (token, orderId) => {
 };
 
 /**
- * 获取微信支付预支付参数（调起支付）
+ * 获取微信支付预支付参数（调起支付，用于已创建的订单）
  * @param {number} orderId - 订单ID
  * @param {string} token - 用户token
- * @returns Promise 包含 timeStamp、nonceStr、package、signType、paySign，用于 wx.requestPayment
+ * @returns Promise 包含 timeStamp、nonceStr、package、signType、paySign
  */
 export const getWechatPayPrepay = (orderId, token) => {
   return post(`/mini-app/users/orders/${orderId}/wechat-pay/prepay`, {}, {
+    header: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+};
+
+/**
+ * 在线支付预支付（不创建订单，支付成功后在回调中创建）
+ * @param {object} data - 与创建订单相同的 payload，需含 payment_method: 'online'
+ * @param {string} token - 用户token
+ * @returns Promise 包含 out_trade_no、timeStamp、nonceStr、package、signType、paySign
+ */
+export const getWechatPrepayFromCheckout = (data, token) => {
+  return post('/mini-app/users/wechat-pay/prepay-from-checkout', data, {
     header: {
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     }

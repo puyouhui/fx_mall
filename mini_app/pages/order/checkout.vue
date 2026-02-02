@@ -96,7 +96,7 @@
 </template>
 
 <script>
-import { createOrder, getWechatPayPrepay } from '../../api/index.js'
+import { createOrder, getWechatPrepayFromCheckout } from '../../api/index.js'
 
 const CHECKOUT_STORAGE_KEY = 'checkoutOrderData'
 
@@ -173,39 +173,47 @@ export default {
           payment_method: this.paymentMethod
         }
 
+        // 在线支付：不创建订单，直接预支付，支付成功后在回调中创建
+        if (this.paymentMethod === 'online') {
+          const res = await getWechatPrepayFromCheckout(payload, this.token)
+          if (!res || res.code !== 200 || !res.data) {
+            uni.showToast({ title: res?.message || '获取支付参数失败', icon: 'none' })
+            return
+          }
+          try {
+            await this.doWechatPayWithParams(res.data)
+          } catch (e) {
+            // 用户取消或支付失败，不做任何操作，可再次点击支付
+            return
+          }
+          const outTradeNo = res.data?.out_trade_no || ''
+          uni.removeStorageSync(CHECKOUT_STORAGE_KEY)
+          uni.showToast({ title: '支付成功', icon: 'success', duration: 1500 })
+          // 订单由支付回调异步创建，直接跳转订单详情（用 order_number 即 out_trade_no），详情页将轮询直到订单出现
+          setTimeout(() => {
+            if (outTradeNo) {
+              uni.redirectTo({ url: `/pages/order/detail?id=${encodeURIComponent(outTradeNo)}&fromPayment=1` })
+            } else {
+              uni.redirectTo({ url: '/pages/order/list' })
+            }
+          }, 1500)
+          return
+        }
+
+        // 货到付款：创建订单
         const res = await createOrder(payload, this.token)
         if (!res || res.code !== 200) {
           uni.showToast({ title: res?.message || '下单失败', icon: 'none' })
           return
         }
-
         const orderData = res.data?.order || {}
         const orderId = orderData.id || orderData.order_id
-
         if (!orderId) {
           uni.showToast({ title: '订单创建异常', icon: 'none' })
           return
         }
-
-        if (this.paymentMethod === 'online') {
-          try {
-            await this.doWechatPay(orderId)
-          } catch (e) {
-            uni.removeStorageSync(CHECKOUT_STORAGE_KEY)
-            uni.showToast({ title: '订单已创建，请至订单详情完成支付', icon: 'none', duration: 2000 })
-            setTimeout(() => {
-              uni.redirectTo({ url: `/pages/order/detail?id=${orderId}` })
-            }, 1500)
-            return
-          }
-        }
-
         uni.removeStorageSync(CHECKOUT_STORAGE_KEY)
-        uni.showToast({ 
-          title: this.paymentMethod === 'online' ? '支付成功' : '下单成功', 
-          icon: 'success',
-          duration: 1500 
-        })
+        uni.showToast({ title: '下单成功', icon: 'success', duration: 1500 })
         setTimeout(() => {
           uni.redirectTo({ url: `/pages/order/detail?id=${orderId}` })
         }, 1500)
@@ -216,13 +224,8 @@ export default {
         this.submitting = false
       }
     },
-    async doWechatPay(orderId) {
-      const res = await getWechatPayPrepay(orderId, this.token)
-      if (!res || res.code !== 200 || !res.data) {
-        throw new Error(res?.message || '获取支付参数失败')
-      }
-
-      const { timeStamp, nonceStr, package: packageVal, signType, paySign } = res.data
+    async doWechatPayWithParams(prepayData) {
+      const { timeStamp, nonceStr, package: packageVal, signType, paySign } = prepayData
       return new Promise((resolve, reject) => {
         uni.requestPayment({
           provider: 'wxpay',

@@ -2,7 +2,7 @@
 
 // 基础API地址（生产环境）
 export const BASE_URL = 'https://mall.sscchh.com/api/mini';
-// export const BASE_URL = 'http://localhost:8082/api/mini';
+// export const BASE_URL = 'http://192.168.1.3:8082/api/mini';
 
 
 // 封装请求方法
@@ -22,6 +22,8 @@ export const request = (options = {}) => {
 
   // 合并用户参数和默认参数
   const finalOptions = { ...defaultOptions, ...options };
+  const silent = finalOptions.silent === true;
+  delete finalOptions.silent;
   finalOptions.url = BASE_URL + finalOptions.url;
 
   // 返回Promise对象
@@ -36,35 +38,38 @@ export const request = (options = {}) => {
             resolve(res.data);
           } else {
             // 检查业务错误码，如果需要清空登录信息
-            if (res.data && shouldClearAuthInfo(res.statusCode, res.data.code)) {
+            if (res.data && shouldClearAuthInfo(res.statusCode, res.data.code, silent)) {
               clearLocalAuthInfo();
             }
-            // 错误提示
-            uni.showToast({
-              title: res.data.message || res.data.msg || '请求失败',
-              icon: 'none'
-            });
+            if (!silent) {
+              uni.showToast({
+                title: res.data.message || res.data.msg || '请求失败',
+                icon: 'none'
+              });
+            }
             reject(res.data);
           }
         } else {
           // HTTP状态码错误（401, 403, 404等）
-          if (shouldClearAuthInfo(res.statusCode, null)) {
+          if (shouldClearAuthInfo(res.statusCode, null, silent)) {
             clearLocalAuthInfo();
           }
-          // HTTP错误
-          uni.showToast({
-            title: `HTTP错误: ${res.statusCode}`,
-            icon: 'none'
-          });
+          if (!silent) {
+            uni.showToast({
+              title: `HTTP错误: ${res.statusCode}`,
+              icon: 'none'
+            });
+          }
           reject(res);
         }
       },
       fail: (err) => {
-        // 网络错误
-        uni.showToast({
-          title: '网络连接失败',
-          icon: 'none'
-        });
+        if (!silent) {
+          uni.showToast({
+            title: '网络连接失败',
+            icon: 'none'
+          });
+        }
         reject(err);
       }
     });
@@ -109,15 +114,14 @@ function clearLocalAuthInfo() {
 }
 
 // 检查状态码是否需要清空登录信息
-function shouldClearAuthInfo(statusCode, businessCode) {
-  // HTTP状态码：401未授权、403禁止、404未找到
-  if (statusCode === 401 || statusCode === 403 || statusCode === 404) {
-    return true;
-  }
-  // 业务错误码：401未授权、404未找到
-  if (businessCode === 401 || businessCode === 404) {
-    return true;
-  }
+// silent 为 true 时（如轮询订单详情）404 不应清空登录，避免误跳首页
+function shouldClearAuthInfo(statusCode, businessCode, silent) {
+  if (silent && statusCode === 404) return false;
+  // HTTP状态码：401未授权、403禁止
+  if (statusCode === 401 || statusCode === 403) return true;
+  // HTTP 404 且非静默：如会话失效导致的资源不存在
+  if (statusCode === 404) return true;
+  if (businessCode === 401 || businessCode === 404) return true;
   return false;
 }
 

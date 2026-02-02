@@ -451,6 +451,7 @@ func GetUserOrders(c *gin.Context) {
 }
 
 // GetUserOrderDetail 获取订单详情（小程序）
+// 支持订单ID（数字）或订单编号：从「小程序购物订单」跳转时微信用 out_trade_no 替换 ${商品订单号}，即 order_number
 func GetUserOrderDetail(c *gin.Context) {
 	user, ok := getMiniUserFromContext(c)
 	if !ok {
@@ -459,18 +460,18 @@ func GetUserOrderDetail(c *gin.Context) {
 
 	idStr := c.Param("id")
 	if idStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供订单ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供订单ID或订单编号"})
 		return
 	}
 
-	id, err := strconv.Atoi(idStr)
-	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "订单ID格式错误"})
-		return
+	var order *model.Order
+	var err error
+	id, parseErr := strconv.Atoi(idStr)
+	if parseErr == nil && id > 0 {
+		order, err = model.GetOrderByID(id)
+	} else {
+		order, err = model.GetOrderByOrderNumber(idStr)
 	}
-
-	// 获取订单
-	order, err := model.GetOrderByID(id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单失败: " + err.Error()})
 		return
@@ -504,7 +505,7 @@ func GetUserOrderDetail(c *gin.Context) {
 	}
 
 	// 获取订单明细
-	items, err := model.GetOrderItemsByOrderID(id)
+	items, err := model.GetOrderItemsByOrderID(order.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取订单明细失败: " + err.Error()})
 		return
@@ -583,6 +584,59 @@ func GetUserOrderDetail(c *gin.Context) {
 			"payment_deadline_at": paymentDeadlineAt,
 		},
 		"message": "获取成功",
+	})
+}
+
+// GetWechatConfirmReceiveInfo 获取微信确认收货组件所需参数（用于 wx.openBusinessView）
+// GET /mini-app/users/orders/:id/wechat-confirm-receive-info
+func GetWechatConfirmReceiveInfo(c *gin.Context) {
+	user, ok := getMiniUserFromContext(c)
+	if !ok {
+		return
+	}
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "请提供订单ID或订单编号"})
+		return
+	}
+	var order *model.Order
+	var err error
+	if id, parseErr := strconv.Atoi(idStr); parseErr == nil && id > 0 {
+		order, err = model.GetOrderByID(id)
+	} else {
+		order, err = model.GetOrderByOrderNumber(idStr)
+	}
+	if err != nil || order == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "订单不存在"})
+		return
+	}
+	if order.UserID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "无权操作此订单"})
+		return
+	}
+	if order.WechatTransactionID == nil || strings.TrimSpace(*order.WechatTransactionID) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "该订单非微信支付，无法使用确认收货组件"})
+		return
+	}
+	// 已送达、已收款等状态可确认收货
+	allowed := order.Status == "delivered" || order.Status == "shipped" || order.Status == "paid"
+	if !allowed {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "当前订单状态不允许确认收货"})
+		return
+	}
+	mchID, _ := model.GetSystemSetting("wechat_pay_mch_id")
+	if mchID == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "系统未配置微信支付商户号"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"data": gin.H{
+			"transaction_id":    *order.WechatTransactionID,
+			"merchant_id":       mchID,
+			"merchant_trade_no": order.OrderNumber,
+		},
+		"message": "success",
 	})
 }
 

@@ -68,3 +68,25 @@ export const recalculateOrderProfit = async (id) => {
   }
 }
 
+// 手动录入微信发货信息（用于补录，满足「小程序购物订单」要求）
+export const uploadWechatShipping = async (id) => {
+  try {
+    const res = await request.post(`/admin/orders/${id}/upload-wechat-shipping`)
+    return res
+  } catch (error) {
+    console.error('录入微信发货信息失败:', error)
+    throw error
+  }
+}
+
+// 配置「小程序购物订单」跳转路径（path 须含 ${商品订单号}）
+export const updateWechatOrderDetailPath = async (path) => {
+  try {
+    const res = await request.post('/admin/wechat/order-detail-path', { path })
+    return res
+  } catch (error) {
+    console.error('配置订单详情路径失败:', error)
+    throw error
+  }
+}
+

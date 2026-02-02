@@ -11,7 +11,6 @@
             style="width: 200px; margin-right: 10px;" />
           <el-select v-model="statusFilter" placeholder="订单状态" clearable style="width: 150px; margin-right: 10px;"
             @change="handleSearch">
-            <el-option label="待支付" value="pending_payment" />
             <el-option label="待配送" value="pending_delivery" />
             <el-option label="待取货" value="pending_pickup" />
             <el-option label="配送中" value="delivering" />
@@ -205,6 +204,12 @@
                     </el-dropdown-item>
                     <el-dropdown-item command="recalculate" divided>
                       强制重新计算
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                      v-if="scope.row.status !== 'cancelled' && scope.row.status !== 'pending_payment'"
+                      command="upload_wechat_shipping"
+                    >
+                      录入微信发货
                     </el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
@@ -810,7 +815,7 @@
 import { reactive, ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, QuestionFilled } from '@element-plus/icons-vue'
-import { getOrders, getOrderDetail, updateOrderStatus, recalculateOrderProfit, manualRefundOrder, refundOrderWithDetails } from '../api/orders'
+import { getOrders, getOrderDetail, updateOrderStatus, recalculateOrderProfit, manualRefundOrder, refundOrderWithDetails, uploadWechatShipping } from '../api/orders'
 import { hiprint } from 'vue-plugin-hiprint'
 import { getPrinterAddress, getPrintOptions, isOnlineEnvironment } from '../utils/printer'
 
@@ -1053,6 +1058,12 @@ const handleOrderAction = async (row, command) => {
     return
   }
 
+  // 如果是录入微信发货
+  if (command === 'upload_wechat_shipping') {
+    await handleUploadWechatShipping(orderId)
+    return
+  }
+
   // 如果是手动退款
   if (command === 'manual_refund') {
     await doManualRefund(orderId)
@@ -1235,6 +1246,29 @@ const handleRecalculateProfit = async (orderId) => {
     if (error !== 'cancel') {
       console.error('重新计算订单利润失败:', error)
       ElMessage.error('重新计算失败，请稍后再试')
+    }
+  }
+}
+
+// 录入微信发货信息（用于补录，满足「小程序购物订单」要求）
+const handleUploadWechatShipping = async (orderId) => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要手动录入该订单的微信发货信息吗？仅微信支付订单会生效。',
+      '确认操作',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
+    )
+    ElMessage.info('正在录入...')
+    const res = await uploadWechatShipping(orderId)
+    if (res && res.code === 200) {
+      ElMessage.success('录入成功')
+    } else {
+      ElMessage.error(res?.message || '录入失败')
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('录入微信发货失败:', error)
+      ElMessage.error(error?.response?.data?.message || error?.message || '录入失败，请稍后再试')
     }
   }
 }

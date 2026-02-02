@@ -899,6 +899,15 @@ func AdminRefundWithDetails(c *gin.Context) {
 		return
 	}
 
+	// 货到付款且未通过微信支付的订单无法退款（避免无效 API 调用）
+	if order.PaymentMethod == "cod" && (order.WechatTransactionID == nil || strings.TrimSpace(*order.WechatTransactionID) == "") {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "该订单为货到付款且未通过微信支付，无法退款。如有疑问请联系客服。",
+		})
+		return
+	}
+
 	refundAmount := req.RefundAmount
 	if refundAmount <= 0 {
 		refundAmount = order.TotalAmount

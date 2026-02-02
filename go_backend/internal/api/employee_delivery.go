@@ -728,6 +728,13 @@ func StartDeliveryOrder(c *gin.Context) {
 	}
 	_ = model.CreateDeliveryLog(deliveryLog) // 记录日志失败不影响主流程
 
+	// 异步录入微信小程序发货信息（用于「小程序购物订单」展示及资金结算）
+	go func(orderID int) {
+		if err := UploadWechatShippingInfo(orderID); err != nil {
+			log.Printf("[StartDeliveryOrder] 微信发货信息录入失败 orderID=%d: %v", orderID, err)
+		}
+	}(id)
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "开始配送成功",
@@ -1654,14 +1661,12 @@ func MarkItemsAsPicked(c *gin.Context) {
 					}
 
 					// 订单状态更新后，更新受影响订单的孤立状态，然后重新计算配送费和利润
-					// 注意：虽然 delivering 状态的订单不在查询范围内，但为了保持逻辑一致性，
-					// 我们仍然更新受影响订单（实际上不会有影响，因为 delivering 不在查询范围内）
-					go func(orderID int) {
-						// 更新受影响订单的孤立状态（因为当前订单从"待取货"变为"配送中"）
-						// 注意：由于 updateAffectedOrdersIsolatedStatus 是私有函数，我们需要通过 UpdateOrderDeliveryInfo 来触发
-						// 但实际上，由于 delivering 状态的订单不在查询范围内，所以不需要更新
-						// 这里我们只重新计算当前订单的配送费即可
-						_ = model.CalculateAndStoreOrderProfitWithRetry(orderID, 3)
+					go func(oid int) {
+						_ = model.CalculateAndStoreOrderProfitWithRetry(oid, 3)
+						// 录入微信小程序发货信息（用于「小程序购物订单」展示及资金结算）
+						if err := UploadWechatShippingInfo(oid); err != nil {
+							log.Printf("[MarkPickup] 微信发货信息录入失败 orderID=%d: %v", oid, err)
+						}
 					}(orderID)
 
 					// 注意：非接单场景不触发路线重新计算，序号保持不变

@@ -33,6 +33,28 @@ type wechatPayConfig struct {
 	PublicKeyPEM      string // 微信支付公钥（新商户需在商户平台申请后下载 pub_key.pem）
 }
 
+// buildPayDescription 构建支付商品描述（用于「小程序购物订单」展示，限127字符）
+func buildPayDescription(orderID int) string {
+	items, err := model.GetOrderItemsByOrderID(orderID)
+	if err != nil || len(items) == 0 {
+		return "订单支付"
+	}
+	var parts []string
+	for _, it := range items {
+		part := it.ProductName
+		if it.SpecName != "" {
+			part += " " + it.SpecName
+		}
+		part += "×" + strconv.Itoa(it.Quantity)
+		parts = append(parts, part)
+	}
+	desc := strings.Join(parts, ";")
+	if len(desc) > 127 {
+		desc = desc[:124] + "..."
+	}
+	return desc
+}
+
 // getWechatPayConfig 从系统设置获取微信支付配置
 func getWechatPayConfig() (*wechatPayConfig, error) {
 	mchID, _ := model.GetSystemSetting("wechat_pay_mch_id")
@@ -151,11 +173,14 @@ func WeChatPayPrepay(c *gin.Context) {
 		amountFen = 1
 	}
 
+	// 构建商品描述（用于「小程序购物订单」展示，限127字符）
+	description := buildPayDescription(orderID)
+
 	svc := jsapi.JsapiApiService{Client: client}
 	resp, _, err := svc.PrepayWithRequestPayment(ctx, jsapi.PrepayRequest{
 		Appid:       core.String(cfg.AppID),
 		Mchid:       core.String(cfg.MchID),
-		Description: core.String("订单支付-" + order.OrderNumber),
+		Description: core.String(description),
 		OutTradeNo:  core.String(order.OrderNumber),
 		NotifyUrl:   core.String(cfg.NotifyURL),
 		Amount: &jsapi.Amount{
@@ -188,6 +213,7 @@ func WeChatPayPrepay(c *gin.Context) {
 // WeChatPayNotify 微信支付结果回调（微信服务器调用，无需鉴权）
 // POST /api/mini/wechat-pay/notify
 func WeChatPayNotify(c *gin.Context) {
+	log.Printf("[WeChatPayNotify] 收到微信支付回调请求")
 	cfg, err := getWechatPayConfig()
 	if err != nil {
 		log.Printf("[WeChatPayNotify] 获取配置失败: %v", err)
@@ -248,10 +274,28 @@ func WeChatPayNotify(c *gin.Context) {
 	if transaction.TransactionId != nil {
 		transactionID = *transaction.TransactionId
 	}
+	log.Printf("[WeChatPayNotify] 解析成功 out_trade_no=%s transaction_id=%s", outTradeNo, transactionID)
 
 	order, err := model.GetOrderByOrderNumber(outTradeNo)
 	if err != nil || order == nil {
-		log.Printf("[WeChatPayNotify] 订单不存在: out_trade_no=%s", outTradeNo)
+		// 可能是 prepay-from-checkout 流程：订单尚未创建，从缓存创建
+		cacheEntry, cacheErr := GetPrepayCache(outTradeNo)
+		if cacheErr != nil || cacheEntry == nil {
+			// 缓存不存在或过期：用户已付款但无法创建订单，必须返回 FAIL 让微信重试，避免误报成功
+			log.Printf("[WeChatPayNotify] 严重：订单不存在且预支付缓存无效(已过期或不存在)，用户可能已扣款。out_trade_no=%s transaction_id=%s err=%v", outTradeNo, transactionID, cacheErr)
+			c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "预支付缓存已过期，请稍后重试或联系客服补单"})
+			return
+		}
+		// 从缓存创建订单（直接为已支付状态）
+		order, _, err = model.CreateOrderFromCachedPrepay(outTradeNo, transactionID, cacheEntry)
+		if err != nil {
+			log.Printf("[WeChatPayNotify] 从缓存创建订单失败: out_trade_no=%s err=%v", outTradeNo, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "创建订单失败"})
+			return
+		}
+		// 清空采购单
+		ClearPurchaseListByItemIDs(cacheEntry.UserID, cacheEntry.ItemIDs)
+		log.Printf("[WeChatPayNotify] 从缓存创建订单成功: orderID=%d out_trade_no=%s", order.ID, outTradeNo)
 		c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "成功"})
 		return
 	}
