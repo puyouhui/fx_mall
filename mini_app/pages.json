@@ -139,7 +139,7 @@
       "path": "pages/order/checkout",
       "style": {
         "navigationStyle": "custom",
-        "navigationBarTitleText": "收银台",
+        "navigationBarTitleText": "结算订单",
         "navigationBarBackgroundColor": "#FFFFFF",
         "navigationBarTextStyle": "black"
       }

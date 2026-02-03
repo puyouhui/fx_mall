@@ -149,6 +149,7 @@
 <script>
 import { getMiniUserInfo, getMiniUserDefaultAddress, getUserCoupons, getUserOrders, getCarousels } from '../../api/index.js';
 import LoginModal from '../../components/LoginModal.vue';
+import { updatePurchaseListTabBarBadge } from '../../utils/purchaseList.js';
 
 export default {
   components: {
@@ -230,6 +231,7 @@ export default {
   onShow() {
     this.checkLoginStatus();
     this.updateUserInfo();
+    updatePurchaseListTabBarBadge();
     this.loadDefaultAddress();
     this.loadOrderCounts();
     this.loadCouponCount();

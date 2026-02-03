@@ -174,6 +174,7 @@
 import { getCarousels, getCategories, getSpecialProducts, getHotProducts, getMiniUserInfo, miniLogin } from '../../api/index';
 import ProductSelector from '../../components/ProductSelector.vue';
 import { getShareConfig, buildSharePath } from '../../utils/shareConfig.js';
+import { updatePurchaseListTabBarBadge } from '../../utils/purchaseList.js';
 export default {
 	components: {
 		ProductSelector
@@ -239,6 +240,7 @@ export default {
 	// 页面显示时更新用户信息
 	onShow() {
 		this.updateUserInfo();
+		updatePurchaseListTabBarBadge();
 		// 如果弹窗正在显示，检查用户是否已经完善了资料
 		if (this.showUserCodeModal) {
 			const userInfo = uni.getStorageSync('miniUserInfo');

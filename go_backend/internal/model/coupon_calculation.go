@@ -147,15 +147,20 @@ func GetAvailableCouponsForPurchaseList(userID int, orderAmount float64, categor
 
 // CalculateBestCouponCombination 计算最佳优惠券组合
 func CalculateBestCouponCombination(availableCoupons []AvailableCouponInfo, orderAmount float64, deliveryFee float64, isFreeShipping bool) BestCouponCombination {
-	return calculateCouponCombination(availableCoupons, orderAmount, deliveryFee, isFreeShipping, 0, 0)
+	return calculateCouponCombinationEx(availableCoupons, orderAmount, deliveryFee, isFreeShipping, 0, 0, false, false)
 }
 
 // CalculateCouponCombinationWithSelection 根据指定的优惠券ID优先组合，若无效则回退到最佳组合
 func CalculateCouponCombinationWithSelection(availableCoupons []AvailableCouponInfo, orderAmount float64, deliveryFee float64, isFreeShipping bool, deliveryCouponID int, amountCouponID int) BestCouponCombination {
-	return calculateCouponCombination(availableCoupons, orderAmount, deliveryFee, isFreeShipping, deliveryCouponID, amountCouponID)
+	return calculateCouponCombinationEx(availableCoupons, orderAmount, deliveryFee, isFreeShipping, deliveryCouponID, amountCouponID, false, false)
 }
 
-func calculateCouponCombination(availableCoupons []AvailableCouponInfo, orderAmount float64, deliveryFee float64, isFreeShipping bool, deliveryCouponID int, amountCouponID int) BestCouponCombination {
+// CalculateCouponCombinationWithExplicitSelection 支持显式「不使用」：当 explicitNoDeliveryCoupon/explicitNoAmountCoupon 为 true 且对应 ID 为 0 时，不自动选择
+func CalculateCouponCombinationWithExplicitSelection(availableCoupons []AvailableCouponInfo, orderAmount float64, deliveryFee float64, isFreeShipping bool, deliveryCouponID int, amountCouponID int, explicitNoDeliveryCoupon bool, explicitNoAmountCoupon bool) BestCouponCombination {
+	return calculateCouponCombinationEx(availableCoupons, orderAmount, deliveryFee, isFreeShipping, deliveryCouponID, amountCouponID, explicitNoDeliveryCoupon, explicitNoAmountCoupon)
+}
+
+func calculateCouponCombinationEx(availableCoupons []AvailableCouponInfo, orderAmount float64, deliveryFee float64, isFreeShipping bool, deliveryCouponID int, amountCouponID int, explicitNoDeliveryCoupon bool, explicitNoAmountCoupon bool) BestCouponCombination {
 	result := BestCouponCombination{}
 
 	// 分离免配送费券和金额券
@@ -189,13 +194,13 @@ func calculateCouponCombination(availableCoupons []AvailableCouponInfo, orderAmo
 		}
 	}
 
-	// 如果用户未指定或指定无效，则回退到默认策略
-	if result.DeliveryFeeCoupon == nil && !isFreeShipping && len(deliveryFeeCoupons) > 0 {
+	// 如果用户未指定或指定无效，则回退到默认策略（显式选择「不使用」时不回退）
+	if result.DeliveryFeeCoupon == nil && !isFreeShipping && len(deliveryFeeCoupons) > 0 && !(explicitNoDeliveryCoupon && deliveryCouponID == 0) {
 		result.DeliveryFeeCoupon = &deliveryFeeCoupons[0]
 		result.DeliveryFeeSaved = deliveryFee
 	}
 
-	if result.AmountCoupon == nil && len(amountCoupons) > 0 {
+	if result.AmountCoupon == nil && len(amountCoupons) > 0 && !(explicitNoAmountCoupon && amountCouponID == 0) {
 		var bestAmountCoupon *AvailableCouponInfo
 		maxDiscount := 0.0
 

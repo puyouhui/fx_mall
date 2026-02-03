@@ -44,55 +44,44 @@
                 保存
               </el-button>
             </div>
-            <el-table
-              v-if="selectedPrimaryCategoryId"
-              :data="secondaryCategories"
-              stripe
-              row-key="id"
-              class="sort-table"
-              highlight-current-row
-              @row-click="handleSecondaryCategoryRowClick"
-            >
-              <el-table-column type="index" label="序号" width="80" align="center" />
-              <el-table-column label="排序操作" width="150" align="center">
-                <template #default="scope">
-                  <el-button-group>
-                    <el-button
-                      size="small"
-                      :disabled="scope.$index === 0"
-                      @click.stop="moveCategoryUp(scope.$index)"
-                    >
-                      <el-icon><ArrowUp /></el-icon>
-                    </el-button>
-                    <el-button
-                      size="small"
-                      :disabled="scope.$index === secondaryCategories.length - 1"
-                      @click.stop="moveCategoryDown(scope.$index)"
-                    >
-                      <el-icon><ArrowDown /></el-icon>
-                    </el-button>
-                  </el-button-group>
-                </template>
-              </el-table-column>
-              <el-table-column prop="name" label="分类名称" min-width="200" />
-              <el-table-column prop="sort" label="排序值" width="120" align="center">
-                <template #default="scope">
-                  <el-input-number
-                    v-model="scope.row.sort"
-                    :min="0"
-                    size="small"
-                    style="width: 100px;"
-                  />
-                </template>
-              </el-table-column>
-              <el-table-column prop="status" label="状态" width="100" align="center">
-                <template #default="scope">
-                  <el-tag :type="scope.row.status === 1 ? 'success' : 'info'">
-                    {{ scope.row.status === 1 ? '启用' : '禁用' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-            </el-table>
+            <div v-if="selectedPrimaryCategoryId && secondaryCategories.length > 0" class="sort-list-with-header">
+              <div class="sort-list-header">
+                <div class="sort-row-drag">操作</div>
+                <div class="sort-row-name">分类名称</div>
+                <div class="sort-row-input">排序值</div>
+                <div class="sort-row-status">状态</div>
+              </div>
+              <draggable
+                v-model="secondaryCategories"
+                item-key="id"
+                class="sort-draggable-list"
+                :animation="200"
+                handle=".drag-handle"
+                @end="updateCategorySortValues"
+              >
+                <template #item="{ element: cat, index }">
+                <div
+                  class="sort-row category-row"
+                  :class="{ active: selectedSecondaryCategoryId === cat.id }"
+                  @click="handleSecondaryCategoryRowClick(cat)"
+                >
+                  <div class="sort-row-drag">
+                    <el-icon class="drag-handle" title="拖动排序"><Sort /></el-icon>
+                    <span class="sort-index">{{ index + 1 }}</span>
+                  </div>
+                  <div class="sort-row-name">{{ cat.name }}</div>
+                  <div class="sort-row-input">
+                    <el-input-number v-model="cat.sort" :min="0" size="small" style="width: 100px;" />
+                  </div>
+                  <div class="sort-row-status">
+                    <el-tag :type="cat.status === 1 ? 'success' : 'info'">
+                      {{ cat.status === 1 ? '启用' : '禁用' }}
+                    </el-tag>
+                  </div>
+                </div>
+              </template>
+              </draggable>
+            </div>
             <el-empty v-if="!selectedPrimaryCategoryId" description="请选择左侧一级分类" />
             <el-empty v-else-if="selectedPrimaryCategoryId && secondaryCategories.length === 0" description="该分类下暂无二级分类" />
           </div>
@@ -129,68 +118,90 @@
                     保存商品排序
                   </el-button>
                 </div>
-                <el-table
-                  v-if="selectedSecondaryCategoryId && filteredProducts.length > 0"
-                  :data="filteredProducts"
-                  stripe
-                  row-key="id"
-                  class="sort-table"
-                >
-                  <el-table-column type="index" label="序号" width="80" align="center" />
-                  <el-table-column label="排序操作" width="150" align="center">
-                    <template #default="scope">
-                      <el-button-group>
-                        <el-button
-                          size="small"
-                          :disabled="scope.$index === 0"
-                          @click.stop="moveProductUp(scope.$index)"
-                        >
-                          <el-icon><ArrowUp /></el-icon>
-                        </el-button>
-                        <el-button
-                          size="small"
-                          :disabled="scope.$index === filteredProducts.length - 1"
-                          @click.stop="moveProductDown(scope.$index)"
-                        >
-                          <el-icon><ArrowDown /></el-icon>
-                        </el-button>
-                      </el-button-group>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="商品信息" min-width="200">
-                    <template #default="scope">
-                      <div class="product-info">
+                <div v-if="productSearchKeyword" class="search-tip">
+                  <el-alert type="info" :closable="false" show-icon>
+                    已按关键词过滤，清空搜索后可使用拖动排序
+                  </el-alert>
+                </div>
+                <div v-if="selectedSecondaryCategoryId && allProducts.length > 0 && !productSearchKeyword" class="sort-list-with-header">
+                  <div class="sort-list-header">
+                    <div class="sort-row-drag">操作</div>
+                    <div class="sort-row-product">商品信息</div>
+                    <div class="sort-row-input">排序值</div>
+                    <div class="sort-row-status">状态</div>
+                  </div>
+                  <draggable
+                    v-model="allProducts"
+                    item-key="id"
+                    class="sort-draggable-list"
+                    :animation="200"
+                    handle=".drag-handle"
+                    @end="updateProductSortValues"
+                  >
+                    <template #item="{ element: product, index }">
+                    <div class="sort-row product-row">
+                      <div class="sort-row-drag">
+                        <el-icon class="drag-handle" title="拖动排序"><Sort /></el-icon>
+                        <span class="sort-index">{{ index + 1 }}</span>
+                      </div>
+                      <div class="sort-row-product">
                         <el-image
-                          v-if="scope.row.images && scope.row.images.length > 0"
-                          :src="getImageUrl(scope.row.images[0])"
+                          v-if="product.images && product.images.length > 0"
+                          :src="getImageUrl(product.images[0])"
                           style="width: 50px; height: 50px; margin-right: 10px;"
                           fit="cover"
                         />
                         <div>
-                          <div class="product-name">{{ scope.row.name }}</div>
-                          <div class="product-id">ID: {{ scope.row.id }}</div>
+                          <div class="product-name">{{ product.name }}</div>
+                          <div class="product-id">ID: {{ product.id }}</div>
                         </div>
                       </div>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="sort" label="排序值" width="120" align="center">
-                    <template #default="scope">
-                      <el-input-number
-                        v-model="scope.row.sort"
-                        :min="0"
-                        size="small"
-                        style="width: 100px;"
+                      <div class="sort-row-input">
+                        <el-input-number v-model="product.sort" :min="0" size="small" style="width: 100px;" />
+                      </div>
+                      <div class="sort-row-status">
+                        <el-tag :type="product.status === 1 ? 'success' : 'info'">
+                          {{ product.status === 1 ? '启用' : '禁用' }}
+                        </el-tag>
+                      </div>
+                    </div>
+                  </template>
+                  </draggable>
+                </div>
+                <div
+                  v-else-if="selectedSecondaryCategoryId && filteredProducts.length > 0 && productSearchKeyword"
+                  class="sort-draggable-list sort-draggable-list-readonly"
+                >
+                  <div
+                    v-for="(product, index) in filteredProducts"
+                    :key="product.id"
+                    class="sort-row product-row"
+                  >
+                    <div class="sort-row-drag">
+                      <span class="sort-index">{{ index + 1 }}</span>
+                    </div>
+                    <div class="sort-row-product">
+                      <el-image
+                        v-if="product.images && product.images.length > 0"
+                        :src="getImageUrl(product.images[0])"
+                        style="width: 50px; height: 50px; margin-right: 10px;"
+                        fit="cover"
                       />
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="status" label="状态" width="100" align="center">
-                    <template #default="scope">
-                      <el-tag :type="scope.row.status === 1 ? 'success' : 'info'">
-                        {{ scope.row.status === 1 ? '启用' : '禁用' }}
+                      <div>
+                        <div class="product-name">{{ product.name }}</div>
+                        <div class="product-id">ID: {{ product.id }}</div>
+                      </div>
+                    </div>
+                    <div class="sort-row-input">
+                      <el-input-number v-model="product.sort" :min="0" size="small" style="width: 100px;" />
+                    </div>
+                    <div class="sort-row-status">
+                      <el-tag :type="product.status === 1 ? 'success' : 'info'">
+                        {{ product.status === 1 ? '启用' : '禁用' }}
                       </el-tag>
-                    </template>
-                  </el-table-column>
-                </el-table>
+                    </div>
+                  </div>
+                </div>
                 <template v-if="!selectedSecondaryCategoryId">
                   <el-empty description="请选择中间二级分类" />
                 </template>
@@ -209,67 +220,51 @@
                     保存精选商品排序
                   </el-button>
                 </div>
-                <el-table
-                  :data="specialProducts"
-                  stripe
-                  row-key="id"
-                  class="sort-table"
-                >
-                  <el-table-column type="index" label="序号" width="80" align="center" />
-                  <el-table-column label="排序操作" width="150" align="center">
-                    <template #default="scope">
-                      <el-button-group>
-                        <el-button
-                          size="small"
-                          :disabled="scope.$index === 0"
-                          @click.stop="moveSpecialProductUp(scope.$index)"
-                        >
-                          <el-icon><ArrowUp /></el-icon>
-                        </el-button>
-                        <el-button
-                          size="small"
-                          :disabled="scope.$index === specialProducts.length - 1"
-                          @click.stop="moveSpecialProductDown(scope.$index)"
-                        >
-                          <el-icon><ArrowDown /></el-icon>
-                        </el-button>
-                      </el-button-group>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="商品信息" min-width="250">
-                    <template #default="scope">
-                      <div class="product-info">
+                <div v-if="specialProducts.length > 0" class="sort-list-with-header">
+                  <div class="sort-list-header">
+                    <div class="sort-row-drag">操作</div>
+                    <div class="sort-row-product">商品信息</div>
+                    <div class="sort-row-input">排序值</div>
+                    <div class="sort-row-status">状态</div>
+                  </div>
+                  <draggable
+                    v-model="specialProducts"
+                    item-key="id"
+                    class="sort-draggable-list"
+                    :animation="200"
+                    handle=".drag-handle"
+                    @end="updateSpecialProductSortValues"
+                  >
+                    <template #item="{ element: product, index }">
+                    <div class="sort-row product-row">
+                      <div class="sort-row-drag">
+                        <el-icon class="drag-handle" title="拖动排序"><Sort /></el-icon>
+                        <span class="sort-index">{{ index + 1 }}</span>
+                      </div>
+                      <div class="sort-row-product special-product-info">
                         <el-image
-                          v-if="scope.row.images && scope.row.images.length > 0"
-                          :src="getImageUrl(scope.row.images[0])"
+                          v-if="product.images && product.images.length > 0"
+                          :src="getImageUrl(product.images[0])"
                           style="width: 60px; height: 60px; margin-right: 10px;"
                           fit="cover"
                         />
                         <div>
-                          <div class="product-name">{{ scope.row.name }}</div>
-                          <div class="product-id">ID: {{ scope.row.id }}</div>
+                          <div class="product-name">{{ product.name }}</div>
+                          <div class="product-id">ID: {{ product.id }}</div>
                         </div>
                       </div>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="special_sort" label="排序值" width="120" align="center">
-                    <template #default="scope">
-                      <el-input-number
-                        v-model="scope.row.special_sort"
-                        :min="0"
-                        size="small"
-                        style="width: 100px;"
-                      />
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="status" label="状态" width="100" align="center">
-                    <template #default="scope">
-                      <el-tag :type="scope.row.status === 1 ? 'success' : 'info'">
-                        {{ scope.row.status === 1 ? '启用' : '禁用' }}
-                      </el-tag>
-                    </template>
-                  </el-table-column>
-                </el-table>
+                      <div class="sort-row-input">
+                        <el-input-number v-model="product.special_sort" :min="0" size="small" style="width: 100px;" />
+                      </div>
+                      <div class="sort-row-status">
+                        <el-tag :type="product.status === 1 ? 'success' : 'info'">
+                          {{ product.status === 1 ? '启用' : '禁用' }}
+                        </el-tag>
+                      </div>
+                    </div>
+                  </template>
+                  </draggable>
+                </div>
                 <el-empty v-if="specialProducts.length === 0" description="暂无精选商品" />
               </div>
             </el-tab-pane>
@@ -283,7 +278,8 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowUp, ArrowDown, Search, Grid } from '@element-plus/icons-vue'
+import { Search, Grid, Sort } from '@element-plus/icons-vue'
+import draggable from 'vuedraggable'
 import { getCategories } from '../api/categories'
 import { getProductsByCategory } from '../api/products'
 import { batchUpdateCategorySort, batchUpdateProductSort, getAllSpecialProducts, batchUpdateSpecialProductSort } from '../api/sort'
@@ -470,50 +466,10 @@ const handleProductSearch = () => {
   // 搜索逻辑已在computed中实现
 }
 
-// 二级分类排序操作
-const moveCategoryUp = (index) => {
-  if (index === 0) return
-  const temp = secondaryCategories.value[index]
-  secondaryCategories.value[index] = secondaryCategories.value[index - 1]
-  secondaryCategories.value[index - 1] = temp
-  // 更新sort值
-  updateCategorySortValues()
-}
-
-const moveCategoryDown = (index) => {
-  if (index === secondaryCategories.value.length - 1) return
-  const temp = secondaryCategories.value[index]
-  secondaryCategories.value[index] = secondaryCategories.value[index + 1]
-  secondaryCategories.value[index + 1] = temp
-  // 更新sort值
-  updateCategorySortValues()
-}
-
 const updateCategorySortValues = () => {
   secondaryCategories.value.forEach((cat, index) => {
     cat.sort = index + 1
   })
-}
-
-// 商品排序操作
-const moveProductUp = (index) => {
-  if (index === 0) return
-  const temp = filteredProducts.value[index]
-  const actualIndex = allProducts.value.indexOf(temp)
-  allProducts.value[actualIndex] = allProducts.value[actualIndex - 1]
-  allProducts.value[actualIndex - 1] = temp
-  // 更新sort值
-  updateProductSortValues()
-}
-
-const moveProductDown = (index) => {
-  if (index === filteredProducts.value.length - 1) return
-  const temp = filteredProducts.value[index]
-  const actualIndex = allProducts.value.indexOf(temp)
-  allProducts.value[actualIndex] = allProducts.value[actualIndex + 1]
-  allProducts.value[actualIndex + 1] = temp
-  // 更新sort值
-  updateProductSortValues()
 }
 
 const updateProductSortValues = () => {
@@ -623,23 +579,6 @@ const loadSpecialProducts = async () => {
     console.error('加载精选商品失败:', error)
     ElMessage.error('加载精选商品失败')
   }
-}
-
-// 精选商品排序操作
-const moveSpecialProductUp = (index) => {
-  if (index === 0) return
-  const temp = specialProducts.value[index]
-  specialProducts.value[index] = specialProducts.value[index - 1]
-  specialProducts.value[index - 1] = temp
-  updateSpecialProductSortValues()
-}
-
-const moveSpecialProductDown = (index) => {
-  if (index === specialProducts.value.length - 1) return
-  const temp = specialProducts.value[index]
-  specialProducts.value[index] = specialProducts.value[index + 1]
-  specialProducts.value[index + 1] = temp
-  updateSpecialProductSortValues()
 }
 
 const updateSpecialProductSortValues = () => {
@@ -850,5 +789,130 @@ onMounted(() => {
 
 .product-sort-tabs :deep(.el-tab-pane) {
   height: 100%;
+}
+
+/* 拖动排序列表 */
+.search-tip {
+  margin-bottom: 12px;
+}
+
+.sort-list-with-header {
+  flex: 1;
+  overflow: auto;
+}
+
+.sort-list-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  background: #f5f7fa;
+  border-radius: 4px 4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #606266;
+  border: 1px solid #e4e7ed;
+  border-bottom: none;
+}
+
+.sort-draggable-list {
+  border: 1px solid #e4e7ed;
+  border-radius: 0 0 4px 4px;
+  min-height: 40px;
+}
+
+.sort-draggable-list-readonly {
+  border-radius: 4px;
+}
+
+.sort-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #ebeef5;
+  background: #fff;
+  cursor: default;
+}
+
+.sort-row:last-child {
+  border-bottom: none;
+}
+
+.sort-row.category-row {
+  cursor: pointer;
+}
+
+.sort-row.category-row:hover {
+  background: #f5f7fa;
+}
+
+.sort-row.category-row.active {
+  background: #ecf5ff;
+}
+
+.sort-row-drag {
+  width: 120px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sort-list-header .sort-row-drag {
+  width: 120px;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: #909399;
+  font-size: 18px;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.sort-index {
+  font-size: 14px;
+  color: #909399;
+}
+
+.sort-row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.sort-row-product {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.sort-row-product.product-info,
+.sort-row-product.special-product-info {
+  min-width: 200px;
+}
+
+.sort-list-header .sort-row-product {
+  flex: 1;
+}
+
+.sort-row-input {
+  width: 120px;
+  flex-shrink: 0;
+}
+
+.sort-list-header .sort-row-input {
+  width: 120px;
+}
+
+.sort-row-status {
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.sort-list-header .sort-row-status {
+  width: 100px;
 }
 </style>

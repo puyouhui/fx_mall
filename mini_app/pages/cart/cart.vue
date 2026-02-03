@@ -76,6 +76,7 @@
 							v-if="!deliverySummary.is_free_shipping && !selectedDeliveryFeeCoupon">
 							还差<text class="assistant-amount">{{ shortOfAmount }}元</text>免基础配送费
 						</text>
+						<text class="assistant-hint free" v-else-if="selectedDeliveryFeeCoupon">您已使用优惠券减免配送费</text>
 						<text class="assistant-hint free" v-else>您已享受基础配送费优惠</text>
 					</view>
 					<view class="assistant-btn" @click.stop="goToIndex">
@@ -134,6 +135,10 @@
 						<text>配送费</text>
 						<text>{{ actualDeliveryFeeText }}</text>
 					</view>
+					<view class="fee-row" v-if="deliveryFeeSavedAmount > 0">
+						<text>配送费优惠</text>
+						<text class="discount">- ¥{{ deliveryFeeSavedAmount.toFixed(2) }}</text>
+					</view>
 					<!-- 优惠券选择 -->
 					<view class="coupon-section" v-if="availableCoupons.length > 0">
 						<view class="coupon-row" v-if="availableDeliveryFeeCoupons.length > 0">
@@ -158,9 +163,9 @@
 							</view>
 						</view>
 					</view>
-					<view class="fee-row" v-if="totalDiscount > 0">
-						<text>优惠</text>
-						<text class="discount">- ¥{{ totalDiscount }}</text>
+					<view class="fee-row" v-if="amountCouponDiscountAmount > 0">
+						<text>优惠券</text>
+						<text class="discount">- ¥{{ amountCouponDiscountAmount.toFixed(2) }}</text>
 					</view>
 					<view class="fee-row total">
 						<text>合计</text>
@@ -227,7 +232,7 @@
 </template>
 
 <script>
-import { fetchPurchaseList, deletePurchaseListItemById, clearPurchaseListByToken, updatePurchaseListQuantity } from '../../utils/purchaseList'
+import { fetchPurchaseList, deletePurchaseListItemById, clearPurchaseListByToken, updatePurchaseListQuantity, setPurchaseListTabBarBadge } from '../../utils/purchaseList'
 
 export default {
 	data() {
@@ -343,7 +348,9 @@ export default {
 			return Math.max(base - this.deliveryFeeSavedAmount, 0)
 		},
 		actualDeliveryFeeText() {
-			if (this.deliverySummary?.is_free_shipping || this.selectedDeliveryFeeCoupon) {
+			if (!this.deliverySummary) return '¥0.00'
+			// 只有满足免配送费条件才显示「免配送费」，否则一律显示配送费金额（即使使用了免配送费券）
+			if (this.deliverySummary.is_free_shipping) {
 				return '免配送费'
 			}
 			return '¥' + this.deliveryFeeText
@@ -365,7 +372,9 @@ export default {
 			return 0
 		},
 		totalDiscount() {
-			return this.amountCouponDiscountAmount.toFixed(2)
+			// 未显示详情弹框时的已优惠金额 = 配送费减免 + 金额券优惠
+			const total = this.deliveryFeeSavedAmount + this.amountCouponDiscountAmount
+			return total.toFixed(2)
 		},
 		menuRightPadding() {
 			if (this.menuButtonRect) {
@@ -385,6 +394,7 @@ export default {
 					this.cartItems = [];
 					this.deliverySummary = null;
 					this.blockedItemIds = [];
+					setPurchaseListTabBarBadge(0);
 					return;
 				}
 				// 从本地存储读取之前保存的选中状态和已知商品ID
@@ -397,6 +407,7 @@ export default {
 				const { items } = await fetchPurchaseList(this.token);
 				this.cartItems = items;
 				this.blockedItemIds = [];
+				setPurchaseListTabBarBadge(items.length);
 				if (items.length === 0) {
 					this.selectedIds = [];
 					this.saveSelectedIds([], []);

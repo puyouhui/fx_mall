@@ -140,6 +140,19 @@ func parseQueryInt(c *gin.Context, key string, defaultValue int) int {
 	return value
 }
 
+// parseQueryIntWithExplicitZero 解析优惠券ID参数，返回(值, 是否显式传0)。当参数存在且值为0时，explicitZero=true 表示用户选择了「不使用」
+func parseQueryIntWithExplicitZero(c *gin.Context, key string) (value int, explicitZero bool) {
+	valueStr := c.Query(key)
+	if valueStr == "" {
+		return 0, false
+	}
+	v, err := strconv.Atoi(valueStr)
+	if err != nil {
+		return 0, false
+	}
+	return v, (v == 0)
+}
+
 // GetCarousels 获取轮播图列表
 func GetCarousels(c *gin.Context) {
 	// 从数据库获取启用状态的轮播图

@@ -158,8 +158,8 @@ func GetPurchaseListSummary(c *gin.Context) {
 
 	itemIDsParam := c.Query("item_ids")
 	itemIDsFilter := make(map[int]struct{})
-	deliveryCouponID := parseQueryInt(c, "delivery_coupon_id", 0)
-	amountCouponID := parseQueryInt(c, "amount_coupon_id", 0)
+	deliveryCouponID, explicitNoDelivery := parseQueryIntWithExplicitZero(c, "delivery_coupon_id")
+	amountCouponID, explicitNoAmount := parseQueryIntWithExplicitZero(c, "amount_coupon_id")
 	if itemIDsParam != "" {
 		for _, idStr := range strings.Split(itemIDsParam, ",") {
 			idStr = strings.TrimSpace(idStr)
@@ -281,13 +281,15 @@ func GetPurchaseListSummary(c *gin.Context) {
 		summary.IsFreeShipping,
 	)
 
-	appliedCombination := model.CalculateCouponCombinationWithSelection(
+	appliedCombination := model.CalculateCouponCombinationWithExplicitSelection(
 		availableCoupons,
 		orderAmount,
 		summary.DeliveryFee,
 		summary.IsFreeShipping,
 		deliveryCouponID,
 		amountCouponID,
+		explicitNoDelivery,
+		explicitNoAmount,
 	)
 
 	// 获取加急费用（从系统设置）

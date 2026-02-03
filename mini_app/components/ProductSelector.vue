@@ -106,7 +106,7 @@
 import { ref, computed } from 'vue'
 import { getProductDetail } from '../api/products'
 import { miniLogin } from '../api/index'
-import { addItemToPurchaseList } from '../utils/purchaseList'
+import { addItemToPurchaseList, updatePurchaseListTabBarBadge } from '../utils/purchaseList'
 
 const PROFILE_FORM_PAGE = '/pages/profile/form'
 
@@ -532,6 +532,7 @@ const addToCart = async () => {
     }
   uni.vibrateShort({ type: 'medium' })
   uni.showToast({ title: '已添加到采购单', icon: 'success' })
+  updatePurchaseListTabBarBadge()
   closeModal()
   } catch (error) {
     console.error('添加采购单失败:', error)

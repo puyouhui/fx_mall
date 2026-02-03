@@ -211,7 +211,7 @@
 <script>
 import { getProductDetail, searchProducts, searchProductSuggestions, getHotSearchKeywords } from '../../api/products';
 import { getHotProducts, getSpecialProducts } from '../../api/index';
-import { addItemToPurchaseList } from '../../utils/purchaseList';
+import { addItemToPurchaseList, updatePurchaseListTabBarBadge } from '../../utils/purchaseList';
 import ProductSelector from '../../components/ProductSelector.vue';
 
 export default {
@@ -715,6 +715,7 @@ export default {
         title: '已添加到采购单',
         icon: 'success'
       });
+      updatePurchaseListTabBarBadge();
       this.closeProductModal();
       } catch (error) {
         console.error('添加采购单失败:', error);

@@ -86,9 +86,31 @@
         <text class="amount-label">积分抵扣</text>
         <text class="amount-value muted">暂未使用</text>
       </view> -->
-      <view class="amount-row" v-if="couponDiscountText">
+      <view 
+        class="amount-row coupon-row" 
+        :class="{ clickable: availableDeliveryFeeCoupons.length > 0 }"
+        @click="availableDeliveryFeeCoupons.length > 0 && openCouponSelector()"
+        v-if="!summary?.is_free_shipping && (deliveryFeeSaved > 0 || availableDeliveryFeeCoupons.length > 0)"
+      >
+        <text class="amount-label">配送费优惠</text>
+        <view class="amount-right">
+          <text class="amount-value discount-text" v-if="deliveryFeeSaved > 0">-¥{{ Number(deliveryFeeSaved).toFixed(2) }}</text>
+          <text class="amount-value coupon-placeholder" v-else>{{ usableDeliveryFeeCoupons.length > 0 ? '有可用优惠券' : '选择优惠券' }}</text>
+          <uni-icons v-if="availableDeliveryFeeCoupons.length > 0" type="right" size="14" color="#909399"></uni-icons>
+        </view>
+      </view>
+      <view 
+        class="amount-row coupon-row" 
+        :class="{ clickable: availableAmountCoupons.length > 0 }"
+        @click="availableAmountCoupons.length > 0 && openCouponSelector()"
+        v-if="amountCouponSaved > 0 || availableAmountCoupons.length > 0"
+      >
         <text class="amount-label">优惠券</text>
-        <text class="amount-value discount-text">{{ couponDiscountText }}</text>
+        <view class="amount-right">
+          <text class="amount-value discount-text" v-if="amountCouponSaved > 0">-¥{{ Number(amountCouponSaved).toFixed(2) }}</text>
+          <text class="amount-value coupon-placeholder" v-else>{{ usableAmountCoupons.length > 0 ? '有可用优惠券' : '选择优惠券' }}</text>
+          <uni-icons v-if="availableAmountCoupons.length > 0" type="right" size="14" color="#909399"></uni-icons>
+        </view>
       </view>
       <view class="amount-row urgent-fee-row" v-if="isUrgent">
         <view class="urgent-fee-label-wrapper">
@@ -112,7 +134,7 @@
       <textarea
         class="remark-input"
         v-model="remark"
-        placeholder="如有特殊要求可在此说明，例如需要纸箱包装"
+        placeholder="如有特殊要求可在此说明，例如需要10点前送达"
         auto-height
         maxlength="200"
       />
@@ -191,6 +213,73 @@
         {{ submitting ? '提交中...' : '提交订单' }}
       </button>
     </view>
+
+    <!-- 优惠券选择弹窗 -->
+    <view v-if="showCouponSelector" class="coupon-modal-container">
+      <view class="coupon-modal-mask" @click="closeCouponSelector"></view>
+      <view class="coupon-modal">
+        <view class="coupon-modal-header">
+          <text>选择优惠券</text>
+          <text class="coupon-modal-close" @click="closeCouponSelector">×</text>
+        </view>
+        <view class="coupon-modal-body">
+          <view class="coupon-type-section" v-if="!summary?.is_free_shipping && availableDeliveryFeeCoupons.length > 0">
+            <text class="coupon-type-title">免配送费券</text>
+            <view class="coupon-list">
+              <view 
+                class="coupon-option" 
+                :class="{ active: !preDeliveryCouponId }"
+                @click="selectDeliveryFeeCoupon(null)"
+              >
+                <text>不使用</text>
+              </view>
+              <view 
+                class="coupon-option" 
+                v-for="coupon in availableDeliveryFeeCoupons"
+                :key="coupon.user_coupon_id"
+                :class="{ active: preDeliveryCouponId === coupon.user_coupon_id }"
+                @click="selectDeliveryFeeCoupon(coupon)"
+              >
+                <text class="coupon-option-name">{{ formatCouponName(coupon) }}</text>
+                <text class="coupon-option-desc" v-if="coupon.reason">{{ coupon.reason }}</text>
+              </view>
+            </view>
+          </view>
+          <view class="coupon-type-section" v-if="availableAmountCoupons.length > 0">
+            <text class="coupon-type-title">金额券</text>
+            <view class="coupon-list">
+              <view 
+                class="coupon-option" 
+                :class="{ active: !preAmountCouponId }"
+                @click="selectAmountCoupon(null)"
+              >
+                <text>不使用</text>
+              </view>
+              <view 
+                class="coupon-option" 
+                v-for="coupon in availableAmountCoupons"
+                :key="coupon.user_coupon_id"
+                :class="{ active: preAmountCouponId === coupon.user_coupon_id, disabled: !coupon.is_available }"
+                @click="coupon.is_available && selectAmountCoupon(coupon)"
+              >
+                <view class="coupon-option-content">
+                  <text class="coupon-option-name">{{ formatCouponName(coupon) }}</text>
+                  <text class="coupon-option-value">减¥{{ formatCouponDiscount(coupon) }}</text>
+                  <text class="coupon-option-condition" v-if="coupon.min_amount > 0">
+                    满¥{{ Number(coupon.min_amount || 0).toFixed(2) }}可用
+                  </text>
+                  <text class="coupon-option-condition" v-else>无门槛</text>
+                </view>
+                <text class="coupon-option-reason" v-if="coupon.reason">{{ coupon.reason }}</text>
+              </view>
+            </view>
+          </view>
+          <view v-if="!hasAvailableCoupons" class="coupon-empty">
+            <text>暂无可用优惠券</text>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -229,7 +318,10 @@ export default {
       submitting: false,
       isUrgent: false,
       urgentFee: 0,
-      showConfirm: false
+      showConfirm: false,
+      availableCoupons: [],
+      showCouponSelector: false,
+      userHasChosenCoupons: false // 用户是否在弹窗中做过选择（含「不使用」）
     }
   },
   computed: {
@@ -242,13 +334,12 @@ export default {
     },
     deliveryFeeText() {
       if (!this.summary) return '¥0.00'
-      const fee = Number(this.summary.delivery_fee || 0)
-      const base = this.summary.is_free_shipping ? 0 : fee
-      const actual = Math.max(base - this.deliveryFeeSaved, 0)
-      if (actual <= 0) {
+      // 只有满足免配送费条件才显示「免配送费」，否则一律显示配送费金额（即使使用了免配送费券）
+      if (this.summary.is_free_shipping) {
         return '免配送费'
       }
-      return '¥' + actual.toFixed(2)
+      const fee = Number(this.summary.delivery_fee || 0)
+      return '¥' + fee.toFixed(2)
     },
     deliveryFeeNote() {
       if (!this.summary) return ''
@@ -269,15 +360,6 @@ export default {
       const total = goods + actualFee + urgent - Number(this.pointsDiscount || 0) - Number(this.amountCouponSaved || 0)
       return total.toFixed(2)
     },
-    couponDiscountText() {
-      if (!this.amountCouponSaved) return ''
-      return `-¥${Number(this.amountCouponSaved).toFixed(2)}`
-    },
-    totalDiscountText() {
-      const total = Number(this.amountCouponSaved || 0)
-      if (!total) return ''
-      return `-¥${total.toFixed(2)}`
-    },
     // 第一个商品名称
     firstGoodsName() {
       if (!this.items.length) return ''
@@ -287,6 +369,23 @@ export default {
     totalQuantity() {
       if (!this.items.length) return 0
       return this.items.reduce((sum, item) => sum + (item.quantity || 0), 0)
+    },
+    hasAvailableCoupons() {
+      return Array.isArray(this.availableCoupons) && this.availableCoupons.length > 0
+    },
+    availableDeliveryFeeCoupons() {
+      return (this.availableCoupons || []).filter(c => c.type === 'delivery_fee')
+    },
+    availableAmountCoupons() {
+      return (this.availableCoupons || []).filter(c => c.type === 'amount')
+    },
+    /** 当前可用的免配送费券（仅 is_available 为 true） */
+    usableDeliveryFeeCoupons() {
+      return (this.availableCoupons || []).filter(c => c.type === 'delivery_fee' && c.is_available)
+    },
+    /** 当前可用的金额券（仅 is_available 为 true） */
+    usableAmountCoupons() {
+      return (this.availableCoupons || []).filter(c => c.type === 'amount' && c.is_available)
     }
   },
   onLoad(options) {
@@ -347,11 +446,13 @@ export default {
         if (this.itemIds.length) {
           params.item_ids = this.itemIds.join(',')
         }
-        if (this.preDeliveryCouponId) {
-          params.delivery_coupon_id = this.preDeliveryCouponId
-        }
-        if (this.preAmountCouponId) {
-          params.amount_coupon_id = this.preAmountCouponId
+        // 仅当用户显式选择过优惠券（含「不使用」）时传参；否则不传，后端使用最佳组合
+        if (this.userHasChosenCoupons) {
+          params.delivery_coupon_id = this.preDeliveryCouponId || 0
+          params.amount_coupon_id = this.preAmountCouponId || 0
+        } else if (this.preDeliveryCouponId > 0 || this.preAmountCouponId > 0) {
+          params.delivery_coupon_id = this.preDeliveryCouponId || 0
+          params.amount_coupon_id = this.preAmountCouponId || 0
         }
         const res = await getPurchaseListSummary(this.token, params)
         if (res && res.code === 200 && res.data) {
@@ -369,6 +470,7 @@ export default {
             setTimeout(() => uni.navigateBack(), 800)
             return
           }
+          this.availableCoupons = Array.isArray(res.data.available_coupons) ? res.data.available_coupons : []
           const combination = res.data.applied_combination || res.data.best_combination
           if (combination) {
             this.deliveryFeeSaved = Number(combination.delivery_fee_saved || 0)
@@ -457,8 +559,34 @@ export default {
     // 地址选择回调
     onAddressSelected(address) {
       this.defaultAddress = address
-      // 重新加载采购单汇总（地址变化可能影响配送费）
       this.loadPurchaseSummary()
+    },
+    openCouponSelector() {
+      this.showCouponSelector = true
+    },
+    closeCouponSelector() {
+      this.showCouponSelector = false
+    },
+    selectDeliveryFeeCoupon(coupon) {
+      this.userHasChosenCoupons = true
+      this.preDeliveryCouponId = coupon ? coupon.user_coupon_id : 0
+      this.showCouponSelector = false
+      this.loadPurchaseSummary()
+    },
+    selectAmountCoupon(coupon) {
+      this.userHasChosenCoupons = true
+      this.preAmountCouponId = coupon ? coupon.user_coupon_id : 0
+      this.showCouponSelector = false
+      this.loadPurchaseSummary()
+    },
+    formatCouponName(coupon) {
+      if (!coupon) return ''
+      return coupon.name || (coupon.coupon ? coupon.coupon.name : '') || ''
+    },
+    formatCouponDiscount(coupon) {
+      if (!coupon) return '0.00'
+      const value = coupon.discount_value || (coupon.coupon ? coupon.coupon.discount_value : 0)
+      return Number(value || 0).toFixed(2)
     }
   },
   onUnload() {
@@ -731,6 +859,22 @@ export default {
   min-height: 44rpx;
 }
 
+.amount-row.coupon-row.clickable {
+  cursor: pointer;
+}
+
+.amount-right {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.coupon-placeholder {
+  color: #909399 !important;
+  font-weight: 400 !important;
+}
+
+
 .amount-label {
   font-size: 28rpx;
   color: #666;
@@ -963,6 +1107,136 @@ export default {
   background-color: #CCE8D9;
   box-shadow: none;
   opacity: 0.7;
+}
+
+/* 优惠券选择弹窗 */
+.coupon-modal-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+}
+
+.coupon-modal-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.coupon-modal {
+  position: relative;
+  width: 100%;
+  background-color: #fff;
+  border-radius: 32rpx 32rpx 0 0;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  z-index: 1001;
+}
+
+.coupon-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32rpx;
+  border-bottom: 1rpx solid #f2f3f5;
+}
+
+.coupon-modal-header text:first-child {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #303133;
+}
+
+.coupon-modal-close {
+  font-size: 40rpx;
+  color: #909399;
+  padding: 0 10rpx;
+}
+
+.coupon-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32rpx;
+}
+
+.coupon-type-section {
+  margin-bottom: 40rpx;
+}
+
+.coupon-type-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 20rpx;
+  display: block;
+}
+
+.coupon-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.coupon-option {
+  padding: 24rpx;
+  border: 2rpx solid #e4e7ed;
+  border-radius: 16rpx;
+  background-color: #fff;
+  transition: all 0.3s;
+}
+
+.coupon-option.active {
+  border-color: #20CB6B;
+  background-color: #f0f9f4;
+}
+
+.coupon-option.disabled {
+  opacity: 0.5;
+}
+
+.coupon-option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.coupon-option-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #303133;
+}
+
+.coupon-option-value {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #ff4d4f;
+}
+
+.coupon-option-condition {
+  font-size: 24rpx;
+  color: #909399;
+}
+
+.coupon-option-desc,
+.coupon-option-reason {
+  font-size: 22rpx;
+  color: #f56c6c;
+  margin-top: 8rpx;
+}
+
+.coupon-empty {
+  text-align: center;
+  padding: 60rpx;
+  color: #909399;
+  font-size: 28rpx;
 }
 </style>
 

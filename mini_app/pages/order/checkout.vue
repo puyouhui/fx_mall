@@ -1,15 +1,15 @@
 <template>
   <view class="checkout-page">
-    <!-- 自定义导航栏 -->
+    <!-- 自定义导航栏 - 绿色背景统一风格 -->
     <view class="custom-navbar">
-      <view class="navbar-fixed" style="background-color: #fff; border-bottom: 1rpx solid #eee;">
+      <view class="navbar-fixed" style="background-color: #20CB6B;">
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#333"></uni-icons>
+            <uni-icons type="left" size="20" color="#fff"></uni-icons>
           </view>
           <view class="navbar-title">
-            <text class="navbar-title-text">收银台</text>
+            <text class="navbar-title-text">订单结算</text>
           </view>
           <view class="navbar-right"></view>
         </view>
@@ -19,11 +19,14 @@
     <view class="checkout-content" :style="{ paddingTop: (statusBarHeight + navBarHeight) + 'px' }">
       <!-- 订单信息 -->
       <view class="section order-summary-section">
-        <view class="section-title">订单信息</view>
+        <view class="order-summary-header">
+          <text class="order-summary-title">订单信息</text>
+          <text class="order-summary-count" v-if="totalQuantity > 1">共{{ totalQuantity }}件</text>
+          <text class="order-summary-count" v-else>共1件</text>
+        </view>
         <view class="order-goods-info">
-          <text class="goods-name">{{ firstGoodsName }}</text>
+          <text class="goods-name" :class="{ 'goods-name-ellipsis': firstGoodsName && firstGoodsName.length > 15 }">{{ firstGoodsName }}</text>
           <text class="goods-count" v-if="totalQuantity > 1">等{{ totalQuantity }}件商品</text>
-          <text class="goods-count" v-else>1件商品</text>
         </view>
         <view class="order-amount-row">
           <text class="amount-label">订单金额</text>
@@ -40,8 +43,8 @@
           @click="paymentMethod = 'online'"
         >
           <view class="payment-left">
-            <view class="payment-icon wechat-icon">
-              <text class="icon-text">微</text>
+            <view class="payment-icon payment-icon-wrap">
+              <image class="payment-icon-img" src="/static/icon/payment-online.png" mode="aspectFit" />
             </view>
             <view class="payment-info">
               <text class="payment-name">在线支付</text>
@@ -60,8 +63,8 @@
           @click="paymentMethod = 'cod'"
         >
           <view class="payment-left">
-            <view class="payment-icon cod-icon">
-              <uni-icons type="location" size="20" color="#20CB6B"></uni-icons>
+            <view class="payment-icon payment-icon-wrap">
+              <image class="payment-icon-img" src="/static/icon/payment-cod.png" mode="aspectFit" />
             </view>
             <view class="payment-info">
               <text class="payment-name">货到付款</text>
@@ -76,10 +79,10 @@
         </view>
       </view>
 
-      <!-- 底部支付栏 -->
+      <!-- 底部支付栏（与提交订单页统一规范） -->
       <view class="checkout-footer">
         <view class="footer-left">
-          <text class="footer-label">实付金额</text>
+          <text class="footer-label">实付金额：</text>
           <text class="footer-amount">¥{{ totalAmount }}</text>
         </view>
         <button 
@@ -192,7 +195,7 @@ export default {
           // 订单由支付回调异步创建，直接跳转订单详情（用 order_number 即 out_trade_no），详情页将轮询直到订单出现
           setTimeout(() => {
             if (outTradeNo) {
-              uni.redirectTo({ url: `/pages/order/detail?id=${encodeURIComponent(outTradeNo)}&fromPayment=1` })
+              uni.redirectTo({ url: `/pages/order/detail?id=${encodeURIComponent(outTradeNo)}&fromPayment=1&fromSubmit=1` })
             } else {
               uni.redirectTo({ url: '/pages/order/list' })
             }
@@ -215,7 +218,7 @@ export default {
         uni.removeStorageSync(CHECKOUT_STORAGE_KEY)
         uni.showToast({ title: '下单成功', icon: 'success', duration: 1500 })
         setTimeout(() => {
-          uni.redirectTo({ url: `/pages/order/detail?id=${orderId}` })
+          uni.redirectTo({ url: `/pages/order/detail?id=${orderId}&fromSubmit=1` })
         }, 1500)
       } catch (e) {
         console.error('支付/下单失败:', e)
@@ -297,7 +300,7 @@ export default {
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 500;
-  color: #333;
+  color: #fff;
 }
 
 .navbar-right {
@@ -324,8 +327,35 @@ export default {
   margin-bottom: 24rpx;
 }
 
-.order-goods-info {
+/* 订单信息区域样式 */
+.order-summary-section {
+  padding: 28rpx 32rpx;
+}
+
+.order-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 20rpx;
+}
+
+.order-summary-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.order-summary-count {
+  font-size: 26rpx;
+  color: #909399;
+}
+
+.order-goods-info {
+  padding: 20rpx 24rpx;
+  background: #F8FAF9;
+  border-radius: 12rpx;
+  margin-bottom: 20rpx;
+  border-left: 4rpx solid #20CB6B;
 }
 
 .goods-name {
@@ -333,10 +363,18 @@ export default {
   color: #333;
   font-weight: 500;
   margin-right: 8rpx;
+  line-height: 1.5;
+}
+
+.goods-name-ellipsis {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .goods-count {
-  font-size: 28rpx;
+  font-size: 26rpx;
   color: #909399;
 }
 
@@ -344,8 +382,8 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 20rpx;
-  border-top: 1rpx solid #F0F0F0;
+  padding: 20rpx 0 0;
+  border-top: 1rpx dashed #E8E8E8;
 }
 
 .amount-label {
@@ -354,9 +392,10 @@ export default {
 }
 
 .amount-value {
-  font-size: 36rpx;
+  font-size: 38rpx;
   font-weight: 600;
-  color: #FF4D4F;
+  color: #20CB6B;
+  letter-spacing: 1rpx;
 }
 
 .payment-item {
@@ -387,27 +426,22 @@ export default {
 }
 
 .payment-icon {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 16rpx;
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 12rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-right: 24rpx;
 }
 
-.wechat-icon {
-  background: linear-gradient(135deg, #07C160 0%, #06AD56 100%);
+.payment-icon-wrap {
+  background: transparent;
 }
 
-.icon-text {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #fff;
-}
-
-.cod-icon {
-  background: #E8F8F0;
+.payment-icon-img {
+  width: 56rpx;
+  height: 56rpx;
 }
 
 .payment-info {
@@ -456,45 +490,57 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 120rpx;
+  min-height: 120rpx;
+  padding: 0 32rpx;
+  padding-bottom: constant(safe-area-inset-bottom);
   padding-bottom: env(safe-area-inset-bottom);
   background: #fff;
   border-top: 1rpx solid #F0F0F0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 32rpx;
+  gap: 24rpx;
   box-shadow: 0 -4rpx 20rpx rgba(0, 0, 0, 0.06);
   z-index: 100;
 }
 
 .footer-left {
   display: flex;
-  flex-direction: column;
-  gap: 4rpx;
+  align-items: baseline;
+  flex: 1;
+  min-width: 0;
 }
 
 .footer-label {
-  font-size: 24rpx;
-  color: #909399;
+  font-size: 28rpx;
+  color: #666;
+  font-weight: 400;
+  flex-shrink: 0;
 }
 
 .footer-amount {
   font-size: 40rpx;
   font-weight: 600;
-  color: #FF4D4F;
+  color: #20CB6B;
+  margin-left: 8rpx;
+  flex-shrink: 0;
 }
 
 .pay-btn {
   width: 50%;
-  height: 88rpx;
-  line-height: 88rpx;
+  min-width: 240rpx;
+  height: 48px;
+  line-height: 48px;
   background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
   color: #fff;
   font-size: 32rpx;
   font-weight: 600;
+  padding: 0 60rpx;
   border-radius: 50rpx;
   border: none;
+  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .pay-btn::after {

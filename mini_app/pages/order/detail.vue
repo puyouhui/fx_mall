@@ -246,7 +246,7 @@
 
     </view>
 
-    <!-- 底部操作按钮（参照商品详情：左侧图标+文字，右侧主按钮） -->
+    <!-- 底部操作按钮：左侧图标操作，右侧主按钮（按状态统一展示） -->
     <view class="action-footer" v-if="orderDetail && showActionFooter">
       <view class="action-footer-container">
         <view class="action-footer-left">
@@ -263,19 +263,35 @@
             <text class="action-icon-text">取消</text>
           </view>
         </view>
-        <view class="action-footer-right" v-if="showPayBtn">
-          <view class="action-main-btn" @click="handlePayOrder">
-            <text>{{ paying ? '支付中...' : '去付款' }}</text>
-          </view>
-        </view>
-        <view class="action-footer-right" v-else-if="showContactDeliveryBtn">
-          <view class="action-main-btn" @click="contactDelivery">
-            <text>联系配送员</text>
-          </view>
-        </view>
-        <view class="action-footer-right" v-else-if="showConfirmReceiveBtn">
-          <view class="action-main-btn" @click="handleOpenConfirmReceive">
-            <text>{{ confirmReceiveLoading ? '打开中...' : '确认收货' }}</text>
+        <view class="action-footer-right">
+          <template v-if="hasMainAction">
+            <view 
+              class="action-main-btn" 
+              :class="mainBtnClass"
+              v-if="showPayBtn"
+              @click="handlePayOrder"
+            >
+              <text>{{ paying ? '支付中...' : '去付款' }}</text>
+            </view>
+            <view 
+              class="action-main-btn" 
+              :class="mainBtnClass"
+              v-else-if="showContactDeliveryBtn"
+              @click="contactDelivery"
+            >
+              <text>联系配送员</text>
+            </view>
+            <view 
+              class="action-main-btn" 
+              :class="mainBtnClass"
+              v-else-if="showConfirmReceiveBtn"
+              @click="handleOpenConfirmReceive"
+            >
+              <text>{{ confirmReceiveLoading ? '打开中...' : '确认收货' }}</text>
+            </view>
+          </template>
+          <view v-else class="action-main-btn" @click="goToCustomerService">
+            <text>联系我们</text>
           </view>
         </view>
       </view>
@@ -319,7 +335,9 @@ export default {
       paymentCountdownText: '--:--',
       countdownTimer: null,
       confirmReceiveLoading: false,
+      confirmReceiveDone: false, // 确认收货成功后不再显示底部栏
       fromPayment: false, // 支付成功跳转，需轮询等待订单创建
+      fromSubmit: false, // 从提交订单/支付成功进入，返回时回首页
       paymentPollTimer: null,
       paymentPollCount: 0
     }
@@ -364,11 +382,13 @@ export default {
       if (order.status === 'paid' || order.paid_at) return false
       return Number(order.total_amount || 0) > 0
     },
-    // 是否显示确认收货按钮（已送达/已收款，微信支付订单可调起确认收货组件）
+    // 是否显示确认收货按钮（仅微信支付订单且已送达/已收款，且未完成确认收货）
     showConfirmReceiveBtn() {
       const order = this.orderDetail?.order
-      if (!order) return false
-      return order.status === 'delivered' || order.status === 'shipped' || order.status === 'paid'
+      if (!order || this.confirmReceiveDone) return false
+      const statusOk = order.status === 'delivered' || order.status === 'shipped' || order.status === 'paid'
+      const isWechatPay = order.payment_method === 'online'
+      return statusOk && isWechatPay
     },
     // 是否显示底部操作按钮
     showActionFooter() {
@@ -376,6 +396,17 @@ export default {
              this.showContactDeliveryBtn ||
              this.showPayBtn ||
              this.showConfirmReceiveBtn
+    },
+    // 是否有右侧主按钮（用于底部栏布局与样式统一）
+    hasMainAction() {
+      return this.showPayBtn || this.showContactDeliveryBtn || this.showConfirmReceiveBtn
+    },
+    // 主按钮统一 class，便于按状态扩展样式
+    mainBtnClass() {
+      if (this.showPayBtn) return 'action-main-btn--pay'
+      if (this.showContactDeliveryBtn) return 'action-main-btn--contact'
+      if (this.showConfirmReceiveBtn) return 'action-main-btn--confirm'
+      return ''
     }
   },
   onLoad(options) {
@@ -395,13 +426,14 @@ export default {
     const idParam = options.id || options.scene || ''
     this.orderId = idParam
     this.fromPayment = options.fromPayment === '1'
+    this.fromSubmit = options.fromSubmit === '1'
     if (!idParam) {
       uni.showToast({
         title: '订单参数无效',
         icon: 'none'
       })
       setTimeout(() => {
-        uni.navigateBack()
+        this.backOrToHome()
       }, 1500)
       return
     }
@@ -435,7 +467,15 @@ export default {
   methods: {
     goBack() {
       this.clearCountdownTimer()
-      uni.navigateBack()
+      this.backOrToHome()
+    },
+    /** 从提交/支付进入则回首页，否则返回上一页 */
+    backOrToHome() {
+      if (this.fromSubmit || this.fromPayment) {
+        uni.reLaunch({ url: '/pages/index/index' })
+      } else {
+        uni.navigateBack()
+      }
     },
     onWechatConfirmReceiveDone(payload) {
       if (!payload || !this.orderDetail?.order) return
@@ -443,6 +483,7 @@ export default {
       const match = payload.merchant_trade_no === orderNumber || String(this.orderId) === String(orderNumber)
       if (!match) return
       if (payload.status === 'success') {
+        this.confirmReceiveDone = true
         uni.showToast({ title: '确认收货成功', icon: 'success' })
         this.loadOrderDetail()
       } else if (payload.status === 'fail') {
@@ -503,7 +544,7 @@ export default {
             this.startPaymentPoll()
           } else {
             uni.showToast({ title: res?.message || '获取订单详情失败', icon: 'none' })
-            setTimeout(() => uni.navigateBack(), 1500)
+            setTimeout(() => this.backOrToHome(), 1500)
           }
         }
       } catch (error) {
@@ -512,7 +553,7 @@ export default {
           this.startPaymentPoll()
         } else {
           uni.showToast({ title: '获取订单详情失败', icon: 'none' })
-          setTimeout(() => uni.navigateBack(), 1500)
+          setTimeout(() => this.backOrToHome(), 1500)
         }
       } finally {
         uni.hideLoading()
@@ -549,7 +590,7 @@ export default {
           uni.hideLoading()
           uni.showToast({ title: '订单生成较慢，请稍后从订单列表查看', icon: 'none', duration: 3000 })
           this.fromPayment = false
-          setTimeout(() => uni.navigateBack(), 2000)
+          setTimeout(() => this.backOrToHome(), 2000)
           return
         }
         this.paymentPollTimer = setTimeout(doPoll, 2000)
@@ -883,19 +924,12 @@ export default {
       const isPaid = !!order.paid_at
 
       // 构建提示内容
-      let content = `确定要取消订单吗？\n`
+      let content = ``
       if (totalAmount > 0) {
-        content += `订单金额：¥${this.formatMoney(totalAmount)}\n`
         if (isPaid) {
-          content += `已支付订单，取消后将原路退款 ¥${this.formatMoney(totalAmount)}，预计1-3工作日到账。\n`
+          content += `订单已支付，取消后将原路退款 ¥${this.formatMoney(totalAmount)}，预计1-3工作日到账，是否仍要取消？`
         }
       }
-      if (salesPhone) {
-        content += `如需修改订单，可联系销售员：${salesPhone}\n`
-      } else if (this.orderDetail?.sales_employee) {
-        content += `如需修改订单，可联系销售员修改\n`
-      }
-      content += `取消后订单将无法恢复，是否仍要取消？`
       
       // 显示确认对话框
       const confirmed = await new Promise((resolve) => {
@@ -1827,6 +1861,7 @@ export default {
   width: fit-content;
 }
 
+/* 底部操作栏：统一高度与内边距，各状态视觉一致 */
 .action-footer {
   width: 100%;
   background-color: #fff;
@@ -1835,14 +1870,16 @@ export default {
   left: 0;
   right: 0;
   border-top: 1rpx solid #eee;
-  padding: 15rpx 0 10rpx 0;
-  padding-bottom: calc(10rpx + env(safe-area-inset-bottom));
+  padding: 24rpx 0;
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
   z-index: 999;
   box-sizing: border-box;
+  min-height: 120rpx;
 }
 
 .action-footer-container {
   width: 100%;
+  min-height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1851,10 +1888,13 @@ export default {
 }
 
 .action-footer-left {
-  width: 30%;
+  flex-shrink: 0;
+  width: 180rpx;
+  min-width: 180rpx;
   display: flex;
-  gap: 24rpx;
-  padding-left: 12rpx;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14rpx;
 }
 
 .action-icon-btn {
@@ -1862,33 +1902,44 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  margin-right: 20rpx;
+  min-width: 72rpx;
+  padding: 8rpx 0;
 }
 
 .action-icon-text {
   font-size: 22rpx;
   color: #2C2C2C;
-  margin-top: 4rpx;
+  margin-top: 6rpx;
 }
 
 .action-footer-right {
-  width: 40%;
+  flex: 1;
+  min-width: 0;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
-  padding-right: 10rpx;
 }
 
+/* 主按钮统一尺寸与圆角，略宽以减少中间空隙感 */
 .action-main-btn {
-  width: 90%;
+  flex-shrink: 0;
+  min-width: 500rpx;
+  height: 80rpx;
+  line-height: 80rpx;
   background-color: #20CB6B;
   color: #fff;
-  font-size: 32rpx;
-  font-weight: bold;
-  padding: 24rpx 48rpx;
-  border-radius: 60rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  padding: 0 56rpx;
+  border-radius: 40rpx;
   display: flex;
   justify-content: center;
   align-items: center;
+  box-sizing: border-box;
+}
+
+.action-main-btn text {
+  white-space: nowrap;
 }
 
 .action-main-btn:active {
@@ -1902,6 +1953,7 @@ export default {
   justify-content: center;
   gap: 16rpx;
   padding: 24rpx 30rpx;
+  margin-bottom: 20rpx;
   /* margin: 40rpx 0 20rpx; */
   /* background: #f5f5f5; */
   /* border-radius: 16rpx; */

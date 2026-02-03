@@ -260,7 +260,7 @@
 <script>
 import { getProductDetail } from '../../api/products';
 import { getMiniUserInfo, addFavorite, deleteFavorite, deleteFavoriteByProductId, checkFavorite, miniLogin } from '../../api/index';
-import { fetchPurchaseList, addItemToPurchaseList, updatePurchaseListQuantity, deletePurchaseListItemById } from '../../utils/purchaseList';
+import { fetchPurchaseList, addItemToPurchaseList, updatePurchaseListQuantity, deletePurchaseListItemById, setPurchaseListTabBarBadge } from '../../utils/purchaseList';
 import { getShareConfig, buildSharePath } from '../../utils/shareConfig.js';
 export default {
 	data() {
@@ -636,11 +636,13 @@ export default {
 				this.purchaseList = [];
 				this.resetSpecQuantities();
 				this.cartCount = 0;
+				setPurchaseListTabBarBadge(0);
 				return;
 			}
 			try {
 				const { items } = await fetchPurchaseList(token);
 				this.purchaseList = items;
+				setPurchaseListTabBarBadge(Array.isArray(items) ? items.length : 0);
 				this.syncSpecQuantitiesFromList();
 				this.updateCartCount();
 			} catch (error) {

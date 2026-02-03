@@ -155,6 +155,7 @@
 import { getCategories, getMiniUserInfo } from '../../api/index.js';
 import { getProductsByCategory } from '../../api/products.js';
 import ProductSelector from '../../components/ProductSelector.vue';
+import { updatePurchaseListTabBarBadge } from '../../utils/purchaseList.js';
 
 export default {
 	components: {
@@ -235,7 +236,7 @@ export default {
 	onShow() {
 		// 更新用户信息
 		this.updateUserInfo();
-		
+		updatePurchaseListTabBarBadge();
 		// 只在分类数据为空时才重新加载
 		if (this.primaryCategories.length === 0) {
 			this.loadPrimaryCategories();
@@ -756,7 +757,7 @@ export default {
 			// 可以在这里添加其他滚动相关的逻辑
 		},
 
-		// 滚动到底部时触发
+		// 滚动到底部时触发（至少两次滑动才切换：两次触底需间隔 ≥ 600ms，避免一次慢滑触发多次 scrolltolower）
 		onScrollToLower() {
 			// 计算距上次触底的时间间隔
 			const now = Date.now();
@@ -778,21 +779,23 @@ export default {
 				return;
 			}
 
-			// 1 秒内连续两次触底才执行自动切换：
-			// 第一次触底只给出提示，第二次触底才真正切换分类
-			if (interval < 1000) {
-				this.scrollToLowerCount += 1;
-			} else {
-				// 超过 1 秒重新计数
+			// 至少两次滑动才切换：两次触底之间需间隔至少 600ms，避免一次慢滑到底触发多次 scrolltolower 被当成两次
+			const MIN_SCROLL_INTERVAL = 600;
+			const MAX_SCROLL_INTERVAL = 1000;
+			if (interval >= MAX_SCROLL_INTERVAL) {
 				this.scrollToLowerCount = 1;
+			} else if (interval < MIN_SCROLL_INTERVAL) {
+				return;
+			} else {
+				this.scrollToLowerCount += 1;
 			}
 
-			// 第一次触底：仅提示，不切换
+			// 第一次触底：不切换
 			if (this.scrollToLowerCount === 1) {
 				return;
 			}
 
-			// 第二次及以上连续触底：执行自动切换
+			// 第二次触底（且与第一次间隔 ≥ 600ms）：执行自动切换
 			if (this.scrollToLowerCount < 2) {
 				return;
 			}
