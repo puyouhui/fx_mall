@@ -296,6 +296,12 @@ func WeChatPayNotify(c *gin.Context) {
 		// 清空采购单
 		ClearPurchaseListByItemIDs(cacheEntry.UserID, cacheEntry.ItemIDs)
 		log.Printf("[WeChatPayNotify] 从缓存创建订单成功: orderID=%d out_trade_no=%s", order.ID, outTradeNo)
+		// 录入微信发货信息，避免微信侧显示「未发货」
+		go func(oid int) {
+			if err := UploadWechatShippingInfo(oid); err != nil {
+				log.Printf("[WeChatPayNotify] 从缓存创建订单后录入微信发货失败 orderID=%d: %v", oid, err)
+			}
+		}(order.ID)
 		c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "成功"})
 		return
 	}
@@ -310,6 +316,13 @@ func WeChatPayNotify(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "处理失败"})
 		return
 	}
+
+	// 货到付款/活动付款订单用户后来小程序付款：录入微信发货信息，避免微信侧显示「未发货」
+	go func(oid int) {
+		if err := UploadWechatShippingInfo(oid); err != nil {
+			log.Printf("[WeChatPayNotify] 录入微信发货信息失败 orderID=%d: %v（可稍后由配送开始或后台补录）", oid, err)
+		}
+	}(order.ID)
 
 	c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "成功"})
 }

@@ -655,17 +655,17 @@ func GetOrdersWithPaginationAdvanced(pageNum, pageSize int, keyword string, stat
 	where := "1=1"
 	args := []interface{}{}
 
-	// 关键词搜索：订单ID、订单编号、用户ID
+	// 关键词搜索：订单ID、订单编号、用户ID、微信支付单号（便于从微信支付后台用 transaction_id 查单）
 	if keyword != "" {
-		where += " AND (id = ? OR order_number LIKE ? OR user_id = ?)"
-		// 尝试将关键词转换为数字
+		keywordTrim := strings.TrimSpace(keyword)
+		where += " AND (id = ? OR order_number LIKE ? OR user_id = ? OR wechat_transaction_id = ?)"
+		// 尝试将关键词转换为数字（用于 id / user_id）
 		var idValue int
-		keywordPattern := "%" + keyword + "%"
-		if _, err := fmt.Sscanf(keyword, "%d", &idValue); err == nil {
-			args = append(args, idValue, keywordPattern, idValue)
+		keywordPattern := "%" + keywordTrim + "%"
+		if _, err := fmt.Sscanf(keywordTrim, "%d", &idValue); err == nil {
+			args = append(args, idValue, keywordPattern, idValue, keywordTrim)
 		} else {
-			// 如果不是数字，使用0（不会匹配任何ID）
-			args = append(args, 0, keywordPattern, 0)
+			args = append(args, 0, keywordPattern, 0, keywordTrim)
 		}
 	}
 
@@ -723,12 +723,12 @@ func GetOrdersWithPaginationAdvanced(pageNum, pageSize int, keyword string, stat
 		return nil, 0, err
 	}
 
-	// 获取分页数据
+	// 获取分页数据（含 payment_method, paid_at, wechat_transaction_id 便于后台展示支付方式与是否已微信支付）
 	query := `
 		SELECT id, order_number, user_id, address_id, status, delivery_employee_code, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
 		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated,
-		       payment_method, paid_at, created_at, updated_at
+		       payment_method, paid_at, wechat_transaction_id, created_at, updated_at
 		FROM orders WHERE ` + where + ` ORDER BY id DESC LIMIT ? OFFSET ?`
 	args = append(args, pageSize, offset)
 
@@ -744,6 +744,7 @@ func GetOrdersWithPaginationAdvanced(pageNum, pageSize int, keyword string, stat
 		var weatherInfo sql.NullString
 		var deliveryEmployeeCode sql.NullString
 		var paidAt sql.NullTime
+		var wechatTransactionID sql.NullString
 		var paymentMethodVal string
 		var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
 
@@ -752,7 +753,7 @@ func GetOrdersWithPaginationAdvanced(pageNum, pageSize int, keyword string, stat
 			&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
 			&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
 			&expectedDelivery, &weatherInfo, &isIsolatedTinyInt,
-			&paymentMethodVal, &paidAt, &order.CreatedAt, &order.UpdatedAt,
+			&paymentMethodVal, &paidAt, &wechatTransactionID, &order.CreatedAt, &order.UpdatedAt,
 		)
 		if deliveryEmployeeCode.Valid {
 			code := deliveryEmployeeCode.String
@@ -768,6 +769,10 @@ func GetOrdersWithPaginationAdvanced(pageNum, pageSize int, keyword string, stat
 		if paidAt.Valid {
 			t := paidAt.Time
 			order.PaidAt = &t
+		}
+		if wechatTransactionID.Valid && wechatTransactionID.String != "" {
+			s := wechatTransactionID.String
+			order.WechatTransactionID = &s
 		}
 		order.IsUrgent = isUrgentTinyInt == 1
 		order.TrustReceipt = trustReceiptTinyInt == 1

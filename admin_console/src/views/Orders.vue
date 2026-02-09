@@ -7,10 +7,11 @@
           <span class="sub">查看和管理所有订单</span>
         </div>
         <div class="actions">
-          <el-input v-model="searchKeyword" placeholder="搜索订单ID / 用户ID" clearable @keyup.enter="handleSearch"
-            style="width: 200px; margin-right: 10px;" />
+          <el-input v-model="searchKeyword" placeholder="订单ID/订单编号/用户ID/微信支付单号" clearable @keyup.enter="handleSearch"
+            style="width: 260px; margin-right: 10px;" />
           <el-select v-model="statusFilter" placeholder="订单状态" clearable style="width: 150px; margin-right: 10px;"
             @change="handleSearch">
+            <el-option label="待支付" value="pending_payment" />
             <el-option label="待配送" value="pending_delivery" />
             <el-option label="待取货" value="pending_pickup" />
             <el-option label="配送中" value="delivering" />
@@ -25,6 +26,24 @@
       <el-table v-loading="loading" :data="orders" border stripe class="orders-table" empty-text="暂无订单数据" row-key="id">
         <!-- <el-table-column prop="id" label="订单ID" width="100" /> -->
         <el-table-column prop="order_number" label="订单编号" width="180" align="center" />
+        <el-table-column label="支付方式" width="140" align="center">
+          <template #default="scope">
+            <div>
+              <el-tag :type="scope.row.payment_method === 'online' ? 'success' : 'warning'" size="small">
+                {{ formatPaymentMethod(scope.row.payment_method) }}
+              </el-tag>
+              <div v-if="scope.row.payment_method === 'cod' && scope.row.wechat_transaction_id" class="payment-sub">
+                已转微信支付
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="支付时间" width="160" align="center">
+          <template #default="scope">
+            <span v-if="scope.row.paid_at">{{ formatDate(scope.row.paid_at) }}</span>
+            <span v-else class="text-muted">—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="用户信息" min-width="180" align="center">
           <template #default="scope">
             <div v-if="scope.row.user">
@@ -240,8 +259,49 @@
                   {{ formatStatus(orderDetail.order?.status) }}
                 </el-tag>
               </el-descriptions-item>
+              <el-descriptions-item label="订单流程" :span="2">
+                <el-text type="info" size="small">
+                  待支付 → 待配送 → 待取货 → 配送中 → 已送达 → 已收款。货到付款下单后直接待配送；在线支付需支付后进入待配送；货到付款订单若用户在小程序内「去付款」会记录微信支付单号。
+                </el-text>
+              </el-descriptions-item>
               <el-descriptions-item label="下单时间">{{ formatDate(orderDetail.order?.created_at) }}</el-descriptions-item>
               <el-descriptions-item label="更新时间">{{ formatDate(orderDetail.order?.updated_at) }}</el-descriptions-item>
+            </el-descriptions>
+
+            <!-- 支付与收款信息 -->
+            <el-divider content-position="left">支付与收款</el-divider>
+            <el-descriptions :column="2" border style="margin-bottom: 20px;">
+              <el-descriptions-item label="支付方式">
+                <el-tag :type="orderDetail.order?.payment_method === 'online' ? 'success' : 'warning'" size="small">
+                  {{ formatPaymentMethod(orderDetail.order?.payment_method) }}
+                </el-tag>
+                <span v-if="orderDetail.order?.payment_method === 'cod' && orderDetail.order?.wechat_transaction_id" class="payment-desc">
+                  （用户后续已通过小程序「去付款」完成微信支付）
+                </span>
+              </el-descriptions-item>
+              <el-descriptions-item label="支付时间">
+                <span v-if="orderDetail.order?.paid_at">{{ formatDate(orderDetail.order.paid_at) }}</span>
+                <span v-else class="text-muted">未支付</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="微信支付单号">
+                <span v-if="orderDetail.order?.wechat_transaction_id">
+                  <el-text type="info" style="font-family: monospace;">{{ orderDetail.order.wechat_transaction_id }}</el-text>
+                  <el-button type="primary" link size="small" @click="copyToClipboard(orderDetail.order.wechat_transaction_id)">复制</el-button>
+                </span>
+                <span v-else class="text-muted">—</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="退款状态">
+                <template v-if="orderDetail.order?.refund_status">
+                  <el-tag v-if="orderDetail.order.refund_status === 'success'" type="success" size="small">已退款</el-tag>
+                  <el-tag v-else-if="orderDetail.order.refund_status === 'processing'" type="warning" size="small">退款处理中</el-tag>
+                  <el-tag v-else type="info" size="small">{{ orderDetail.order.refund_status }}</el-tag>
+                </template>
+                <span v-else class="text-muted">—</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="微信退款单号" :span="2" v-if="orderDetail.order?.wechat_refund_id">
+                <el-text type="info" style="font-family: monospace;">{{ orderDetail.order.wechat_refund_id }}</el-text>
+                <el-button type="primary" link size="small" @click="copyToClipboard(orderDetail.order.wechat_refund_id)">复制</el-button>
+              </el-descriptions-item>
             </el-descriptions>
 
             <!-- 用户信息 -->
@@ -934,6 +994,16 @@ const formatMoney = (value) => {
   return num.toFixed(2)
 }
 
+const copyToClipboard = async (text) => {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制到剪贴板')
+  } catch (e) {
+    ElMessage.error('复制失败')
+  }
+}
+
 const formatDeliveryLogAction = (action) => {
   const actionMap = {
     'created': '订单创建',
@@ -944,6 +1014,12 @@ const formatDeliveryLogAction = (action) => {
     'delivering_completed': '配送完成'
   }
   return actionMap[action] || action
+}
+
+const formatPaymentMethod = (method) => {
+  if (!method || method === 'cod') return '货到付款'
+  if (method === 'online') return '在线支付'
+  return method
 }
 
 const formatStatus = (status) => {
@@ -2280,5 +2356,22 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.payment-sub {
+  display: block;
+  font-size: 11px;
+  color: #67c23a;
+  margin-top: 2px;
+}
+
+.text-muted {
+  color: #909399;
+}
+
+.payment-desc {
+  font-size: 12px;
+  color: #909399;
+  margin-left: 6px;
 }
 </style>

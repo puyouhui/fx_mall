@@ -954,7 +954,8 @@ export default {
       
       try {
         uni.showLoading({ title: '取消中...' })
-        const res = await cancelOrder(this.token, this.orderId)
+        const orderIdForCancel = (this.orderDetail?.order?.id != null) ? this.orderDetail.order.id : this.orderId
+        const res = await cancelOrder(this.token, orderIdForCancel)
         
         if (res && res.code === 200) {
           uni.showToast({

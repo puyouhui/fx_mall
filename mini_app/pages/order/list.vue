@@ -64,6 +64,21 @@
       :lower-threshold="100"
       :enable-back-to-top="true"
     >
+      <!-- 通过订单编号查看（支付成功但列表未显示时可用） -->
+      <view class="order-number-query-bar">
+        <text class="order-number-query-label">找不到订单？</text>
+        <text class="order-number-query-link" @click="showOrderNumberInput = true">输入订单编号查看</text>
+      </view>
+      <view class="order-number-input-bar" v-if="showOrderNumberInput">
+        <input 
+          class="order-number-input" 
+          v-model="orderNumberQuery" 
+          placeholder="请输入订单编号" 
+          placeholder-class="input-placeholder"
+        />
+        <text class="order-number-query-btn" @click="goToDetailByOrderNumber">查看</text>
+        <text class="order-number-query-close" @click="showOrderNumberInput = false">收起</text>
+      </view>
       <view class="order-list" v-if="orders.length > 0">
         <view 
           class="order-item" 
@@ -135,7 +150,9 @@ export default {
       pageNum: 1,
       pageSize: 10,
       hasMore: true,
-      token: ''
+      token: '',
+      showOrderNumberInput: false,
+      orderNumberQuery: ''
     }
   },
   onLoad(options) {
@@ -175,6 +192,18 @@ export default {
   methods: {
     goBack() {
       uni.navigateBack()
+    },
+    goToDetailByOrderNumber() {
+      const num = (this.orderNumberQuery || '').trim()
+      if (!num) {
+        uni.showToast({ title: '请输入订单编号', icon: 'none' })
+        return
+      }
+      this.showOrderNumberInput = false
+      this.orderNumberQuery = ''
+      uni.navigateTo({
+        url: '/pages/order/detail?id=' + encodeURIComponent(num)
+      })
     },
     switchStatus(status) {
       if (this.currentStatus === status) return
@@ -455,6 +484,62 @@ export default {
 .order-scroll {
   width: 100%;
   box-sizing: border-box;
+}
+
+.order-number-query-bar {
+  padding: 20rpx 24rpx;
+  background: #fff9e6;
+  margin: 20rpx 20rpx 0;
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.order-number-query-label {
+  font-size: 26rpx;
+  color: #666;
+}
+
+.order-number-query-link {
+  font-size: 26rpx;
+  color: #20CB6B;
+  text-decoration: underline;
+}
+
+.order-number-input-bar {
+  padding: 16rpx 24rpx;
+  background: #fff;
+  margin: 12rpx 20rpx 0;
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  border: 1px solid #eee;
+}
+
+.order-number-input {
+  flex: 1;
+  height: 64rpx;
+  font-size: 28rpx;
+  padding: 0 16rpx;
+  background: #f5f5f5;
+  border-radius: 8rpx;
+}
+
+.input-placeholder {
+  color: #999;
+}
+
+.order-number-query-btn {
+  font-size: 28rpx;
+  color: #20CB6B;
+  padding: 12rpx 20rpx;
+}
+
+.order-number-query-close {
+  font-size: 26rpx;
+  color: #999;
 }
 
 .order-list {
