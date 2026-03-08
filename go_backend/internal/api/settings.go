@@ -3,9 +3,11 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"go_backend/internal/config"
 	"go_backend/internal/model"
+	"go_backend/internal/notify"
 
 	"github.com/gin-gonic/gin"
 )
@@ -136,6 +138,29 @@ func UpdateMapSettings(c *gin.Context) {
 	})
 }
 
+// TestFeishuPushRequest 飞书测试推送请求
+type TestFeishuPushRequest struct {
+	WebhookURL string `json:"webhook_url"` // 可选，不传则使用已保存的配置
+}
+
+// TestFeishuPush 测试飞书推送
+func TestFeishuPush(c *gin.Context) {
+	var req TestFeishuPushRequest
+	_ = c.ShouldBindJSON(&req)
+	webhookURL := strings.TrimSpace(req.WebhookURL)
+	if err := notify.SendTestNotification(webhookURL); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    500,
+			"message": "推送失败: " + err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "测试消息已发送，请检查飞书群是否收到",
+	})
+}
+
 // GetWebSocketConfig 获取WebSocket配置（供前端使用）
 func GetWebSocketConfig(c *gin.Context) {
 	// 获取请求的协议和主机
@@ -192,6 +217,7 @@ func getSettingDescription(key string) string {
 		"wechat_pay_notify_url":        "支付结果回调地址",
 		"wechat_pay_public_key_id":     "微信支付公钥ID（新商户必填）",
 		"wechat_pay_public_key":        "微信支付公钥PEM内容（新商户必填）",
+		"feishu_webhook_url":           "飞书机器人Webhook地址（订单状态变更推送）",
 	}
 	if desc, ok := descriptions[key]; ok {
 		return desc

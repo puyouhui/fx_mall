@@ -170,7 +170,8 @@ func main() {
 				protectedGroup.PUT("/settings", api.UpdateSystemSettings)         // 更新系统设置
 				protectedGroup.GET("/settings/map", api.GetMapSettings)           // 获取地图设置
 				protectedGroup.PUT("/settings/map", api.UpdateMapSettings)        // 更新地图设置
-				protectedGroup.GET("/settings/websocket", api.GetWebSocketConfig) // 获取WebSocket配置
+				protectedGroup.GET("/settings/websocket", api.GetWebSocketConfig)   // 获取WebSocket配置
+				protectedGroup.POST("/settings/feishu/test", api.TestFeishuPush)   // 测试飞书推送
 
 				// 分类管理接口
 				protectedGroup.GET("/categories", api.GetAllCategoriesForAdmin)     // 获取所有商品分类（后台管理）
@@ -179,6 +180,17 @@ func main() {
 				protectedGroup.DELETE("/categories/:id", api.DeleteCategory)        // 根据分类ID删除商品分类
 				protectedGroup.POST("/categories/upload", api.UploadCategoryImage)  // 上传分类图标
 				protectedGroup.PUT("/categories/sort", api.BatchUpdateCategorySort) // 批量更新分类排序
+
+				// 计量单位管理接口
+				protectedGroup.GET("/uom/default-category", api.GetUomDefaultCategory) // 获取默认件单位类别ID
+				protectedGroup.GET("/uom/categories", api.GetUomCategories)           // 获取单位类别列表
+				protectedGroup.POST("/uom/categories", api.CreateUomCategory)         // 创建单位类别
+				protectedGroup.PUT("/uom/categories/:id", api.UpdateUomCategory)      // 更新单位类别
+				protectedGroup.DELETE("/uom/categories/:id", api.DeleteUomCategory)   // 删除单位类别
+				protectedGroup.GET("/uom/units", api.GetUomUnits)                     // 获取单位列表（按类别）
+				protectedGroup.POST("/uom/units", api.CreateUomUnit)                  // 创建单位
+				protectedGroup.PUT("/uom/units/:id", api.UpdateUomUnit)               // 更新单位
+				protectedGroup.DELETE("/uom/units/:id", api.DeleteUomUnit)            // 删除单位
 
 				// 轮播图管理接口
 				protectedGroup.GET("/carousels", api.GetAllCarouselsForAdmin)     // 获取所有轮播图（管理后台用）

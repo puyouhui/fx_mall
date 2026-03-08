@@ -496,6 +496,62 @@
           </el-form>
         </el-tab-pane>
 
+        <!-- 飞书通知配置 Tab -->
+        <el-tab-pane label="飞书通知" name="feishu">
+          <el-form
+            ref="feishuFormRef"
+            :model="feishuForm"
+            label-width="180px"
+            class="feishu-form"
+          >
+            <el-alert
+              title="飞书通知配置说明"
+              type="info"
+              :closable="false"
+              style="margin-bottom: 20px"
+            >
+              <template #default>
+                <div style="line-height: 1.8;">
+                  <p>• 配置飞书机器人 Webhook 地址后，系统将在以下场景自动推送通知到飞书群：</p>
+                  <p style="padding-left: 1em;">· 新订单、订单取消、订单送达、订单收款</p>
+                  <p>• 在飞书群中添加「自定义机器人」并复制 Webhook 地址粘贴到下方</p>
+                  <p>• 留空则使用默认推送地址</p>
+                </div>
+              </template>
+            </el-alert>
+
+            <el-form-item label="飞书 Webhook 地址">
+              <el-input
+                v-model="feishuForm.webhook_url"
+                placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"
+                style="width: 500px"
+                clearable
+              />
+              <div style="margin-top: 8px; color: #909399; font-size: 12px;">
+                留空则使用默认地址
+              </div>
+            </el-form-item>
+
+            <el-form-item>
+              <el-button
+                type="primary"
+                :loading="feishuLoading"
+                @click="handleSaveFeishuSettings"
+              >
+                保存配置
+              </el-button>
+              <el-button @click="handleResetFeishuForm">重置</el-button>
+              <el-button
+                type="success"
+                :loading="feishuTestLoading"
+                @click="handleTestFeishuPush"
+              >
+                测试推送
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
         <!-- 微信支付配置 Tab -->
         <el-tab-pane label="微信支付" name="wechat-pay">
           <el-form
@@ -629,7 +685,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Lock, Location, Printer } from '@element-plus/icons-vue'
 import { changePassword } from '../api/auth'
-import { getMapSettings, updateMapSettings, getSystemSettings, updateSystemSettings } from '../api/settings'
+import { getMapSettings, updateMapSettings, getSystemSettings, updateSystemSettings, testFeishuPush } from '../api/settings'
 import { getPrinterAddress, setPrinterAddress, getDefaultPrinterAddress } from '../utils/printer'
 
 const activeTab = ref('password')
@@ -639,12 +695,15 @@ const orderFormRef = ref(null)
 const deliveryFeeFormRef = ref(null)
 const printerFormRef = ref(null)
 const wechatPayFormRef = ref(null)
+const feishuFormRef = ref(null)
 const passwordLoading = ref(false)
 const mapLoading = ref(false)
 const orderLoading = ref(false)
 const deliveryFeeLoading = ref(false)
 const printerLoading = ref(false)
 const wechatPayLoading = ref(false)
+const feishuLoading = ref(false)
+const feishuTestLoading = ref(false)
 
 const passwordForm = reactive({
   old_password: '',
@@ -659,6 +718,10 @@ const mapForm = reactive({
 
 const printerForm = reactive({
   address: ''
+})
+
+const feishuForm = reactive({
+  webhook_url: ''
 })
 
 const wechatPayForm = reactive({
@@ -1010,6 +1073,62 @@ const handleResetPrinterForm = () => {
   ElMessage.success('已重置为默认地址')
 }
 
+// 加载飞书设置
+const loadFeishuSettings = async () => {
+  try {
+    const response = await getSystemSettings()
+    if (response.code === 200 && response.data) {
+      feishuForm.webhook_url = response.data.feishu_webhook_url || ''
+    }
+  } catch (error) {
+    console.error('加载飞书设置失败:', error)
+  }
+}
+
+// 保存飞书设置
+const handleSaveFeishuSettings = async () => {
+  try {
+    feishuLoading.value = true
+    const response = await updateSystemSettings({
+      feishu_webhook_url: (feishuForm.webhook_url || '').trim()
+    })
+    if (response && response.code === 200) {
+      ElMessage.success('飞书通知配置保存成功')
+    } else {
+      ElMessage.error(response?.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('保存飞书设置失败:', error)
+    ElMessage.error('保存失败，请稍后再试')
+  } finally {
+    feishuLoading.value = false
+  }
+}
+
+// 重置飞书表单
+const handleResetFeishuForm = () => {
+  loadFeishuSettings()
+}
+
+// 测试飞书推送
+const handleTestFeishuPush = async () => {
+  try {
+    feishuTestLoading.value = true
+    const webhookUrl = (feishuForm.webhook_url || '').trim()
+    const response = await testFeishuPush(webhookUrl)
+    if (response && response.code === 200) {
+      ElMessage.success(response.message || '测试消息已发送，请检查飞书群')
+    } else {
+      ElMessage.error(response?.message || '测试推送失败')
+    }
+  } catch (error) {
+    console.error('测试飞书推送失败:', error)
+    ElMessage.error('测试推送失败，请检查网络或 Webhook 地址')
+  } finally {
+    feishuTestLoading.value = false
+  }
+}
+
 // 加载微信支付设置
 const loadWechatPaySettings = async () => {
   try {
@@ -1063,12 +1182,13 @@ const handleResetWechatPayForm = () => {
   loadWechatPaySettings()
 }
 
-// 页面加载时获取地图设置、订单设置、配送费计算设置、打印机设置和微信支付设置
+// 页面加载时获取地图设置、订单设置、配送费计算设置、打印机设置、飞书设置和微信支付设置
 onMounted(() => {
   loadMapSettings()
   loadOrderSettings()
   loadDeliveryFeeSettings()
   loadPrinterSettings()
+  loadFeishuSettings()
   loadWechatPaySettings()
 })
 </script>
@@ -1119,7 +1239,8 @@ onMounted(() => {
 .map-form,
 .order-form,
 .delivery-fee-form,
-.printer-form {
+.printer-form,
+.feishu-form {
   padding: 20px 0;
 }
 

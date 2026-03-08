@@ -453,6 +453,7 @@ func GetAllProductsForAdmin(c *gin.Context) {
 			}
 		}
 		productMap["is_special"] = product.IsSpecial
+		productMap["uom_category_id"] = product.UomCategoryID
 		productMap["images"] = product.Images
 		productMap["specs"] = product.Specs
 		productMap["status"] = product.Status
@@ -589,6 +590,7 @@ func UpdateProduct(c *gin.Context) {
 	product.Price = updateData.Price
 	product.CategoryID = updateData.CategoryID
 	product.SupplierID = supplierID
+	product.UomCategoryID = updateData.UomCategoryID
 	product.IsSpecial = updateData.IsSpecial
 	product.Images = updateData.Images
 	product.Specs = updateData.Specs

@@ -72,6 +72,22 @@
           </el-menu-item>
         </el-sub-menu>
 
+        <!-- 库存管理 -->
+        <el-sub-menu index="inventory-management">
+          <template #title>
+            <el-icon>
+              <Box />
+            </el-icon>
+            <span>库存管理</span>
+          </template>
+          <el-menu-item index="/uom-management">
+            <el-icon>
+              <Sort />
+            </el-icon>
+            <span>计量单位管理</span>
+          </el-menu-item>
+        </el-sub-menu>
+
         <!-- 订单管理 -->
         <el-sub-menu index="order-management">
           <template #title>

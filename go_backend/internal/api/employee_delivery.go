@@ -14,6 +14,7 @@ import (
 
 	"go_backend/internal/database"
 	"go_backend/internal/model"
+	"go_backend/internal/notify"
 	"go_backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -878,6 +879,20 @@ func CompleteDeliveryOrder(c *gin.Context) {
 		return
 	}
 
+	// 飞书订单送达通知（异步）
+	go func(orderID int) {
+		o, _ := model.GetOrderByID(orderID)
+		if o == nil {
+			return
+		}
+		items, _ := model.GetOrderItemsByOrderID(orderID)
+		u, _ := model.GetMiniAppUserByID(o.UserID)
+		addr, _ := model.GetAddressByID(o.AddressID)
+		if u != nil && addr != nil {
+			notify.NotifyOrderDelivered(o, items, u, addr)
+		}
+	}(id)
+
 	// 异步检查是否所有订单都已完成，如果是则清空路线记录（开始新的一趟）
 	// 注意：完成配送时不需要重新计算路线，因为订单已完成，路线会自动更新
 	// 这里只检查批次状态，不重新计算路线（因为可能没有位置信息）
@@ -981,6 +996,20 @@ func CompleteDeliveryOrderWithoutImages(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "提交事务失败: " + err.Error()})
 		return
 	}
+
+	// 飞书订单送达通知（异步）
+	go func(orderID int) {
+		o, _ := model.GetOrderByID(orderID)
+		if o == nil {
+			return
+		}
+		items, _ := model.GetOrderItemsByOrderID(orderID)
+		u, _ := model.GetMiniAppUserByID(o.UserID)
+		addr, _ := model.GetAddressByID(o.AddressID)
+		if u != nil && addr != nil {
+			notify.NotifyOrderDelivered(o, items, u, addr)
+		}
+	}(id)
 
 	go func() {
 		currentBatchID, batchErr := model.GetCurrentBatchID(employee.EmployeeCode)

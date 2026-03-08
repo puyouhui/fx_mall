@@ -12,6 +12,7 @@ import (
 
 	"go_backend/internal/database"
 	"go_backend/internal/model"
+	"go_backend/internal/notify"
 	"go_backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -1433,6 +1434,15 @@ func CancelSalesOrder(c *gin.Context) {
 		}
 	}(id)
 
+	// 飞书订单取消通知（异步）
+	go func(o *model.Order) {
+		u, _ := model.GetMiniAppUserByID(o.UserID)
+		addr, _ := model.GetAddressByID(o.AddressID)
+		if u != nil && addr != nil {
+			notify.NotifyOrderCancelled(o, u, addr, "销售员取消")
+		}
+	}(order)
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "订单已取消",
@@ -2704,6 +2714,15 @@ func CreateOrderForCustomer(c *gin.Context) {
 		_ = model.CalculateAndStoreOrderProfitWithRetry(order.ID, 3)
 		log.Printf("[CreateOrderForCustomer] 已触发订单利润和配送费计算 (orderID=%d)", order.ID)
 	}()
+
+	// 飞书新订单通知（异步）
+	go func(o *model.Order, items []model.OrderItem) {
+		u, _ := model.GetMiniAppUserByID(o.UserID)
+		addr, _ := model.GetAddressByID(o.AddressID)
+		if u != nil && addr != nil {
+			notify.NotifyOrderNew(o, items, u, addr, true) // 销售员代下单
+		}
+	}(order, orderItems)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,

@@ -12,6 +12,7 @@ import (
 
 	"go_backend/internal/database"
 	"go_backend/internal/model"
+	"go_backend/internal/notify"
 
 	"github.com/gin-gonic/gin"
 )
@@ -703,6 +704,14 @@ func UpdateOrderStatus(c *gin.Context) {
 				log.Printf("订单 %d 的分成记录已清理", orderID)
 			}
 		}(id)
+		// 飞书订单取消通知（异步）
+		go func(o *model.Order) {
+			u, _ := model.GetMiniAppUserByID(o.UserID)
+			addr, _ := model.GetAddressByID(o.AddressID)
+			if u != nil && addr != nil {
+				notify.NotifyOrderCancelled(o, u, addr, "管理员取消")
+			}
+		}(order)
 	}
 
 	// 如果订单状态变为 paid（已收款），需要计算销售分成和处理推荐奖励
@@ -756,6 +765,13 @@ func UpdateOrderStatus(c *gin.Context) {
 				log.Printf("处理订单 %d 的积分奖励失败: %v", orderID, err)
 			} else {
 				log.Printf("订单 %d 的积分奖励处理完成", orderID)
+			}
+
+			// 飞书订单收款通知（异步）
+			items, _ := model.GetOrderItemsByOrderID(orderID)
+			u, _ := model.GetMiniAppUserByID(order.UserID)
+			if u != nil {
+				notify.NotifyOrderPaid(order, items, u, "")
 			}
 		}(id)
 	}
@@ -858,6 +874,15 @@ func AdminManualRefund(c *gin.Context) {
 		}
 	}(id)
 
+	// 飞书订单取消通知（异步）
+	go func(o *model.Order) {
+		u, _ := model.GetMiniAppUserByID(o.UserID)
+		addr, _ := model.GetAddressByID(o.AddressID)
+		if u != nil && addr != nil {
+			notify.NotifyOrderCancelled(o, u, addr, "管理员手动退款")
+		}
+	}(order)
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "退款已受理，预计1-3工作日到账。订单已取消。",
@@ -952,6 +977,14 @@ func AdminRefundWithDetails(c *gin.Context) {
 					log.Printf("售后退款-取消订单 %d 的分成记录失败: %v", orderID, err)
 				}
 			}(id)
+			// 飞书订单取消通知（异步）
+			go func(o *model.Order) {
+				u, _ := model.GetMiniAppUserByID(o.UserID)
+				addr, _ := model.GetAddressByID(o.AddressID)
+				if u != nil && addr != nil {
+					notify.NotifyOrderCancelled(o, u, addr, "售后退款: "+reason)
+				}
+			}(order)
 		}
 	}
 

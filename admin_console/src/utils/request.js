@@ -5,8 +5,8 @@ import axios from 'axios'
 const getBaseURL = () => {
   // 如果是开发环境（localhost 或 127.0.0.1）
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    // return 'http://localhost:8082/api/mini'
-    return 'https://mall.sscchh.com/api_mall/mini' // 生产环境
+    return 'http://localhost:8082/api/mini'
+      // return 'https://mall.sscchh.com/api_mall/mini' // 生产环境
   }
   // 生产环境使用相对路径，通过 Nginx 代理到后端
   // 注意：后端 Nginx 配置为 /api_mall/，所以这里使用 /api_mall/mini
@@ -53,7 +53,7 @@ request.interceptors.response.use(
     if (error.response) {
       // 如果错误响应中有 data，将其作为错误信息返回
       const errorData = error.response.data || {}
-      
+
       switch (error.response.status) {
         case 401:
           // 未授权，跳转到登录页
@@ -75,7 +75,7 @@ request.interceptors.response.use(
           console.log(`请求失败: ${errorData.message || '未知错误'}`)
           break
       }
-      
+
       // 返回错误数据，保持与成功响应相同的数据结构
       return Promise.reject({
         response: {

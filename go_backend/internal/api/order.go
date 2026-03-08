@@ -11,6 +11,7 @@ import (
 
 	"go_backend/internal/database"
 	"go_backend/internal/model"
+	"go_backend/internal/notify"
 
 	"github.com/gin-gonic/gin"
 )
@@ -230,6 +231,14 @@ func CreateOrderFromCart(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "创建订单失败: " + err.Error()})
 		return
 	}
+
+	// 飞书新订单通知（异步，不阻塞）
+	go func(o *model.Order, items []model.OrderItem, u *model.MiniAppUser) {
+		addr, _ := model.GetAddressByID(o.AddressID)
+		if addr != nil {
+			notify.NotifyOrderNew(o, items, u, addr, false) // 用户自助下单
+		}
+	}(order, orderItems, user)
 
 	// 优惠券已在事务内处理，无需再次处理
 
@@ -717,6 +726,14 @@ func CancelUserOrder(c *gin.Context) {
 			log.Printf("订单 %d 的分成记录已清理", orderID)
 		}
 	}(id)
+
+	// 飞书订单取消通知（异步）
+	go func(o *model.Order, u *model.MiniAppUser) {
+		addr, _ := model.GetAddressByID(o.AddressID)
+		if addr != nil {
+			notify.NotifyOrderCancelled(o, u, addr, "用户取消")
+		}
+	}(order, user)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,

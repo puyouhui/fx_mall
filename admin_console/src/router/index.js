@@ -224,6 +224,14 @@ const routes = [
         }
       },
       {
+        path: 'uom-management',
+        name: 'UomManagement',
+        component: () => import('../views/UomManagement.vue'),
+        meta: {
+          title: '计量单位管理'
+        }
+      },
+      {
         path: 'sort-management',
         name: 'SortManagement',
         component: () => import('../views/SortManagement.vue'),

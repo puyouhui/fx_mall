@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"go_backend/internal/model"
+	feishunotify "go_backend/internal/notify"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wechatpay-apiv3/wechatpay-go/core"
@@ -296,6 +297,14 @@ func WeChatPayNotify(c *gin.Context) {
 		// 清空采购单
 		ClearPurchaseListByItemIDs(cacheEntry.UserID, cacheEntry.ItemIDs)
 		log.Printf("[WeChatPayNotify] 从缓存创建订单成功: orderID=%d out_trade_no=%s", order.ID, outTradeNo)
+		// 飞书订单收款通知（预支付下单即支付成功）
+		go func(o *model.Order, txID string) {
+			items, _ := model.GetOrderItemsByOrderID(o.ID)
+			u, _ := model.GetMiniAppUserByID(o.UserID)
+			if u != nil {
+				feishunotify.NotifyOrderPaid(o, items, u, txID)
+			}
+		}(order, transactionID)
 		// 录入微信发货信息，避免微信侧显示「未发货」
 		go func(oid int) {
 			if err := UploadWechatShippingInfo(oid); err != nil {
@@ -316,6 +325,19 @@ func WeChatPayNotify(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "处理失败"})
 		return
 	}
+
+	// 飞书订单收款通知
+	go func(orderID int, txID string) {
+		o, _ := model.GetOrderByID(orderID)
+		if o == nil {
+			return
+		}
+		items, _ := model.GetOrderItemsByOrderID(orderID)
+		u, _ := model.GetMiniAppUserByID(o.UserID)
+		if u != nil {
+			feishunotify.NotifyOrderPaid(o, items, u, txID)
+		}
+	}(order.ID, transactionID)
 
 	// 货到付款/活动付款订单用户后来小程序付款：录入微信发货信息，避免微信侧显示「未发货」
 	go func(oid int) {

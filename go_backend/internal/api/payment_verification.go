@@ -8,6 +8,7 @@ import (
 
 	"go_backend/internal/database"
 	"go_backend/internal/model"
+	"go_backend/internal/notify"
 
 	"github.com/gin-gonic/gin"
 )
@@ -211,6 +212,13 @@ func ReviewPaymentVerificationRequest(c *gin.Context) {
 					log.Printf("处理订单 %d 的推荐奖励失败: %v", orderID, err)
 				} else {
 					log.Printf("订单 %d 的推荐奖励处理完成", orderID)
+				}
+
+				// 飞书订单收款通知（货到付款审核通过）
+				items, _ := model.GetOrderItemsByOrderID(orderID)
+				u, _ := model.GetMiniAppUserByID(order.UserID)
+				if u != nil {
+					notify.NotifyOrderPaid(order, items, u, "")
 				}
 			}(orderID)
 		}

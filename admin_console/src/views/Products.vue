@@ -118,16 +118,30 @@
               <el-option v-for="supplier in suppliers" :key="supplier.id" :label="supplier.name" :value="supplier.id" />
             </el-select>
           </el-form-item>
+          <el-form-item label="计量单位类别" prop="uomCategoryId">
+            <el-select v-model="productForm.uomCategoryId" placeholder="不选则默认使用「件」" clearable style="width: 100%;">
+              <el-option v-for="c in uomCategories" :key="c.id" :label="c.name" :value="c.id" />
+            </el-select>
+            <div style="font-size: 12px; color: #909399; margin-top: 4px;">用于规格数量换算，老商品默认「件」</div>
+          </el-form-item>
           <!-- 商品本身价格字段已废弃，实际使用规格价格 -->
           <el-form-item label="商品规格">
             <div class="specs-container">
               <div class="specs-input-group">
                 <el-row :gutter="12" style="margin-bottom: 10px;">
                   <el-col :span="12">
-                    <el-input v-model="currentSpec.name" placeholder="规格名称 *（如：3瓶装）" />
+                    <el-input v-model="currentSpec.name" placeholder="规格名称 *（如：1瓶装、1件装）" />
                   </el-col>
                   <el-col :span="12">
                     <el-input v-model="currentSpec.description" placeholder="规格描述（可选，如：≈1.5元/瓶）" />
+                  </el-col>
+                </el-row>
+                <el-row :gutter="12" style="margin-bottom: 10px;">
+                  <el-col :span="12">
+                    <el-select v-model="currentSpec.uomUnitId" placeholder="绑定单位（不选默认件）" clearable style="width: 100%;">
+                      <el-option v-for="u in currentUomUnits" :key="u.id" :label="u.name" :value="u.id" />
+                    </el-select>
+                    <div style="font-size: 12px; color: #909399; margin-top: 4px;">规格对应的计量单位，用于数量换算</div>
                   </el-col>
                 </el-row>
                 <el-row :gutter="12" style="margin-bottom: 10px;">
@@ -184,6 +198,7 @@
                             成本: ¥{{ (spec.cost || spec.cost === 0) ? (spec.cost || 0).toFixed(2) : '-' }}
                             | 批发价: ¥{{ (spec.wholesale_price || spec.wholesalePrice || 0).toFixed(2) }}
                             | 零售价: ¥{{ (spec.retail_price || spec.retailPrice || 0).toFixed(2) }}
+                            | 单位: {{ getUnitName(spec.uom_unit_id || spec.uomUnitId) }}
                             | 配送计件数: {{ (spec.delivery_count || spec.deliveryCount || 1.0).toFixed(2) }}
                           </span>
                           <!-- <span v-if="spec.cost && (spec.retail_price || spec.retailPrice)" class="spec-profit">
@@ -355,6 +370,7 @@ import { getProductList, createProduct, updateProduct, deleteProduct, uploadProd
 import { getCategoryList } from '../api/category'
 import { getAllSuppliers } from '../api/suppliers'
 import { getImageList } from '../api/imageLibrary'
+import { getUomCategories, getUomDefaultCategory } from '../api/uom'
 import { formatDate } from '../utils/time-format'
 
 // 截断文本函数
@@ -426,6 +442,25 @@ const treeCategories = ref([])
 // 供应商列表
 const suppliers = ref([])
 
+// 单位类别列表
+const uomCategories = ref([])
+const defaultUomCategoryId = ref(null)
+
+const currentUomUnits = computed(() => {
+  const cid = productForm.uomCategoryId || defaultUomCategoryId.value
+  const cat = uomCategories.value.find((c) => c.id === cid)
+  return cat && cat.units ? cat.units : []
+})
+
+const getUnitName = (unitId) => {
+  if (!unitId) return '件'
+  for (const c of uomCategories.value) {
+    const u = (c.units || []).find((x) => x.id === unitId)
+    if (u) return u.name
+  }
+  return '件'
+}
+
 // 搜索表单
 const searchForm = reactive({
   keyword: '',
@@ -447,9 +482,10 @@ const productFormRef = ref(null)
 const productForm = reactive({
   id: null,
   name: '',
-  categoryIds: [], // 改为数组存储级联选择的分类ID
-  categoryId: '', // 保留原字段用于提交
-  supplierId: null, // 供应商ID
+  categoryIds: [],
+  categoryId: '',
+  supplierId: null,
+  uomCategoryId: null,
   originalPrice: 0,
   price: 0,
   isSpecial: false,
@@ -465,7 +501,8 @@ const currentSpec = reactive({
   retailPrice: null,
   description: '',
   cost: null,
-  deliveryCount: 1.0 // 配送计件数，默认1.0
+  deliveryCount: 1.0,
+  uomUnitId: null
 })
 
 // 当前编辑的规格索引（-1表示新增模式）
@@ -688,6 +725,20 @@ const initData = async () => {
       console.error('加载供应商数据失败:', error)
     }
 
+    // 加载单位类别（用于商品规格绑定）
+    try {
+      const uomRes = await getUomCategories()
+      if (uomRes.code === 200 && uomRes.data) {
+        uomCategories.value = uomRes.data
+      }
+      const defaultRes = await getUomDefaultCategory()
+      if (defaultRes.code === 200 && defaultRes.data && defaultRes.data.id) {
+        defaultUomCategoryId.value = defaultRes.data.id
+      }
+    } catch (error) {
+      console.error('加载单位类别失败:', error)
+    }
+
     // 加载商品数据
     const productResponse = await getProductList({
       pageNum: pagination.pageNum,
@@ -780,20 +831,23 @@ const handleAddProduct = () => {
     name: '',
     categoryIds: [],
     categoryId: '',
-    supplierId: selfOperatedSupplier ? selfOperatedSupplier.id : null, // 如果找到自营供应商则使用，否则为 null（后端会自动分配）
-    originalPrice: 0, // 保留字段但不再使用
-    price: 0, // 保留字段但不再使用
+    supplierId: selfOperatedSupplier ? selfOperatedSupplier.id : null,
+    uomCategoryId: defaultUomCategoryId.value,
+    originalPrice: 0,
+    price: 0,
     isSpecial: false,
     description: '',
     images: [],
     specs: []
   })
-  // 清空当前规格
   Object.assign(currentSpec, {
     name: '',
-    value: '',
-    price: 0,
-    originalPrice: 0
+    wholesalePrice: null,
+    retailPrice: null,
+    description: '',
+    cost: null,
+    deliveryCount: 1.0,
+    uomUnitId: null
   })
   dialogVisible.value = true
 }
@@ -839,12 +893,15 @@ const handleEditProduct = (row) => {
     }
   }
 
+  const uomCategoryId = row.uom_category_id ?? row.uomCategoryId ?? defaultUomCategoryId.value
+
   Object.assign(productForm, {
     ...row,
-    id: Number(row.id), // 确保id是数字类型
+    id: Number(row.id),
     categoryId: categoryId,
-    categoryIds: categoryPath, // 设置级联分类路径
-    supplierId: supplierId, // 设置供应商ID
+    categoryIds: categoryPath,
+    supplierId: supplierId,
+    uomCategoryId: uomCategoryId,
     images: row.images && Array.isArray(row.images) ?
       row.images.map(img => {
         // 确保img是有效类型
@@ -981,11 +1038,12 @@ const addSpec = () => {
   // 添加规格，使用正确的字段名
   productForm.specs.push({
     name: currentSpec.name,
-    cost: currentSpec.cost, // 成本，已验证必须大于0
+    cost: currentSpec.cost,
     wholesale_price: currentSpec.wholesalePrice,
     retail_price: currentSpec.retailPrice,
-    description: currentSpec.description || '', // 描述为可选
-    delivery_count: currentSpec.deliveryCount // 配送计件数
+    description: currentSpec.description || '',
+    delivery_count: currentSpec.deliveryCount,
+    uom_unit_id: currentSpec.uomUnitId || null
   })
 
   // 清空当前输入
@@ -1042,11 +1100,12 @@ const updateSpec = () => {
   // 更新规格
   const spec = productForm.specs[editingSpecIndex.value]
   spec.name = currentSpec.name
-  spec.cost = currentSpec.cost // 成本，已验证必须大于0
+  spec.cost = currentSpec.cost
   spec.wholesale_price = currentSpec.wholesalePrice
   spec.retail_price = currentSpec.retailPrice
-  spec.description = currentSpec.description || '' // 描述为可选
-  spec.delivery_count = currentSpec.deliveryCount // 配送计件数
+  spec.description = currentSpec.description || ''
+  spec.delivery_count = currentSpec.deliveryCount
+  spec.uom_unit_id = currentSpec.uomUnitId || null
 
   // 清空编辑状态
   resetSpecForm()
@@ -1064,7 +1123,8 @@ const editSpec = (index) => {
   currentSpec.wholesalePrice = spec.wholesale_price || spec.wholesalePrice || null
   currentSpec.retailPrice = spec.retail_price || spec.retailPrice || null
   currentSpec.description = spec.description || ''
-  currentSpec.deliveryCount = spec.delivery_count || spec.deliveryCount || 1.0 // 配送计件数，默认1.0
+  currentSpec.deliveryCount = spec.delivery_count || spec.deliveryCount || 1.0
+  currentSpec.uomUnitId = spec.uom_unit_id ?? spec.uomUnitId ?? null
 
   // 设置编辑索引
   editingSpecIndex.value = index
@@ -1091,7 +1151,8 @@ const resetSpecForm = () => {
     wholesalePrice: null,
     retailPrice: null,
     description: '',
-    deliveryCount: 1.0 // 配送计件数，默认1.0
+    deliveryCount: 1.0,
+    uomUnitId: null
   })
   editingSpecIndex.value = -1
 }
@@ -1163,18 +1224,18 @@ const handleSubmit = async () => {
 
     // 处理图片数据和规格数据
     const formData = {
-      // 只包含需要提交的字段，避免多余字段导致的问题
-      id: productForm.id, // 添加id字段
+      id: productForm.id,
       name: productForm.name,
-      category_id: Number(categoryId), // 转换为数字类型
-      supplier_id: productForm.supplierId || null, // 供应商ID（可选）
-      original_price: 0, // 设置为0，实际使用规格价格
-      price: 0, // 设置为0，实际使用规格价格
-      is_special: productForm.isSpecial, // 转换为后端期望的字段名
+      category_id: Number(categoryId),
+      supplier_id: productForm.supplierId || null,
+      uom_category_id: productForm.uomCategoryId || null,
+      original_price: 0,
+      price: 0,
+      is_special: productForm.isSpecial,
       description: productForm.description,
       images: productForm.images.map(img => img.url),
-      specs: productForm.specs || [], // 确保规格数据存在且格式正确
-      status: 1 // 默认状态为启用
+      specs: productForm.specs || [],
+      status: 1
     }
 
     // 确保id是数字类型

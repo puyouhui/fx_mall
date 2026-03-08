@@ -25,6 +25,15 @@ export function getMapSettings() {
   })
 }
 
+// 测试飞书推送
+export function testFeishuPush(webhookUrl) {
+  return request({
+    url: '/admin/settings/feishu/test',
+    method: 'post',
+    data: { webhook_url: webhookUrl || '' }
+  })
+}
+
 // 更新地图设置
 export function updateMapSettings(data) {
   return request({

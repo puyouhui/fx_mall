@@ -508,6 +508,18 @@ func InitDB() error {
 			}
 		}
 
+		// 检查并添加 uom_category_id 字段（单位类别，为空时默认使用「件」）
+		var uomCategoryIdExists int
+		err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'products' AND column_name = 'uom_category_id'", cfg.DBName).Scan(&uomCategoryIdExists)
+		if err == nil && uomCategoryIdExists == 0 {
+			_, err = DB.Exec("ALTER TABLE products ADD COLUMN uom_category_id INT NULL COMMENT '单位类别ID，为空时默认使用件' AFTER supplier_id")
+			if err != nil {
+				log.Printf("添加uom_category_id字段失败: %v", err)
+			} else {
+				log.Println("已添加uom_category_id字段到products表")
+			}
+		}
+
 		// 创建carousels表
 		createCarouselsTableSQL := `
 		CREATE TABLE IF NOT EXISTS carousels (
@@ -1353,6 +1365,7 @@ func InitDB() error {
 			{"wechat_pay_refund_notify_url", "", "退款结果回调地址（可选，如https://域名/api/mini/wechat-pay/refund-notify）"},
 			{"wechat_pay_public_key_id", "", "微信支付公钥ID（PUB_KEY_ID_开头，新商户需在商户平台-API安全申请）"},
 			{"wechat_pay_public_key", "", "微信支付公钥（pub_key.pem内容，新商户需配置以替代平台证书）"},
+			{"feishu_webhook_url", "https://open.feishu.cn/open-apis/bot/v2/hook/6cf4c4d5-b73a-4105-88ff-75d5f905628a", "飞书机器人Webhook地址（订单状态变更推送）"},
 		}
 
 		for _, setting := range initSystemSettings {
@@ -2087,6 +2100,67 @@ func InitDB() error {
 			log.Printf("创建image_index表失败: %v", err)
 		} else {
 			log.Println("图片索引表初始化成功")
+		}
+
+		// 创建单位类别表
+		createUomCategoriesTableSQL := `
+		CREATE TABLE IF NOT EXISTS uom_categories (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    name VARCHAR(64) NOT NULL COMMENT '类别名称，如 10瓶/件',
+		    base_unit_id INT NULL COMMENT '基准单位ID（标准计量单位）',
+		    sort INT DEFAULT 0 COMMENT '排序，越小越靠前',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    INDEX idx_sort (sort)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='单位类别表';
+		`
+		if _, err = DB.Exec(createUomCategoriesTableSQL); err != nil {
+			log.Printf("创建uom_categories表失败: %v", err)
+		} else {
+			log.Println("单位类别表初始化成功")
+		}
+
+		// 创建单位表
+		createUomUnitsTableSQL := `
+		CREATE TABLE IF NOT EXISTS uom_units (
+		    id INT PRIMARY KEY AUTO_INCREMENT,
+		    category_id INT NOT NULL COMMENT '所属单位类别',
+		    name VARCHAR(32) NOT NULL COMMENT '单位名称，如 瓶、件',
+		    ratio DECIMAL(18,6) NOT NULL DEFAULT 1 COMMENT '相对基准单位的换算比例，基准单位=1，大于基准>1，小于基准<1',
+		    is_base TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否基准单位（标准计量单位）：1=是，0=否',
+		    sort INT DEFAULT 0 COMMENT '同类别内排序',
+		    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		    UNIQUE KEY uk_category_name (category_id, name),
+		    INDEX idx_category (category_id),
+		    INDEX idx_category_base (category_id, is_base),
+		    CONSTRAINT fk_uom_units_category FOREIGN KEY (category_id) REFERENCES uom_categories(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='单位表';
+		`
+		if _, err = DB.Exec(createUomUnitsTableSQL); err != nil {
+			log.Printf("创建uom_units表失败: %v", err)
+		} else {
+			log.Println("单位表初始化成功")
+		}
+
+		// 插入默认「件」单位类别，用于兼容老数据（无换算场景）
+		var uomCategoryCount int
+		_ = DB.QueryRow("SELECT COUNT(*) FROM uom_categories").Scan(&uomCategoryCount)
+		if uomCategoryCount == 0 {
+			res, execErr := DB.Exec("INSERT INTO uom_categories (name, base_unit_id, sort, created_at, updated_at) VALUES ('件', NULL, 0, NOW(), NOW())")
+			if execErr != nil {
+				log.Printf("插入默认件单位类别失败: %v", execErr)
+			} else {
+				categoryID, _ := res.LastInsertId()
+				unitRes, unitErr := DB.Exec("INSERT INTO uom_units (category_id, name, ratio, is_base, sort, created_at, updated_at) VALUES (?, '件', 1, 1, 0, NOW(), NOW())", categoryID)
+				if unitErr != nil {
+					log.Printf("插入默认件单位失败: %v", unitErr)
+				} else {
+					unitID, _ := unitRes.LastInsertId()
+					_, _ = DB.Exec("UPDATE uom_categories SET base_unit_id = ? WHERE id = ?", unitID, categoryID)
+					log.Println("已创建默认「件」单位类别，用于兼容老数据")
+				}
+			}
 		}
 
 		log.Println("所有表创建成功")
