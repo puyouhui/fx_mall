@@ -2133,7 +2133,7 @@ const handlePrintMaterial = async (orderData) => {
       // 右侧二维码图片
       // 注意：需要将图片转换为 base64 格式
       // 这里使用一个占位符，实际使用时需要替换为真实的二维码图片 base64 或 URL
-      const qrCodeImageUrl = 'https://www.sscchh.com/minio/sch/product_1766382995.png' // TODO: 替换为实际的二维码图片 URL 或 base64
+      const qrCodeImageUrl = 'https://mall.sscchh.com/minio/fengxing/others/image_1773116834.png' // TODO: 替换为实际的二维码图片 URL 或 base64
       
       if (qrCodeImageUrl) {
         try {
