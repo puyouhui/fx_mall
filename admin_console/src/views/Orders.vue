@@ -1355,8 +1355,8 @@ const handlePrintCommand = async (command, order) => {
     // 打印小票
     await handlePrintOrder(order)
   } else if (command === 'material') {
-    // 打印物料
-    await handlePrintMaterial(order)
+    // 打印物料：先选择打印模式
+    handlePrintMaterialWithMode(order)
   }
 }
 
@@ -1371,8 +1371,8 @@ const handlePrintCommandFromDetail = async (command) => {
     // 打印小票
     printOrder(orderDetail.value)
   } else if (command === 'material') {
-    // 打印物料
-    await handlePrintMaterial(orderDetail.value)
+    // 打印物料：先选择打印模式
+    handlePrintMaterialWithMode(orderDetail.value)
   }
 }
 
@@ -1936,8 +1936,49 @@ const executePrint = async (orderData) => {
   }
 }
 
+// 选择物料打印模式后执行
+const handlePrintMaterialWithMode = async (orderData) => {
+  try {
+    const action = await ElMessageBox({
+      message: '请选择打印方式：',
+      title: '打印物料',
+      showCancelButton: true,
+      showClose: true,
+      confirmButtonText: '直接打印（按件数）',
+      cancelButtonText: '手动打印（输入件数）',
+      type: 'info',
+      distinguishCancelAndClose: true,
+    }).catch((a) => a)
+
+    if (action === 'confirm') {
+      // 直接打印 = 按件数打印
+      await handlePrintMaterial(orderData, { mode: 'by_quantity' })
+    } else if (action === 'cancel') {
+      // 手动打印：弹输入框
+      const { value } = await ElMessageBox.prompt('请输入要打印的件数：', '手动打印', {
+        confirmButtonText: '打印',
+        cancelButtonText: '取消',
+        inputPattern: /^[1-9]\d*$/,
+        inputErrorMessage: '请输入大于 0 的整数',
+        inputValue: '1',
+      })
+      const count = parseInt(value, 10)
+      if (count > 0) {
+        await handlePrintMaterial(orderData, { mode: 'manual', printCount: count })
+      }
+    }
+    // action === 'close' 不打印
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      console.error('打印物料选择失败:', e)
+    }
+  }
+}
+
 // 物料打印功能
-const handlePrintMaterial = async (orderData) => {
+// options: { mode: 'by_quantity' | 'manual', printCount?: number }
+const handlePrintMaterial = async (orderData, options = {}) => {
+  const { mode = 'by_quantity', printCount: manualCount } = options
   // 检查 hiprint 是否初始化
   if (!hiprint) {
     ElMessage.error('打印功能未初始化，请刷新页面重试')
@@ -1990,29 +2031,32 @@ const handlePrintMaterial = async (orderData) => {
       orderItemsLength: orderItems.length
     })
     
-    // 格式化客户名称（只显示后几位，其他用*代替）
+    // 格式化客户名称（只显示后几位，其他用*代替，最多4个*）
     const formatCustomerName = (name) => {
       if (!name) return '***'
       const nameStr = String(name)
       if (nameStr.length <= 3) return nameStr
       const lastThree = nameStr.slice(-3)
-      const stars = '*'.repeat(nameStr.length - 3)
-      return stars + lastThree
+      const starCount = Math.min(nameStr.length - 3, 4)
+      return '*'.repeat(starCount) + lastThree
     }
     
     // 计算总件数（所有商品的quantity之和）
     const totalItems = orderItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
     
-    console.log('物料打印 - 总件数:', totalItems, '商品列表:', orderItems)
+    console.log('物料打印 - 模式:', mode, '总件数:', totalItems, '手动件数:', manualCount, '商品列表:', orderItems)
     
-    if (totalItems === 0) {
+    if (totalItems === 0 && mode !== 'manual') {
       ElMessage.warning('订单没有商品，无法打印物料标签')
       console.warn('订单没有商品，订单数据:', finalOrderData)
       return
     }
 
-    // 循环打印，每件商品打印一张标签
-    for (let currentItem = 1; currentItem <= totalItems; currentItem++) {
+    // 直接打印（按件数）：totalItems 张；手动打印：用户输入的件数
+    const printCount = mode === 'manual' ? (manualCount || 1) : totalItems
+
+    // 循环打印
+    for (let currentItem = 1; currentItem <= printCount; currentItem++) {
       // 创建打印模板
       const hiprintTemplate = new hiprint.PrintTemplate()
 
@@ -2078,8 +2122,8 @@ const handlePrintMaterial = async (orderData) => {
       currentTop += 20
 
       // 件数信息：当前序号/总数 和 共总数件 分开显示，但在同一行
-      const itemCountPart = `${currentItem}/${totalItems}` // 件数部分，如 1/20, 2/20, ..., 20/20
-      const totalCountPart = `共${totalItems}件` // 总数部分
+      const itemCountPart = `${currentItem}/${printCount}`
+      const totalCountPart = `共${printCount}件`
       
       // 件数部分：1/20, 2/20, ...
       panel.addPrintText({
@@ -2178,13 +2222,12 @@ const handlePrintMaterial = async (orderData) => {
       })
 
       // 每张标签之间增加延迟，确保打印机有足够时间处理每张标签
-      // 延迟时间根据打印机处理速度调整，这里设置为 1.5 秒
-      if (currentItem < totalItems) {
+      if (currentItem < printCount) {
         await new Promise(resolve => setTimeout(resolve, 1500))
       }
     }
 
-    ElMessage.success(`物料打印任务已发送，共打印 ${totalItems} 张标签`)
+    ElMessage.success(`物料打印任务已发送，共打印 ${printCount} 张标签`)
   } catch (error) {
     console.error('物料打印失败:', error)
     ElMessage.error('物料打印失败：' + (error.message || '未知错误'))
