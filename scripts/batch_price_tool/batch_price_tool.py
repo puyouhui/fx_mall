@@ -334,8 +334,13 @@ class BatchPriceApp:
 
 
 def main():
-    app = BatchPriceApp()
-    app.run()
+    print("正在启动批量改价工具（图形界面）...")
+    try:
+        app = BatchPriceApp()
+        app.run()
+    except Exception as e:
+        print("启动失败:", e)
+        raise
 
 
 if __name__ == "__main__":

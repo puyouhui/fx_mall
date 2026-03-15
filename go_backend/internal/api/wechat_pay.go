@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"go_backend/internal/model"
 	feishunotify "go_backend/internal/notify"
@@ -34,7 +35,22 @@ type wechatPayConfig struct {
 	PublicKeyPEM      string // 微信支付公钥（新商户需在商户平台申请后下载 pub_key.pem）
 }
 
-// buildPayDescription 构建支付商品描述（用于「小程序购物订单」展示，限127字符）
+// truncatePayDescToMaxBytes 将商品描述截断至最多 maxBytes 字节，避免切断 UTF-8 多字节字符
+func truncatePayDescToMaxBytes(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	for len(s) > maxBytes {
+		_, size := utf8.DecodeLastRuneInString(s)
+		if size == 0 {
+			break
+		}
+		s = s[:len(s)-size]
+	}
+	return s
+}
+
+// buildPayDescription 构建支付商品描述（用于「小程序购物订单」展示，微信支付限制 127 字节）
 func buildPayDescription(orderID int) string {
 	items, err := model.GetOrderItemsByOrderID(orderID)
 	if err != nil || len(items) == 0 {
@@ -50,8 +66,10 @@ func buildPayDescription(orderID int) string {
 		parts = append(parts, part)
 	}
 	desc := strings.Join(parts, ";")
-	if len(desc) > 127 {
-		desc = desc[:124] + "..."
+	const maxBytes = 127 // 微信支付商品描述字段限制 127 字节
+	if len(desc) > maxBytes {
+		// 按完整 rune 截断，避免切断 UTF-8 字符导致超出字节限制
+		desc = truncatePayDescToMaxBytes(desc, maxBytes-3) + "..."
 	}
 	return desc
 }

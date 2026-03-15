@@ -272,7 +272,7 @@ func WeChatPrepayFromCheckout(c *gin.Context) {
 	})
 }
 
-// buildPayDescriptionFromItems 从商品列表构建支付描述
+// buildPayDescriptionFromItems 从商品列表构建支付描述（微信支付限制 127 字节）
 func buildPayDescriptionFromItems(items []model.PurchaseListItem) string {
 	var parts []string
 	for _, it := range items {
@@ -284,8 +284,9 @@ func buildPayDescriptionFromItems(items []model.PurchaseListItem) string {
 		parts = append(parts, part)
 	}
 	desc := strings.Join(parts, ";")
-	if len(desc) > 127 {
-		desc = desc[:124] + "..."
+	const maxBytes = 127
+	if len(desc) > maxBytes {
+		desc = truncatePayDescToMaxBytes(desc, maxBytes-3) + "..."
 	}
 	return desc
 }
