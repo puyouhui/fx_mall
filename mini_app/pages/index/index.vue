@@ -236,10 +236,16 @@ export default {
 
 		// 检查并自动登录
 		this.checkAndAutoLogin();
+		// 监听 401 清除登录后的自动登录触发（request.js 兜底用）
+		uni.$on('auth:401', this._onAuth401);
 	},
-	// 页面显示时更新用户信息
+	onUnload() {
+		uni.$off('auth:401', this._onAuth401);
+	},
+	// 页面显示时更新用户信息，并检查是否需要自动登录（如 401 后 token 已清空）
 	onShow() {
 		this.updateUserInfo();
+		this.checkAndAutoLogin();
 		updatePurchaseListTabBarBadge();
 		// 如果弹窗正在显示，检查用户是否已经完善了资料
 		if (this.showUserCodeModal) {
@@ -287,6 +293,9 @@ export default {
 	},
 
 	methods: {
+		_onAuth401() {
+			this.checkAndAutoLogin();
+		},
 		// 检查并自动登录
 		async checkAndAutoLogin() {
 			// 检查是否已登录

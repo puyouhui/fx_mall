@@ -36,12 +36,14 @@ export const request = (options = {}) => {
         if (res.statusCode === 200) {
           if (res.data && res.data.code === 200) {
             resolve(res.data);
-          } else {
-            // 检查业务错误码，如果需要清空登录信息
-            if (res.data && shouldClearAuthInfo(res.statusCode, res.data.code, silent)) {
+        } else {
+          // 检查业务错误码，如果需要清空登录信息（如 401 token 过期）
+            const needClearAuth = res.data && shouldClearAuthInfo(res.statusCode, res.data.code, silent);
+            if (needClearAuth) {
               clearLocalAuthInfo();
             }
-            if (!silent) {
+            // 401/403 时静默处理，不显示错误 toast，由自动登录接管
+            if (!silent && !needClearAuth) {
               uni.showToast({
                 title: res.data.message || res.data.msg || '请求失败',
                 icon: 'none'
@@ -51,10 +53,12 @@ export const request = (options = {}) => {
           }
         } else {
           // HTTP状态码错误（401, 403, 404等）
-          if (shouldClearAuthInfo(res.statusCode, null, silent)) {
+          const needClearAuth = shouldClearAuthInfo(res.statusCode, null, silent);
+          if (needClearAuth) {
             clearLocalAuthInfo();
           }
-          if (!silent) {
+          // 401/403 时静默处理，不显示错误 toast，由自动登录接管
+          if (!silent && !needClearAuth) {
             uni.showToast({
               title: `HTTP错误: ${res.statusCode}`,
               icon: 'none'
@@ -86,26 +90,24 @@ function clearLocalAuthInfo() {
     
     // 延迟执行，避免在请求回调中直接跳转
     setTimeout(() => {
-      // 跳转到首页（如果不在首页）
       const pages = getCurrentPages();
-      if (pages.length > 0) {
-        const currentPage = pages[pages.length - 1];
-        const route = currentPage.route;
-        // 如果不在首页，跳转到首页
-        if (route !== 'pages/index/index') {
-          uni.reLaunch({
-            url: '/pages/index/index'
-          });
+      const isIndexPage = pages.length > 0 && (() => {
+        const r = (pages[pages.length - 1].route || '').replace(/^\//, '');
+        return r === 'pages/index/index';
+      })();
+      if (isIndexPage) {
+        // 在首页：优先通过 $vm 调用 onShow，否则用全局事件兜底（$vm 在小程序端可能不可用）
+        const cur = pages[pages.length - 1];
+        const vm = cur.$vm || cur;
+        if (vm && typeof vm.checkAndAutoLogin === 'function') {
+          vm.checkAndAutoLogin();
+        } else if (vm && typeof vm.onShow === 'function') {
+          vm.onShow();
         } else {
-          // 如果在首页，刷新页面数据
-          if (currentPage.$vm && typeof currentPage.$vm.updateUserInfo === 'function') {
-            currentPage.$vm.updateUserInfo();
-          }
-          // 触发页面刷新
-          if (currentPage.$vm && typeof currentPage.$vm.onShow === 'function') {
-            currentPage.$vm.onShow();
-          }
+          uni.$emit('auth:401'); // 兜底：首页需 uni.$on('auth:401') 监听
         }
+      } else {
+        uni.reLaunch({ url: '/pages/index/index' });
       }
     }, 100);
   } catch (error) {
