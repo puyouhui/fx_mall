@@ -179,6 +179,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         children: [
           _buildInfoRow('订单号', order['order_number']?.toString() ?? ''),
           _buildInfoRow('订单状态', _getStatusText(order['status']?.toString() ?? '')),
+          _buildInfoRow('支付方式', _formatPaymentMethod(order['payment_method']?.toString() ?? '')),
+          _buildInfoRow('下单来源', _formatOrderSource(order['order_source']?.toString())),
           _buildInfoRow('创建时间', _formatDateTime(order['created_at'])),
           _buildInfoRow('商品金额', '¥${(order['goods_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
           _buildInfoRow('配送费', '¥${(order['delivery_fee'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
@@ -882,6 +884,31 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         return '已取消';
       default:
         return status;
+    }
+  }
+
+  String _formatPaymentMethod(String method) {
+    switch (method) {
+      case 'online':
+        return '在线支付';
+      case 'cod':
+      default:
+        return '货到付款';
+    }
+  }
+
+  String _formatOrderSource(String? source) {
+    switch (source) {
+      case 'mini_app':
+        return '客户小程序自助下单';
+      case 'sales_app':
+        return '销售员代客下单';
+      case 'admin':
+        return '管理员后台下单';
+      case 'other':
+        return '其他';
+      default:
+        return '未知';
     }
   }
 }

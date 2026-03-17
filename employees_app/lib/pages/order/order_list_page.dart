@@ -397,6 +397,8 @@ class _OrderListPageState extends State<OrderListPage> {
     final address = order['address'] as String? ?? '';
     final createdAt = order['created_at']?.toString() ?? '';
     final isUrgent = (order['is_urgent'] as bool?) ?? false;
+    final paymentMethod = (order['payment_method'] as String?) ?? '';
+    final orderSource = order['order_source'];
 
     String statusText = status;
     Color statusColor = const Color(0xFF8C92A4);
@@ -550,6 +552,27 @@ class _OrderListPageState extends State<OrderListPage> {
                 ),
               ],
             ),
+            const SizedBox(height: 6),
+            // 支付方式 + 下单来源
+            Row(
+              children: [
+                Text(
+                  _formatPaymentMethod(paymentMethod),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF8C92A4),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _formatOrderSource(orderSource?.toString()),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF8C92A4),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -580,5 +603,30 @@ class _OrderListPageState extends State<OrderListPage> {
         ),
       ),
     );
+  }
+
+  String _formatPaymentMethod(String method) {
+    switch (method) {
+      case 'online':
+        return '支付方式：在线支付';
+      case 'cod':
+      default:
+        return '支付方式：货到付款';
+    }
+  }
+
+  String _formatOrderSource(String? source) {
+    switch (source) {
+      case 'mini_app':
+        return '下单来源：客户小程序';
+      case 'sales_app':
+        return '下单来源：销售员代客';
+      case 'admin':
+        return '下单来源：管理员后台';
+      case 'other':
+        return '下单来源：其他';
+      default:
+        return '下单来源：未知';
+    }
   }
 }

@@ -13,7 +13,7 @@ import threading
 from typing import Optional, List, Dict, Any
 
 # ============ 配置 ============
-DEFAULT_BASE_URL = "https://mall.sscchh.com/api_mall/mini"
+DEFAULT_BASE_URL = "https://api.sscchh.com/api_mall/mini"
 
 
 class ApiClient:

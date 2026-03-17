@@ -30,7 +30,7 @@ python batch_price_tool.py
 
 ## 使用步骤
 
-1. **API 地址**：默认 `https://mall.sscchh.com/api_mall/mini`，可按实际后端地址修改
+1. **API 地址**：默认 `https://api.sscchh.com/api_mall/mini`，可按实际后端地址修改
 2. **登录**：填写管理员用户名、密码，点击「登录」
 3. **选择分类**：登录成功后点击「刷新分类」，在下拉框中选择要改价的分类
 4. **填写调价金额**：

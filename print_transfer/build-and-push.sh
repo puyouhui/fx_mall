@@ -87,19 +87,15 @@ pull_base_image() {
 build_image() {
     info "开始构建镜像: ${FULL_IMAGE_NAME}"
     
-    # 设置代理环境变量（用于构建过程中的网络请求）
-    export HTTP_PROXY=${PROXY_URL}
-    export HTTPS_PROXY=${PROXY_URL}
-    export http_proxy=${PROXY_URL}
-    export https_proxy=${PROXY_URL}
-    
-    # 构建镜像，传递代理参数
-    # 只构建指定标签，不自动构建 latest
+    # 构建镜像
+    # 说明：
+    # - Dockerfile 内部已经通过 ENV 显式清除了 HTTP(S)_PROXY 等环境变量，
+    #   以避免在容器内访问宿主机的 127.0.0.1:7897 代理导致 ECONNREFUSED。
+    # - 这里不要再向构建阶段传递代理相关的 build-arg，否则某些工具（如 npm）
+    #   仍然可能从环境变量中读取代理并尝试连接 127.0.0.1:7897。
+    # - 如果日后确实需要在容器内走代理，请改用 host.docker.internal:7897 等可从容器访问的地址，
+    #   并在 Dockerfile 中显式控制哪些步骤使用代理。
     if docker build \
-        --build-arg HTTP_PROXY=${PROXY_URL} \
-        --build-arg HTTPS_PROXY=${PROXY_URL} \
-        --build-arg http_proxy=${PROXY_URL} \
-        --build-arg https_proxy=${PROXY_URL} \
         -t ${FULL_IMAGE_NAME} \
         .; then
         success "镜像构建成功"

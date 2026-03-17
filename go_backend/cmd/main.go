@@ -247,6 +247,8 @@ func main() {
 				// 供应商付款统计接口
 				protectedGroup.GET("/suppliers/payments/stats", api.GetSupplierPaymentsStats)      // 获取供应商付款统计列表
 				protectedGroup.GET("/suppliers/:id/payments/detail", api.GetSupplierPaymentDetail) // 获取供应商详细付款清单
+				protectedGroup.GET("/suppliers/:id/payments/daily", api.AdminGetSupplierDailyPayments)              // 按天查看供应商应付款统计
+				protectedGroup.GET("/suppliers/:id/payments/daily-detail", api.AdminGetSupplierDailyPaymentDetail)  // 按天查看供应商应付款明细
 				protectedGroup.POST("/suppliers/payments", api.CreateSupplierPayment)              // 创建供应商付款记录
 				protectedGroup.GET("/suppliers/payments", api.GetSupplierPayments)                 // 获取供应商付款记录列表
 				protectedGroup.DELETE("/suppliers/payments/:id", api.CancelSupplierPayment)        // 撤销供应商付款

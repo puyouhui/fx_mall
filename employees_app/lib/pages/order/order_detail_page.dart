@@ -125,6 +125,31 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     }
   }
 
+  String _formatPaymentMethod(String method) {
+    switch (method) {
+      case 'online':
+        return '在线支付';
+      case 'cod':
+      default:
+        return '货到付款';
+    }
+  }
+
+  String _formatOrderSource(String? source) {
+    switch (source) {
+      case 'mini_app':
+        return '客户小程序自助下单';
+      case 'sales_app':
+        return '销售员代客下单';
+      case 'admin':
+        return '管理员后台下单';
+      case 'other':
+        return '其他';
+      default:
+        return '未知';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -241,6 +266,8 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     final orderNumber = order['order_number']?.toString() ?? '';
     final status = order['status']?.toString() ?? '';
     final createdAt = _formatDateTime(order['created_at']);
+    final paymentMethod = order['payment_method']?.toString() ?? '';
+    final orderSource = order['order_source']?.toString();
 
     String statusText = status;
     Color statusColor = const Color(0xFF8C92A4);
@@ -311,6 +338,16 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
               '订单号：$orderNumber',
               style: const TextStyle(fontSize: 13, color: Color(0xFF40475C)),
             ),
+          const SizedBox(height: 4),
+          Text(
+            '支付方式：${_formatPaymentMethod(paymentMethod)}',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF8C92A4)),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '下单来源：${_formatOrderSource(orderSource)}',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF8C92A4)),
+          ),
           if (createdAt.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
@@ -2529,10 +2566,47 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
                 ),
               ),
             ),
-            // 加载提示
+            // 右上角刷新位置按钮
+            Positioned(
+              top: 8,
+              right: 8,
+              child: ElevatedButton.icon(
+                onPressed: _loadingDeliveryLocation
+                    ? null
+                    : () {
+                        _loadDeliveryEmployeeLocation();
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF20CB6B),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: _loadingDeliveryLocation
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 16),
+                label: Text(
+                  '刷新位置',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ),
+            // 加载遮罩（仅在加载中时覆盖地图中心）
             if (_loadingDeliveryLocation)
               const Positioned.fill(
-                child: Center(child: CircularProgressIndicator()),
+                child: IgnorePointer(
+                  child: Center(child: CircularProgressIndicator()),
+                ),
               ),
           ],
         ),

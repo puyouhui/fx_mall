@@ -100,7 +100,10 @@
           </div>
         </template>
 
-        <el-table :data="detailData.orders" stripe @selection-change="handleSelectionChange">
+        <!-- 视图切换 -->
+        <el-tabs v-model="detailViewMode" type="card" class="detail-tabs">
+          <el-tab-pane label="按订单" name="order">
+            <el-table :data="detailData.orders" stripe @selection-change="handleSelectionChange">
           <el-table-column type="selection" width="55" />
           <el-table-column type="expand">
             <template #default="scope">
@@ -152,20 +155,20 @@
               <strong class="total">¥{{ formatMoney(scope.row.total_cost) }}</strong>
             </template>
           </el-table-column>
-        </el-table>
+            </el-table>
 
-        <!-- 选中清单小计 -->
-        <div class="selected-summary" v-if="selectedOrders.length > 0">
+            <!-- 选中清单小计 -->
+            <div class="selected-summary" v-if="selectedOrders.length > 0">
           <div class="summary-content">
             <span class="summary-label">已选中 <strong>{{ selectedOrders.length }}</strong> 个订单</span>
             <span class="summary-amount">
               小计：<strong class="total">¥{{ formatMoney(selectedTotalAmount) }}</strong>
             </span>
           </div>
-        </div>
+            </div>
 
-        <!-- 分页 -->
-        <div class="pagination-container">
+            <!-- 分页 -->
+            <div class="pagination-container">
           <el-pagination
             v-model:current-page="detailPagination.pageNum"
             v-model:page-size="detailPagination.pageSize"
@@ -175,7 +178,98 @@
             @size-change="handleDetailSizeChange"
             @current-change="handleDetailPageChange"
           />
-        </div>
+            </div>
+          </el-tab-pane>
+
+          <!-- 按天视图 -->
+          <el-tab-pane label="按天视图" name="daily">
+            <!-- 顶部7天日期卡片 -->
+            <div class="daily-header">
+              <el-button size="small" @click="shiftDailyRange(-7)">上一周</el-button>
+              <div class="daily-card-list">
+                <div
+                  v-for="d in dailyDates"
+                  :key="d"
+                  class="daily-card"
+                  :class="{ active: d === dailySelectedDate }"
+                  @click="selectDailyDate(d)"
+                >
+                  <div class="daily-card-date">
+                    {{ d }}
+                  </div>
+                  <div class="daily-card-amount">
+                    <span class="label">应付</span>
+                    <span class="value">¥{{ formatMoney(getDailyStat(d).total_amount) }}</span>
+                  </div>
+                  <div class="daily-card-status">
+                    <el-tag
+                      v-if="getDailyStat(d).total_amount > 0"
+                      :type="getDailyStatusType(d)"
+                      size="small"
+                    >
+                      {{ getDailyStatusText(d) }}
+                    </el-tag>
+                    <span v-else class="daily-status-none">无数据</span>
+                  </div>
+                </div>
+              </div>
+              <el-button size="small" @click="shiftDailyRange(7)">下一周</el-button>
+            </div>
+
+            <!-- 当天明细列表 -->
+            <el-card v-loading="dailyLoading" class="daily-detail-card">
+              <template #header>
+                <div class="daily-detail-header">
+                  <span>日期：{{ dailySelectedDate }}</span>
+                  <span>应付：<strong class="total">¥{{ formatMoney(dailyDetailTotal.total_amount) }}</strong></span>
+                  <span>已付：<strong class="paid-amount">¥{{ formatMoney(dailyDetailTotal.paid_amount) }}</strong></span>
+                  <span>未付：<strong class="pending-amount">¥{{ formatMoney(dailyDetailTotal.pending_amount) }}</strong></span>
+                </div>
+              </template>
+
+              <div v-if="dailyDetail">
+                <h4>待付款明细</h4>
+                <el-table :data="dailyDetail.pending_items" stripe size="small" empty-text="暂无待付款">
+                  <el-table-column prop="order_number" label="订单号" min-width="120" />
+                  <el-table-column prop="product_name" label="商品名称" min-width="150" />
+                  <el-table-column prop="spec_name" label="规格" width="100" />
+                  <el-table-column prop="quantity" label="数量" width="80" align="right" />
+                  <el-table-column label="成本价" width="100" align="right">
+                    <template #default="scope">
+                      ¥{{ formatMoney(scope.row.cost_price) }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="小计" width="120" align="right">
+                    <template #default="scope">
+                      <strong>¥{{ formatMoney(scope.row.subtotal) }}</strong>
+                    </template>
+                  </el-table-column>
+                </el-table>
+
+                <h4 style="margin-top: 16px;">已付款明细</h4>
+                <el-table :data="dailyDetail.paid_items" stripe size="small" empty-text="暂无已付款">
+                  <el-table-column prop="order_number" label="订单号" min-width="120" />
+                  <el-table-column prop="product_name" label="商品名称" min-width="150" />
+                  <el-table-column prop="spec_name" label="规格" width="100" />
+                  <el-table-column prop="quantity" label="数量" width="80" align="right" />
+                  <el-table-column label="成本价" width="100" align="right">
+                    <template #default="scope">
+                      ¥{{ formatMoney(scope.row.cost_price) }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="小计" width="120" align="right">
+                    <template #default="scope">
+                      <strong>¥{{ formatMoney(scope.row.subtotal) }}</strong>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </div>
+              <div v-else class="empty-data">
+                请选择上方日期查看明细
+              </div>
+            </el-card>
+          </el-tab-pane>
+        </el-tabs>
       </el-card>
 
       <!-- 付款标记对话框 -->
@@ -252,7 +346,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Plus } from '@element-plus/icons-vue'
-import { getSupplierPaymentsStats, getSupplierPaymentDetail, createSupplierPayment } from '../api/suppliers'
+import { getSupplierPaymentsStats, getSupplierPaymentDetail, createSupplierPayment, getSupplierDailyPayments, getSupplierDailyPaymentDetail } from '../api/suppliers'
 
 const route = useRoute()
 const router = useRouter()
@@ -263,11 +357,17 @@ const router = useRouter()
 const supplierId = ref(null)
 const statsList = ref([])
 const detailData = ref(null)
+const detailViewMode = ref('order') // 'order' | 'daily'
 const selectedOrders = ref([])
 const paymentDialogVisible = ref(false)
 const submitting = ref(false)
 const paymentFormRef = ref(null)
 const loading = ref(false)
+const dailyLoading = ref(false)
+const dailyStats = ref([])
+const dailySelectedDate = ref(new Date().toISOString().split('T')[0])
+const dailyCenterDate = ref(new Date().toISOString().split('T')[0])
+const dailyDetail = ref(null)
 
 // 分页
 // 统计列表分页
@@ -304,6 +404,33 @@ const paymentRules = {
   payment_method: [{ required: true, message: '请选择付款方式', trigger: 'change' }],
   payment_amount: [{ required: true, message: '请输入付款金额', trigger: 'blur' }]
 }
+
+// 计算当前7天日期列表（包含中心日期）
+const dailyDates = computed(() => {
+  const dates = []
+  const center = new Date(dailyCenterDate.value)
+  for (let offset = -3; offset <= 3; offset++) {
+    const d = new Date(center)
+    d.setDate(center.getDate() + offset)
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    dates.push(`${y}-${m}-${day}`)
+  }
+  return dates
+})
+
+// 按天明细统计汇总
+const dailyDetailTotal = computed(() => {
+  if (!dailyDetail.value) {
+    return { total_amount: 0, paid_amount: 0, pending_amount: 0 }
+  }
+  return {
+    total_amount: dailyDetail.value.total_amount || 0,
+    paid_amount: dailyDetail.value.paid_amount || 0,
+    pending_amount: dailyDetail.value.pending_amount || 0
+  }
+})
 
 // 选中的商品列表
 const selectedItems = computed(() => {
@@ -426,6 +553,11 @@ const loadData = async () => {
       const response = await getSupplierPaymentDetail(supplierId.value, params)
       if (response.code === 200) {
         detailData.value = response.data
+        // 初始化按天视图：选中今天，加载当前7天窗口
+        if (!dailySelectedDate.value) {
+          dailySelectedDate.value = new Date().toISOString().split('T')[0]
+        }
+        dailyCenterDate.value = dailySelectedDate.value
         // 更新分页信息
         if (response.data.total !== undefined) {
           detailPagination.total = response.data.total || 0
@@ -447,6 +579,10 @@ const loadData = async () => {
         }
       } else {
         ElMessage.error(response.message || '加载失败')
+      }
+      // 如果当前在按天视图，顺便刷新按天数据
+      if (detailViewMode.value === 'daily') {
+        await loadDailyStats()
       }
     } else {
       // 加载统计列表
@@ -474,6 +610,98 @@ const loadData = async () => {
     ElMessage.error('加载数据失败')
   } finally {
     loading.value = false
+  }
+}
+
+// 加载按天统计
+const loadDailyStats = async () => {
+  if (!supplierId.value) return
+  dailyLoading.value = true
+  try {
+    // 根据中心日期计算7天窗口
+    const center = new Date(dailyCenterDate.value)
+    const start = new Date(center)
+    start.setDate(center.getDate() - 3)
+    const end = new Date(center)
+    end.setDate(center.getDate() + 3)
+    const format = (d) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
+    const params = {
+      start_date: format(start),
+      end_date: format(end)
+    }
+    const res = await getSupplierDailyPayments(supplierId.value, params)
+    if (res.code === 200 && res.data) {
+      dailyStats.value = res.data.list || []
+    } else {
+      ElMessage.error(res.message || '加载按天统计失败')
+    }
+  } catch (e) {
+    console.error('加载按天统计失败:', e)
+    ElMessage.error('加载按天统计失败')
+  } finally {
+    dailyLoading.value = false
+  }
+}
+
+// 左右切换7天窗口
+const shiftDailyRange = (offsetDays) => {
+  const d = new Date(dailyCenterDate.value)
+  d.setDate(d.getDate() + offsetDays)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  dailyCenterDate.value = `${y}-${m}-${day}`
+  loadDailyStats()
+}
+
+// 获取某天的统计（没有数据时返回0）
+const getDailyStat = (dateStr) => {
+  const found = dailyStats.value.find(d => d.date === dateStr)
+  if (!found) {
+    return { date: dateStr, total_amount: 0, paid_amount: 0, pending_amount: 0 }
+  }
+  return found
+}
+
+const getDailyStatusText = (dateStr) => {
+  const s = getDailyStat(dateStr)
+  if (s.total_amount === 0) return '无数据'
+  if (s.pending_amount === 0 && s.paid_amount > 0) return '已付完'
+  if (s.paid_amount === 0 && s.pending_amount > 0) return '待付款'
+  return '部分已付'
+}
+
+const getDailyStatusType = (dateStr) => {
+  const s = getDailyStat(dateStr)
+  if (s.total_amount === 0) return 'info'
+  if (s.pending_amount === 0 && s.paid_amount > 0) return 'success'
+  if (s.paid_amount === 0 && s.pending_amount > 0) return 'danger'
+  return 'warning'
+}
+
+// 选择某天并加载明细
+const selectDailyDate = (date) => {
+  dailySelectedDate.value = date
+  viewDailyDetail(date)
+}
+
+// 加载某天明细
+const viewDailyDetail = async (date) => {
+  try {
+    const res = await getSupplierDailyPaymentDetail(supplierId.value, { date })
+    if (res.code !== 200 || !res.data) {
+      ElMessage.error(res.message || '获取明细失败')
+      return
+    }
+    dailyDetail.value = res.data
+  } catch (e) {
+    console.error('获取按天明细失败:', e)
+    ElMessage.error('获取按天明细失败')
   }
 }
 
@@ -819,6 +1047,94 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* 按天视图样式 */
+.detail-tabs {
+  margin-top: 16px;
+}
+
+.daily-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.daily-card-list {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(80px, 1fr));
+  gap: 8px;
+}
+
+.daily-card {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+  background-color: #fafafa;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.daily-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-color: #409eff;
+}
+
+.daily-card.active {
+  border-color: #409eff;
+  background: linear-gradient(135deg, #ecf5ff 0%, #f5f7ff 100%);
+}
+
+.daily-card-date {
+  font-size: 12px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.daily-card-amount {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.daily-card-amount .label {
+  color: #909399;
+}
+
+.daily-card-amount .value {
+  color: #409eff;
+  font-weight: 600;
+}
+
+.daily-card-status {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  font-size: 12px;
+}
+
+.daily-status-none {
+  font-size: 12px;
+  color: #c0c4cc;
+}
+
+.daily-detail-card {
+  margin-top: 8px;
+}
+
+.daily-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+  color: #606266;
 }
 
 /* 选中清单小计 */

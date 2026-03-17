@@ -873,3 +873,280 @@ func CancelSupplierPayment(c *gin.Context) {
 
 	successResponse(c, nil, "撤销付款成功")
 }
+
+// AdminGetSupplierDailyPayments 管理员按天查看某个供应商的应付款统计
+// GET /api/mini/admin/suppliers/:id/payments/daily
+// Query: start_date(YYYY-MM-DD), end_date(YYYY-MM-DD)
+func AdminGetSupplierDailyPayments(c *gin.Context) {
+	idStr := c.Param("id")
+	supplierID, err := strconv.Atoi(idStr)
+	if err != nil || supplierID <= 0 {
+		badRequestResponse(c, "无效的供应商ID")
+		return
+	}
+
+	startDateStr := c.Query("start_date")
+	endDateStr := c.Query("end_date")
+
+	var startDate, endDate *time.Time
+	if startDateStr != "" {
+		if t, err := time.Parse("2006-01-02", startDateStr); err == nil {
+			startDate = &t
+		}
+	}
+	if endDateStr != "" {
+		if t, err := time.Parse("2006-01-02", endDateStr); err == nil {
+			e := time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 0, t.Location())
+			endDate = &e
+		}
+	}
+
+	// 获取已付款的订单商品ID列表
+	supplierIDPtr := supplierID
+	paidItems, err := model.GetPaidOrderItemIDs(&supplierIDPtr)
+	if err != nil {
+		internalErrorResponse(c, "查询已付款商品失败: "+err.Error())
+		return
+	}
+
+	// 查询该供应商所有已取货的订单商品，按订单创建日期统计
+	query := `
+		SELECT 
+			DATE(o.created_at) AS stat_date,
+			oi.id,
+			oi.spec_name,
+			oi.quantity,
+			p.specs AS product_specs
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ?
+		  AND oi.is_picked = 1
+		  AND o.status != 'cancelled'
+	`
+	args := []interface{}{supplierID}
+	if startDate != nil {
+		query += " AND o.created_at >= ?"
+		args = append(args, *startDate)
+	}
+	if endDate != nil {
+		query += " AND o.created_at <= ?"
+		args = append(args, *endDate)
+	}
+	query += " ORDER BY stat_date DESC"
+
+	rows, err := database.DB.Query(query, args...)
+	if err != nil {
+		internalErrorResponse(c, "查询应付款统计失败: "+err.Error())
+		return
+	}
+	defer rows.Close()
+
+	type dailyStat struct {
+		Total   float64
+		Paid    float64
+		Pending float64
+	}
+	statsMap := make(map[string]*dailyStat)
+
+	for rows.Next() {
+		var statDate time.Time
+		var orderItemID, quantity int
+		var specName string
+		var productSpecsJSON sql.NullString
+
+		if err := rows.Scan(&statDate, &orderItemID, &specName, &quantity, &productSpecsJSON); err != nil {
+			continue
+		}
+
+		// 计算成本价
+		costPrice := 0.0
+		if productSpecsJSON.Valid && productSpecsJSON.String != "" {
+			var specs []model.Spec
+			if err := json.Unmarshal([]byte(productSpecsJSON.String), &specs); err == nil {
+				for _, spec := range specs {
+					if spec.Name == specName {
+						costPrice = spec.Cost
+						break
+					}
+				}
+				if costPrice == 0 && len(specs) > 0 {
+					costPrice = specs[0].Cost
+				}
+			}
+		}
+
+		amount := costPrice * float64(quantity)
+		dateStr := statDate.Format("2006-01-02")
+		stat, exists := statsMap[dateStr]
+		if !exists {
+			stat = &dailyStat{}
+			statsMap[dateStr] = stat
+		}
+		stat.Total += amount
+		if paidItems[orderItemID] {
+			stat.Paid += amount
+		}
+	}
+
+	// 构建结果列表（按日期倒序）
+	result := make([]map[string]interface{}, 0, len(statsMap))
+	for dateStr, s := range statsMap {
+		pending := s.Total - s.Paid
+		if pending < 0 {
+			pending = 0
+		}
+		result = append(result, map[string]interface{}{
+			"date":           dateStr,
+			"total_amount":   s.Total,
+			"paid_amount":    s.Paid,
+			"pending_amount": pending,
+		})
+	}
+
+	// 简单按日期倒序排序（字符串比较在 YYYY-MM-DD 下等价）
+	for i := 0; i < len(result)-1; i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[i]["date"].(string) < result[j]["date"].(string) {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"data": gin.H{
+			"list": result,
+		},
+		"message": "success",
+	})
+}
+
+// AdminGetSupplierDailyPaymentDetail 管理员查看某个供应商某一天的应付款明细
+// GET /api/mini/admin/suppliers/:id/payments/daily-detail?date=YYYY-MM-DD
+func AdminGetSupplierDailyPaymentDetail(c *gin.Context) {
+	idStr := c.Param("id")
+	supplierID, err := strconv.Atoi(idStr)
+	if err != nil || supplierID <= 0 {
+		badRequestResponse(c, "无效的供应商ID")
+		return
+	}
+
+	dateStr := c.Query("date")
+	if dateStr == "" {
+		badRequestResponse(c, "缺少日期参数")
+		return
+	}
+	statDate, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		badRequestResponse(c, "日期格式错误，应为 YYYY-MM-DD")
+		return
+	}
+
+	// 获取已付款的订单商品ID列表
+	supplierIDPtr := supplierID
+	paidItems, err := model.GetPaidOrderItemIDs(&supplierIDPtr)
+	if err != nil {
+		internalErrorResponse(c, "查询已付款商品失败: "+err.Error())
+		return
+	}
+
+	// 查询该供应商在指定日期的所有已取货商品
+	query := `
+		SELECT 
+			o.id,
+			o.order_number,
+			oi.id,
+			oi.product_id,
+			oi.product_name,
+			oi.spec_name,
+			oi.quantity,
+			p.specs AS product_specs
+		FROM orders o
+		INNER JOIN order_items oi ON o.id = oi.order_id
+		INNER JOIN products p ON oi.product_id = p.id
+		WHERE p.supplier_id = ?
+		  AND oi.is_picked = 1
+		  AND o.status != 'cancelled'
+		  AND DATE(o.created_at) = ?
+		ORDER BY o.id ASC, oi.id ASC
+	`
+
+	rows, err := database.DB.Query(query, supplierID, statDate.Format("2006-01-02"))
+	if err != nil {
+		internalErrorResponse(c, "查询应付款明细失败: "+err.Error())
+		return
+	}
+	defer rows.Close()
+
+	pendingItems := []map[string]interface{}{}
+	paidItemsList := []map[string]interface{}{}
+	var totalAmount, paidAmount float64
+
+	for rows.Next() {
+		var orderID, orderItemID, productID, quantity int
+		var orderNumber, productName, specName string
+		var productSpecsJSON sql.NullString
+
+		if err := rows.Scan(&orderID, &orderNumber, &orderItemID, &productID, &productName, &specName, &quantity, &productSpecsJSON); err != nil {
+			continue
+		}
+
+		// 计算成本价
+		costPrice := 0.0
+		if productSpecsJSON.Valid && productSpecsJSON.String != "" {
+			var specs []model.Spec
+			if err := json.Unmarshal([]byte(productSpecsJSON.String), &specs); err == nil {
+				for _, spec := range specs {
+					if spec.Name == specName {
+						costPrice = spec.Cost
+						break
+					}
+				}
+				if costPrice == 0 && len(specs) > 0 {
+					costPrice = specs[0].Cost
+				}
+			}
+		}
+
+		subtotal := costPrice * float64(quantity)
+		totalAmount += subtotal
+
+		item := map[string]interface{}{
+			"order_id":     orderID,
+			"order_number": orderNumber,
+			"order_item_id": orderItemID,
+			"product_id":   productID,
+			"product_name": productName,
+			"spec_name":    specName,
+			"quantity":     quantity,
+			"cost_price":   costPrice,
+			"subtotal":     subtotal,
+		}
+
+		if paidItems[orderItemID] {
+			paidAmount += subtotal
+			paidItemsList = append(paidItemsList, item)
+		} else {
+			pendingItems = append(pendingItems, item)
+		}
+	}
+
+	pendingAmount := totalAmount - paidAmount
+	if pendingAmount < 0 {
+		pendingAmount = 0
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"data": gin.H{
+			"date":           dateStr,
+			"total_amount":   totalAmount,
+			"paid_amount":    paidAmount,
+			"pending_amount": pendingAmount,
+			"pending_items":  pendingItems,
+			"paid_items":     paidItemsList,
+		},
+		"message": "success",
+	})
+}

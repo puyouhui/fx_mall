@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"go_backend/internal/model"
@@ -323,12 +324,6 @@ func WeChatPayNotify(c *gin.Context) {
 				feishunotify.NotifyOrderPaid(o, items, u, txID)
 			}
 		}(order, transactionID)
-		// 录入微信发货信息，避免微信侧显示「未发货」
-		go func(oid int) {
-			if err := UploadWechatShippingInfo(oid); err != nil {
-				log.Printf("[WeChatPayNotify] 从缓存创建订单后录入微信发货失败 orderID=%d: %v", oid, err)
-			}
-		}(order.ID)
 		c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "成功"})
 		return
 	}
@@ -337,6 +332,9 @@ func WeChatPayNotify(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "成功"})
 		return
 	}
+
+	// 记录支付前的订单状态，用于判断是否属于「已送达后补付」场景
+	prevStatus := order.Status
 
 	if err := model.MarkOrderPaidByWechatPay(order.ID, transactionID); err != nil {
 		log.Printf("[WeChatPayNotify] 更新订单失败: orderID=%d, err=%v", order.ID, err)
@@ -357,12 +355,15 @@ func WeChatPayNotify(c *gin.Context) {
 		}
 	}(order.ID, transactionID)
 
-	// 货到付款/活动付款订单用户后来小程序付款：录入微信发货信息，避免微信侧显示「未发货」
-	go func(oid int) {
-		if err := UploadWechatShippingInfo(oid); err != nil {
-			log.Printf("[WeChatPayNotify] 录入微信发货信息失败 orderID=%d: %v（可稍后由配送开始或后台补录）", oid, err)
-		}
-	}(order.ID)
+	// 已送达后用户在小程序补付：延时自动补录微信发货信息
+	if prevStatus == "delivered" || prevStatus == "shipped" || prevStatus == "completed" {
+		go func(oid int) {
+			time.Sleep(30 * time.Second)
+			if err := UploadWechatShippingInfo(oid); err != nil {
+				log.Printf("[WeChatPayNotify] 已送达订单补录微信发货失败 orderID=%d: %v（可稍后由后台补录）", oid, err)
+			}
+		}(order.ID)
+	}
 
 	c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "成功"})
 }

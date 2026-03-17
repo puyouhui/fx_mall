@@ -879,6 +879,13 @@ func CompleteDeliveryOrder(c *gin.Context) {
 		return
 	}
 
+	// 已完成配送兜底：如果是微信支付订单，此时再补录一次微信发货信息
+	go func(orderID int) {
+		if err := UploadWechatShippingInfo(orderID); err != nil {
+			log.Printf("[CompleteDeliveryOrder] 微信发货信息兜底录入失败 orderID=%d: %v", orderID, err)
+		}
+	}(id)
+
 	// 飞书订单送达通知（异步）
 	go func(orderID int) {
 		o, _ := model.GetOrderByID(orderID)
@@ -996,6 +1003,13 @@ func CompleteDeliveryOrderWithoutImages(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "提交事务失败: " + err.Error()})
 		return
 	}
+
+	// 已完成配送兜底：如果是微信支付订单，此时再补录一次微信发货信息
+	go func(orderID int) {
+		if err := UploadWechatShippingInfo(orderID); err != nil {
+			log.Printf("[CompleteDeliveryOrderWithoutImages] 微信发货信息兜底录入失败 orderID=%d: %v", orderID, err)
+		}
+	}(id)
 
 	// 飞书订单送达通知（异步）
 	go func(orderID int) {

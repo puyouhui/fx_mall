@@ -2664,6 +2664,9 @@ func CreateOrderForCustomer(c *gin.Context) {
 		return
 	}
 
+	// 记录下单来源：销售员代客下单
+	go model.SetOrderSource(order.ID, "sales_app")
+
 	// 创建订单成功后，删除用于创建订单的商品，然后恢复用户原来的采购单
 	// 删除用于创建订单的商品
 	if len(selectedItemIDs) > 0 {

@@ -34,6 +34,24 @@ export function getSupplierPaymentDetail(id, params = {}) {
   })
 }
 
+// 按天获取供应商应付款统计
+export function getSupplierDailyPayments(id, params = {}) {
+  return request({
+    url: `/admin/suppliers/${id}/payments/daily`,
+    method: 'get',
+    params
+  })
+}
+
+// 获取供应商某天的应付款明细
+export function getSupplierDailyPaymentDetail(id, params = {}) {
+  return request({
+    url: `/admin/suppliers/${id}/payments/daily-detail`,
+    method: 'get',
+    params
+  })
+}
+
 // 创建供应商
 export function createSupplier(data) {
   return request({

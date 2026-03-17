@@ -232,6 +232,9 @@ func CreateOrderFromCart(c *gin.Context) {
 		return
 	}
 
+	// 记录下单来源：小程序用户自助下单
+	go model.SetOrderSource(order.ID, "mini_app")
+
 	// 飞书新订单通知（异步，不阻塞）
 	go func(o *model.Order, items []model.OrderItem, u *model.MiniAppUser) {
 		addr, _ := model.GetAddressByID(o.AddressID)

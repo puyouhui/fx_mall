@@ -1,19 +1,13 @@
-# 支持代理配置（通过 build-arg 传入）
-ARG HTTP_PROXY
-ARG HTTPS_PROXY
-ARG http_proxy
-ARG https_proxy
-
 # 构建阶段 - 使用 Alpine 版本的 node:16 镜像（更小）
 # 注意：如果遇到 403 错误，请先手动拉取镜像：
 # HTTP_PROXY=http://127.0.0.1:7897 HTTPS_PROXY=http://127.0.0.1:7897 docker pull node:16-alpine
 FROM node:16-alpine AS builder
 
-# 设置代理环境变量
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
-ENV http_proxy=${http_proxy}
-ENV https_proxy=${https_proxy}
+# 显式清空可能继承的代理环境变量，避免走 127.0.0.1:7897
+ENV HTTP_PROXY=
+ENV HTTPS_PROXY=
+ENV http_proxy=
+ENV https_proxy=
 
 # 设置工作目录
 WORKDIR /build
@@ -23,7 +17,12 @@ COPY package*.json ./
 
 # 安装所有依赖（包括 devDependencies，用于构建）
 # 使用 npm install 因为可能没有 package-lock.json
-RUN npm install && \
+RUN npm config delete proxy || true && \
+    npm config delete https-proxy || true && \
+    npm config delete HTTP_PROXY || true && \
+    npm config delete HTTPS_PROXY || true && \
+    npm config set registry https://registry.npmmirror.com && \
+    npm install && \
     npm cache clean --force
 
 # 复制源代码和配置文件
@@ -35,11 +34,11 @@ RUN npm run build
 # 生产阶段 - 使用 Alpine 版本的 node:16 镜像（更小）
 FROM node:16-alpine
 
-# 设置代理环境变量（用于拉取镜像和安装依赖）
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
-ENV http_proxy=${http_proxy}
-ENV https_proxy=${https_proxy}
+# 显式清空可能继承的代理环境变量
+ENV HTTP_PROXY=
+ENV HTTPS_PROXY=
+ENV http_proxy=
+ENV https_proxy=
 
 # 设置工作目录
 WORKDIR /node-hiprint-transit
@@ -49,7 +48,12 @@ COPY package*.json ./
 
 # 只安装生产依赖，并清理缓存
 # 使用 npm install 因为可能没有 package-lock.json
-RUN npm install --only=production && \
+RUN npm config delete proxy || true && \
+    npm config delete https-proxy || true && \
+    npm config delete HTTP_PROXY || true && \
+    npm config delete HTTPS_PROXY || true && \
+    npm config set registry https://registry.npmmirror.com && \
+    npm install --only=production && \
     npm cache clean --force && \
     rm -rf /tmp/* /var/cache/apk/* /root/.npm && \
     find ./node_modules -name "*.md" -delete 2>/dev/null || true && \

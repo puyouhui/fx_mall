@@ -553,6 +553,27 @@ class _OrdersPageState extends State<OrdersPage>
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            // 支付方式 + 下单来源
+            Row(
+              children: [
+                Text(
+                  _formatPaymentMethod(order.paymentMethod),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF8C92A4),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _formatOrderSource(order.orderSource),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF8C92A4),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 12),
             // 状态和实付金额
             Row(
@@ -668,5 +689,36 @@ class _OrdersPageState extends State<OrdersPage>
     // 格式：MM-DD HH:mm
     return '${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} '
         '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _formatPaymentMethod(String method) {
+    switch (method) {
+      case 'online':
+        return '支付方式：在线支付';
+      case 'cod':
+      default:
+        return '支付方式：货到付款';
+    }
+  }
+
+  String _formatOrderSource(String? source) {
+    String text;
+    switch (source) {
+      case 'mini_app':
+        text = '下单来源：客户小程序';
+        break;
+      case 'sales_app':
+        text = '下单来源：销售员代客';
+        break;
+      case 'admin':
+        text = '下单来源：管理员后台';
+        break;
+      case 'other':
+        text = '下单来源：其他';
+        break;
+      default:
+        text = '下单来源：未知';
+    }
+    return text;
   }
 }

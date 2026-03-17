@@ -72,6 +72,113 @@ class SupplierPaymentDetail {
   }
 }
 
+/// 管理员 App 按天视图：某天汇总
+class SupplierDailyStat {
+  final String date; // YYYY-MM-DD
+  final double totalAmount;
+  final double paidAmount;
+  final double pendingAmount;
+
+  SupplierDailyStat({
+    required this.date,
+    required this.totalAmount,
+    required this.paidAmount,
+    required this.pendingAmount,
+  });
+
+  factory SupplierDailyStat.fromJson(Map<String, dynamic> json) {
+    return SupplierDailyStat(
+      date: json['date'] as String? ?? '',
+      totalAmount: (json['total_amount'] as num?)?.toDouble() ?? 0.0,
+      paidAmount: (json['paid_amount'] as num?)?.toDouble() ?? 0.0,
+      pendingAmount: (json['pending_amount'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+
+  String get statusText {
+    if (totalAmount == 0) return '无数据';
+    if (pendingAmount <= 0 && paidAmount > 0) return '已付完';
+    if (paidAmount <= 0 && pendingAmount > 0) return '待付款';
+    return '部分已付';
+  }
+}
+
+/// 管理员 App 按天视图：某天明细
+class SupplierDailyDetail {
+  final String date;
+  final double totalAmount;
+  final double paidAmount;
+  final double pendingAmount;
+  final List<SupplierDailyItem> pendingItems;
+  final List<SupplierDailyItem> paidItems;
+
+  SupplierDailyDetail({
+    required this.date,
+    required this.totalAmount,
+    required this.paidAmount,
+    required this.pendingAmount,
+    required this.pendingItems,
+    required this.paidItems,
+  });
+
+  factory SupplierDailyDetail.fromJson(Map<String, dynamic> json) {
+    final pending = (json['pending_items'] as List<dynamic>? ?? [])
+        .where((e) => e is Map<String, dynamic>)
+        .map((e) => SupplierDailyItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+    final paid = (json['paid_items'] as List<dynamic>? ?? [])
+        .where((e) => e is Map<String, dynamic>)
+        .map((e) => SupplierDailyItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+    return SupplierDailyDetail(
+      date: json['date'] as String? ?? '',
+      totalAmount: (json['total_amount'] as num?)?.toDouble() ?? 0.0,
+      paidAmount: (json['paid_amount'] as num?)?.toDouble() ?? 0.0,
+      pendingAmount: (json['pending_amount'] as num?)?.toDouble() ?? 0.0,
+      pendingItems: pending,
+      paidItems: paid,
+    );
+  }
+}
+
+class SupplierDailyItem {
+  final int orderId;
+  final String orderNumber;
+  final int orderItemId;
+  final int productId;
+  final String productName;
+  final String specName;
+  final int quantity;
+  final double costPrice;
+  final double subtotal;
+
+  SupplierDailyItem({
+    required this.orderId,
+    required this.orderNumber,
+    required this.orderItemId,
+    required this.productId,
+    required this.productName,
+    required this.specName,
+    required this.quantity,
+    required this.costPrice,
+    required this.subtotal,
+  });
+
+  factory SupplierDailyItem.fromJson(Map<String, dynamic> json) {
+    return SupplierDailyItem(
+      orderId: (json['order_id'] as num?)?.toInt() ?? 0,
+      orderNumber: json['order_number'] as String? ?? '',
+      orderItemId: (json['order_item_id'] as num?)?.toInt() ?? 0,
+      productId: (json['product_id'] as num?)?.toInt() ?? 0,
+      productName: json['product_name'] as String? ?? '',
+      specName: json['spec_name'] as String? ?? '',
+      quantity: (json['quantity'] as num?)?.toInt() ?? 0,
+      costPrice: (json['cost_price'] as num?)?.toDouble() ?? 0.0,
+      subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+}
+
 class SupplierPaymentOrder {
   final int orderId;
   final String orderNumber;

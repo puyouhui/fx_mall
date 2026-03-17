@@ -4,6 +4,8 @@ class Order {
   final int userId;
   final int addressId;
   final String status;
+  final String paymentMethod; // online / cod
+  final String? orderSource;  // mini_app / sales_app / admin / other
   final double goodsAmount;
   final double deliveryFee;
   final double pointsDiscount;
@@ -29,6 +31,8 @@ class Order {
     required this.userId,
     required this.addressId,
     required this.status,
+    required this.paymentMethod,
+    this.orderSource,
     required this.goodsAmount,
     required this.deliveryFee,
     required this.pointsDiscount,
@@ -67,12 +71,20 @@ class Order {
       return DateTime.now();
     }
 
+    // 支付方式
+    String rawPaymentMethod = (json['payment_method'] as String?) ?? '';
+    if (rawPaymentMethod.isEmpty) {
+      rawPaymentMethod = 'cod';
+    }
+
     return Order(
       id: (json['id'] as num?)?.toInt() ?? 0,
       orderNumber: json['order_number'] as String? ?? '',
       userId: (json['user_id'] as num?)?.toInt() ?? 0,
       addressId: (json['address_id'] as num?)?.toInt() ?? 0,
       status: json['status'] as String? ?? '',
+      paymentMethod: rawPaymentMethod,
+      orderSource: json['order_source'] as String?,
       goodsAmount: (json['goods_amount'] as num?)?.toDouble() ?? 0.0,
       deliveryFee: (json['delivery_fee'] as num?)?.toDouble() ?? 0.0,
       pointsDiscount: (json['points_discount'] as num?)?.toDouble() ?? 0.0,

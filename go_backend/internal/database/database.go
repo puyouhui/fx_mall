@@ -1175,6 +1175,19 @@ func InitDB() error {
 			}
 		}
 
+		// 检查 orders 表的 order_source 字段（下单来源）
+		var orderSourceExists int
+		checkOrderSourceQuery := `SELECT COUNT(*) FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'order_source'`
+		if err := DB.QueryRow(checkOrderSourceQuery).Scan(&orderSourceExists); err == nil && orderSourceExists == 0 {
+			if _, err = DB.Exec(`ALTER TABLE orders 
+				ADD COLUMN order_source VARCHAR(32) NULL DEFAULT NULL COMMENT '下单来源: mini_app/sales_app/admin/other' AFTER payment_method`); err != nil {
+				log.Printf("添加order_source字段失败: %v", err)
+			} else {
+				log.Println("已添加order_source字段到orders表")
+			}
+		}
+
 		// 检查并添加索引
 		// 检查 idx_is_urgent 索引
 		var idxIsUrgentExists int

@@ -5,7 +5,7 @@ echo Admin App - Production Build Script
 echo ========================================
 echo.
 echo Important: This script builds for production
-echo Production server: https://mall.sscchh.com
+echo Production server: https://api.sscchh.com
 echo Device must have internet access
 echo.
 echo For local development, use build-dev.bat
@@ -40,8 +40,8 @@ echo ========================================
 echo Build completed!
 echo ========================================
 echo APK location: build\app\outputs\flutter-apk\app-release.apk
-echo Production API base: https://mall.sscchh.com/api_mall/mini
-echo Example API path: https://mall.sscchh.com/api_mall/mini/admin/login
+echo Production API base: https://api.sscchh.com/api_mall/mini
+echo Example API path: https://api.sscchh.com/api_mall/mini/admin/login
 echo Note: Production uses /api_mall/mini (via Nginx proxy)
 echo.
 echo If API requests fail at runtime, check:

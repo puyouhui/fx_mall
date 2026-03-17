@@ -159,6 +159,7 @@ func GetAllOrdersForAdmin(c *gin.Context) {
 			"address_id":            order.AddressID,
 			"status":                order.Status,
 			"payment_method":        order.PaymentMethod,
+			"order_source":          order.OrderSource,
 			"paid_at":               order.PaidAt,
 			"wechat_transaction_id": order.WechatTransactionID,
 			"goods_amount":          order.GoodsAmount,
@@ -538,14 +539,14 @@ func GetOrderByIDForAdmin(c *gin.Context) {
 	}
 
 	result := gin.H{
-			"order":                    order,
-			"order_items":              items,
-			"user":                     userData,
-			"address":                  addressData,
-			"delivery_fee_calculation": deliveryFeeCalculation,
-			"order_profit":             orderProfit,
-			"net_profit":               netProfit,
-			"simplified_profit":        simplifiedProfit, // 简化的利润分析（平台总收入、商品总成本、毛利润、配送成本、净利润）
+		"order":                    order,
+		"order_items":              items,
+		"user":                     userData,
+		"address":                  addressData,
+		"delivery_fee_calculation": deliveryFeeCalculation,
+		"order_profit":             orderProfit,
+		"net_profit":               netProfit,
+		"simplified_profit":        simplifiedProfit, // 简化的利润分析（平台总收入、商品总成本、毛利润、配送成本、净利润）
 	}
 
 	// 添加销售分成信息

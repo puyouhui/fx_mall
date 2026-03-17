@@ -130,6 +130,78 @@ class SuppliersApi {
     );
   }
 
+  /// 按天获取某个供应商的应付款统计（7天窗口由调用方控制 start/end）
+  static Future<ApiResponse<List<SupplierDailyStat>>> getDailyStats(
+    int supplierId, {
+    required String startDate, // YYYY-MM-DD
+    required String endDate,   // YYYY-MM-DD
+  }) async {
+    final queryParams = <String, String>{
+      'start_date': startDate,
+      'end_date': endDate,
+    };
+
+    final response = await Request.get<dynamic>(
+      '/admin/suppliers/$supplierId/payments/daily',
+      parser: (data) => data,
+      queryParams: queryParams,
+    );
+
+    if (response.isSuccess && response.data != null) {
+      final data = response.data;
+      List<dynamic> list;
+      if (data is Map<String, dynamic> && data['list'] is List) {
+        list = data['list'] as List<dynamic>;
+      } else if (data is List) {
+        list = data;
+      } else {
+        list = const [];
+      }
+      final stats = list
+          .where((e) => e is Map<String, dynamic>)
+          .map((e) => SupplierDailyStat.fromJson(e as Map<String, dynamic>))
+          .toList();
+      return ApiResponse<List<SupplierDailyStat>>(
+        code: response.code,
+        message: response.message,
+        data: stats,
+      );
+    }
+
+    return ApiResponse<List<SupplierDailyStat>>(
+      code: response.code,
+      message: response.message,
+      data: const [],
+    );
+  }
+
+  /// 获取某个供应商某天的应付款明细
+  static Future<ApiResponse<SupplierDailyDetail>> getDailyDetail(
+    int supplierId,
+    String date, // YYYY-MM-DD
+  ) async {
+    final response = await Request.get<Map<String, dynamic>>(
+      '/admin/suppliers/$supplierId/payments/daily-detail',
+      parser: (data) => data as Map<String, dynamic>,
+      queryParams: {'date': date},
+    );
+
+    if (response.isSuccess && response.data != null) {
+      final detail = SupplierDailyDetail.fromJson(response.data!);
+      return ApiResponse<SupplierDailyDetail>(
+        code: response.code,
+        message: response.message,
+        data: detail,
+      );
+    }
+
+    return ApiResponse<SupplierDailyDetail>(
+      code: response.code,
+      message: response.message,
+      data: null,
+    );
+  }
+
   // 创建供应商付款记录（标记订单项为已付款）
   static Future<ApiResponse<void>> createSupplierPayment(
     int supplierId,

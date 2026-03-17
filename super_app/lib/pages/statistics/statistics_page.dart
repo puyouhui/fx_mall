@@ -193,9 +193,9 @@ class _StatisticsPageState extends State<StatisticsPage>
           color: Colors.green,
         ),
         _buildStatCard(
-          title: '待审核订单',
-          value: '${orderStats['pending_delivery'] ?? 0}',
-          icon: Icons.pending_actions,
+          title: '配送费支出',
+          value: '¥${_formatNumber(revenueStats['delivery_cost'] ?? 0.0)}',
+          icon: Icons.local_shipping_outlined,
           color: Colors.orange,
         ),
         _buildStatCard(
@@ -203,6 +203,18 @@ class _StatisticsPageState extends State<StatisticsPage>
           value: '${userStats['active_users'] ?? 0}',
           icon: Icons.people_outline,
           color: Colors.purple,
+        ),
+        _buildStatCard(
+          title: '销售分成支出',
+          value: '¥${_formatNumber(revenueStats['sales_commission'] ?? 0.0)}',
+          icon: Icons.paid_outlined,
+          color: Colors.teal,
+        ),
+        _buildStatCard(
+          title: '净利润',
+          value: '¥${_formatNumber(revenueStats['net_profit'] ?? 0.0)}',
+          icon: Icons.trending_up,
+          color: Colors.redAccent,
         ),
       ],
     );

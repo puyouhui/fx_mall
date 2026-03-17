@@ -44,6 +44,7 @@ type Order struct {
 	LockedBy             *string    `json:"locked_by,omitempty"`              // 锁定者员工码
 	LockedAt             *time.Time `json:"locked_at,omitempty"`              // 锁定时间
 	PaymentMethod        string     `json:"payment_method"`                   // 支付方式: online-在线支付, cod-货到付款（老数据默认cod）
+	OrderSource          *string    `json:"order_source,omitempty"`           // 下单来源: mini_app/sales_app/admin/other（老数据为NULL）
 	PaidAt               *time.Time `json:"paid_at,omitempty"`                // 支付完成时间（老数据为NULL）
 	WechatTransactionID  *string    `json:"wechat_transaction_id,omitempty"`  // 微信支付单号（有值表示通过微信支付，取消时可退款）
 	RefundStatus         *string    `json:"refund_status,omitempty"`          // 退款状态: NULL-无, processing-处理中, success-成功, failed-失败
@@ -110,6 +111,19 @@ func GenerateOrderNumber(orderID int) string {
 	randomPart := fmt.Sprintf("%02d", rand.Intn(100))
 
 	return timePart + orderIDPart + randomPart
+}
+
+// SetOrderSource 更新订单的下单来源（简单兜底，字段缺失时只记日志）
+// 建议取值：mini_app / sales_app / admin / other
+func SetOrderSource(orderID int, source string) {
+	source = strings.TrimSpace(source)
+	if orderID <= 0 || source == "" {
+		return
+	}
+	_, err := database.DB.Exec(`UPDATE orders SET order_source = ? WHERE id = ?`, source, orderID)
+	if err != nil {
+		log.Printf("[SetOrderSource] 更新订单来源失败 orderID=%d source=%s err=%v", orderID, source, err)
+	}
 }
 
 // CreateOrderFromPurchaseList 从采购单创建订单（包含事务和明细落库）
@@ -396,19 +410,20 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	var weatherInfo sql.NullString
 	var paidAt sql.NullTime
 	var paymentMethodVal string
+	var orderSource sql.NullString
 	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt int
 	err = database.DB.QueryRow(`
 		SELECT id, order_number, user_id, address_id, status, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
 		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated,
-		       payment_method, paid_at, created_at, updated_at
+		       payment_method, paid_at, order_source, created_at, updated_at
 		FROM orders WHERE id = ?
 	`, orderID).Scan(
 		&order.ID, &order.OrderNumber, &order.UserID, &order.AddressID, &order.Status, &order.GoodsAmount, &order.DeliveryFee,
 		&order.PointsDiscount, &order.CouponDiscount, &isUrgentTinyInt, &order.UrgentFee, &order.TotalAmount, &order.Remark,
 		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
 		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt,
-		&paymentMethodVal, &paidAt, &order.CreatedAt, &order.UpdatedAt,
+		&paymentMethodVal, &paidAt, &orderSource, &order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -421,6 +436,10 @@ func CreateOrderFromPurchaseList(userID, addressID int, items []PurchaseListItem
 	order.PaymentMethod = paymentMethodVal
 	if paymentMethodVal == "" {
 		order.PaymentMethod = "cod" // 老数据兼容
+	}
+	if orderSource.Valid && orderSource.String != "" {
+		s := orderSource.String
+		order.OrderSource = &s
 	}
 	if weatherInfo.Valid {
 		order.WeatherInfo = &weatherInfo.String
@@ -801,13 +820,14 @@ func GetOrderByID(id int) (*Order, error) {
 	var paidAt sql.NullTime
 	var paymentMethodVal string
 	var refundStatus, wechatRefundID, wechatTransactionID sql.NullString
+	var orderSource sql.NullString
 
 	query := `
 		SELECT id, order_number, user_id, address_id, status, delivery_employee_code, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
 		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, 
 		       is_locked, locked_by, locked_at, order_profit, settlement_date, delivery_fee_settled,
-		       payment_method, paid_at, wechat_transaction_id, refund_status, wechat_refund_id, created_at, updated_at
+		       payment_method, paid_at, wechat_transaction_id, refund_status, wechat_refund_id, order_source, created_at, updated_at
 		FROM orders WHERE id = ?
 	`
 	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt, isLockedTinyInt, deliveryFeeSettledTinyInt int
@@ -820,7 +840,7 @@ func GetOrderByID(id int) (*Order, error) {
 		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
 		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &isLockedTinyInt, &lockedBy, &lockedAt,
 		&orderProfit, &settlementDate, &deliveryFeeSettledTinyInt,
-		&paymentMethodVal, &paidAt, &wechatTransactionID, &refundStatus, &wechatRefundID, &order.CreatedAt, &order.UpdatedAt,
+		&paymentMethodVal, &paidAt, &wechatTransactionID, &refundStatus, &wechatRefundID, &orderSource, &order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -838,6 +858,10 @@ func GetOrderByID(id int) (*Order, error) {
 	order.PaymentMethod = paymentMethodVal
 	if order.PaymentMethod == "" {
 		order.PaymentMethod = "cod"
+	}
+	if orderSource.Valid && orderSource.String != "" {
+		s := orderSource.String
+		order.OrderSource = &s
 	}
 	if paidAt.Valid {
 		t := paidAt.Time
@@ -909,13 +933,14 @@ func GetOrderByOrderNumber(orderNumber string) (*Order, error) {
 	var paidAt sql.NullTime
 	var paymentMethodVal string
 	var refundStatus, wechatRefundID, wechatTransactionID sql.NullString
+	var orderSource sql.NullString
 
 	query := `
 		SELECT id, order_number, user_id, address_id, status, delivery_employee_code, goods_amount, delivery_fee, points_discount,
 		       coupon_discount, is_urgent, urgent_fee, total_amount, remark, out_of_stock_strategy, trust_receipt,
 		       hide_price, require_phone_contact, expected_delivery_at, weather_info, is_isolated, 
 		       is_locked, locked_by, locked_at, order_profit, settlement_date, delivery_fee_settled,
-		       payment_method, paid_at, wechat_transaction_id, refund_status, wechat_refund_id, created_at, updated_at
+		       payment_method, paid_at, wechat_transaction_id, refund_status, wechat_refund_id, order_source, created_at, updated_at
 		FROM orders WHERE order_number = ?
 	`
 	var isUrgentTinyInt, hidePriceTinyInt, trustReceiptTinyInt, requirePhoneContactTinyInt, isIsolatedTinyInt, isLockedTinyInt, deliveryFeeSettledTinyInt int
@@ -928,7 +953,7 @@ func GetOrderByOrderNumber(orderNumber string) (*Order, error) {
 		&order.OutOfStockStrategy, &trustReceiptTinyInt, &hidePriceTinyInt, &requirePhoneContactTinyInt,
 		&expectedDelivery, &weatherInfo, &isIsolatedTinyInt, &isLockedTinyInt, &lockedBy, &lockedAt,
 		&orderProfit, &settlementDate, &deliveryFeeSettledTinyInt,
-		&paymentMethodVal, &paidAt, &wechatTransactionID, &refundStatus, &wechatRefundID, &order.CreatedAt, &order.UpdatedAt,
+		&paymentMethodVal, &paidAt, &wechatTransactionID, &refundStatus, &wechatRefundID, &orderSource, &order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -946,6 +971,10 @@ func GetOrderByOrderNumber(orderNumber string) (*Order, error) {
 	order.PaymentMethod = paymentMethodVal
 	if order.PaymentMethod == "" {
 		order.PaymentMethod = "cod"
+	}
+	if orderSource.Valid && orderSource.String != "" {
+		s := orderSource.String
+		order.OrderSource = &s
 	}
 	if paidAt.Valid {
 		t := paidAt.Time
