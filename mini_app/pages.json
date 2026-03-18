@@ -108,6 +108,12 @@
       }
     },
     {
+      "path": "pages/policy/policy",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/about-us/about-us",
       "style": {
         "navigationStyle": "custom"

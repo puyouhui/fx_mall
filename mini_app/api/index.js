@@ -615,7 +615,9 @@ export const getPointsLogs = (token, params = {}) => {
   return get('/mini-app/users/points/logs', params, {
     header: {
       ...(token ? { Authorization: `Bearer ${token}` } : {})
-    }
+    },
+    // 积分明细接口出现 401 时不强制清空登录，避免影响整体体验（临时兼容）
+    ignoreAuthClear: true
   });
 };
 

@@ -26,12 +26,12 @@
       <!-- Logo/品牌区域 -->
       <view class="brand-section">
         <view class="logo-wrapper">
-          <view class="logo-placeholder">
-            <text class="logo-text">商城</text>
-          </view>
+        <view class="logo-placeholder">
+          <text class="logo-text">橙心选</text>
         </view>
-        <text class="app-name">商城小程序</text>
-        <text class="app-version">Version 1.0.0</text>
+        </view>
+        <text class="app-name">橙心选（云南）供应链管理有限公司</text>
+        <text class="app-version">Version 1.0.9</text>
       </view>
 
       <!-- 公司介绍 -->
@@ -39,9 +39,10 @@
         <view class="section-title">公司简介</view>
         <view class="section-content">
           <text class="content-text">
-            我们是一家专业的B2B电商平台，致力于为批发和零售客户提供优质的商品和服务。
-            平台涵盖生鲜食材、调料干货、日用消耗品、清洁用品、办公用品、包装材料等多个品类，
-            通过高效的供应链管理和专业的配送服务，为客户创造价值。
+            橙心选（云南）供应链管理有限公司，扎根云南本地服务实体商户，是一家专注餐饮与商超场景的数字化供应链服务商。
+            我们整合上游品牌工厂与区域核心仓配资源，以数据驱动的精细运营能力，为客户提供一站式采购解决方案。
+            业务覆盖纸品纸巾、PP餐盒、纸碗纸杯、筷子餐具、清洁洗护、打包耗材、定制系列及更多高频刚需品类，
+            通过标准化产品体系与柔性供应能力，帮助客户真正做到“少跑一趟仓，多赚一分利”。
           </text>
         </view>
       </view>
@@ -52,19 +53,19 @@
         <view class="section-content">
           <view class="service-item">
             <view class="service-icon">✓</view>
-            <text class="service-text">品质保证：严格筛选供应商，确保商品质量</text>
+            <text class="service-text">严选品质：从工厂到门店全链路把控，严选纸品、餐盒、餐具等高频消耗品，稳定、安心、看得见。</text>
           </view>
           <view class="service-item">
             <view class="service-icon">✓</view>
-            <text class="service-text">高效配送：专业的配送团队，快速送达</text>
+            <text class="service-text">高效供应：依托区域仓配网络与数字化系统，做到常备现货、准点送达，让日常补货更简单。</text>
           </view>
           <view class="service-item">
             <view class="service-icon">✓</view>
-            <text class="service-text">贴心服务：7×24小时客服支持，随时为您服务</text>
+            <text class="service-text">方案导向：不仅卖产品，更懂场景。针对不同门店体量与业态，提供纸品、清洁、包装等一体化用料方案。</text>
           </view>
           <view class="service-item">
             <view class="service-icon">✓</view>
-            <text class="service-text">诚信经营：透明价格，诚信交易</text>
+            <text class="service-text">长期主义：坚持透明价格、稳健服务，用持续可控的供应链能力，做客户身边值得信赖的补货合伙人。</text>
           </view>
         </view>
       </view>
@@ -73,13 +74,13 @@
       <view class="info-section">
         <view class="section-title">联系我们</view>
         <view class="section-content">
-          <view class="contact-item" @click="makePhoneCall('400-000-0000')">
+          <view class="contact-item" @click="makePhoneCall('19969106710')">
             <view class="contact-icon-wrapper">
               <uni-icons type="phone" size="20" color="#20CB6B"></uni-icons>
             </view>
             <view class="contact-info">
-              <text class="contact-label">客服热线</text>
-              <text class="contact-value">400-000-0000</text>
+              <text class="contact-label">商务 / 客服</text>
+              <text class="contact-value">199-6910-6710</text>
             </view>
             <uni-icons type="right" size="16" color="#999"></uni-icons>
           </view>
@@ -89,24 +90,24 @@
             </view>
             <view class="contact-info">
               <text class="contact-label">邮箱地址</text>
-              <text class="contact-value">service@example.com</text>
+              <text class="contact-value">puyouhui14@gmail.com</text>
             </view>
           </view>
-          <view class="contact-item">
+          <!-- <view class="contact-item">
             <view class="contact-icon-wrapper">
               <uni-icons type="location" size="20" color="#20CB6B"></uni-icons>
             </view>
             <view class="contact-info">
               <text class="contact-label">公司地址</text>
-              <text class="contact-value">北京市朝阳区xxx街道xxx号</text>
+              <text class="contact-value">云南省昆明市官渡区</text>
             </view>
-          </view>
+          </view> -->
         </view>
       </view>
 
       <!-- 版权信息 -->
       <view class="copyright-section">
-        <text class="copyright-text">© 2024 商城小程序 版权所有</text>
+        <text class="copyright-text">© 2024 橙心选（云南）供应链管理有限公司</text>
         <text class="copyright-text">All Rights Reserved</text>
       </view>
     </view>

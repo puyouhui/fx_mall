@@ -106,19 +106,28 @@
 			<view class="products-container">
 				<view class="category-title">{{ currentCategoryName }}</view>
 				<scroll-view
-					v-if="currentProducts.length > 0"
 					scroll-y
 					class="product-scroll"
 					:style="{ height: productScrollHeight + 'px' }"
 					:show-scrollbar="true"
 					@scrolltolower="onScrollToLower"
 					@scroll="onScroll"
+					@touchstart="onProductTouchStart"
+					@touchmove="onProductTouchMove"
+					@touchend="onProductTouchEnd"
+					@touchcancel="onProductTouchEnd"
 					:scroll-top="scrollTop"
+					:scroll-into-view="productScrollIntoView"
+					:scroll-with-animation="scrollWithAnimation"
 					:enable-back-to-top="true"
-					:key="scrollTopKey"
 					:lower-threshold="50"
 				>
 					<view class="product-list">
+					<!-- 顶部锚点：用于强制回到列表顶部（真机更稳定） -->
+					<view id="product-scroll-top-anchor" class="product-scroll-top-anchor"></view>
+					<view v-if="isFetchingCategoryProducts" class="category-loading-inline">
+						<text class="category-loading-inline-text">加载中…</text>
+					</view>
 					<view class="product-item" v-for="product in currentProducts" :key="product.id" @click="goToProductDetail(product.id)">
 						<image :src="(product.images && product.images[0]) || 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg'" class="product-image" mode="aspectFill"></image>
 						<view class="product-content">
@@ -139,11 +148,34 @@
 							</view>
 						</view>
 					</view>
+					<!-- 底部提示：分页加载 / 上拉切换下一个二级分类 -->
+					<view class="product-footer-hint">
+						<view
+							v-if="!productsNoMore"
+							class="hint-pill hint-pill--neutral"
+						>
+							<text class="hint-text">{{ isLoadingMoreProducts ? '正在加载更多…' : '上滑加载更多' }}</text>
+						</view>
+
+						<view
+							v-else-if="hasNextSecondaryCategory"
+							class="hint-pill"
+							:class="{ 'hint-pill--active': canReleaseToSwitchNext }"
+							:style="pullHintStyle"
+						>
+							<text class="hint-text">{{ pullSwitchHintText }}</text>
+						</view>
+
+						<!-- 最后一个分类：纯灰字提示 -->
+						<view v-else class="hint-text hint-text--end">
+							已是最后一个分类
+						</view>
+					</view>
+					<view v-if="!isFetchingCategoryProducts && currentProducts.length === 0" class="empty-tip empty-tip--inline">
+						暂无商品
+					</view>
 					</view>
 				</scroll-view>
-				<view class="empty-tip" v-else>
-					暂无商品
-				</view>
 			</view>
 		</view>
 	</view>
@@ -179,6 +211,25 @@ export default {
 			// 商品相关
 			currentProducts: [],
 			userType: null, // 用户类型：'retail' | 'wholesale' | null（未登录）
+			isIOS: false,
+			productPageNum: 1,
+			productPageSize: 10,
+			productTotal: 0,
+			isLoadingMoreProducts: false,
+			productsNoMore: false,
+			isProductAtBottom: false,
+			isPullingToSwitchNext: false,
+			productScrollTopLive: 0,
+			lastReachBottomAt: 0,
+			productScrollIntoView: '',
+			pendingScrollToTopAfterLoad: false,
+			isLoadingCategoryProducts: false,
+			scrollWithAnimation: true,
+			isFetchingCategoryProducts: false,
+			productBottomMeasureTimer: null,
+			productTouchStartY: 0,
+			productPullDistance: 0,
+			canReleaseToSwitchNext: false,
 
 			// 滚动相关
 			scrollIntoViewId: '', // 用于滚动到指定分类
@@ -205,6 +256,43 @@ export default {
 		};
 	},
 
+	computed: {
+		hasNextSecondaryCategory() {
+			if (!this.secondaryCategories || this.secondaryCategories.length <= 1) return false;
+			const currentIndex = this.secondaryCategories.findIndex(cat => {
+				return cat.id == this.selectedSecondaryCategoryId || cat.id === this.selectedSecondaryCategoryId;
+			});
+			return currentIndex !== -1 && currentIndex < this.secondaryCategories.length - 1;
+		},
+
+		atBottomForSwitch() {
+			// 兜底：部分真机 isProductAtBottom 会偶发误判为 false
+			// 只要最近触发过 scrolltolower，就认为“已到底”一小段时间（给用户上拉手势窗口）
+			const RECENT_MS = 1200;
+			return this.isProductAtBottom || (this.lastReachBottomAt > 0 && (Date.now() - this.lastReachBottomAt) < RECENT_MS);
+		},
+
+		pullHintStyle() {
+			// 跟手：上拉越多，上移越明显；达到阈值后略微放大
+			const d = Math.min(Math.max(this.productPullDistance || 0, 0), 160);
+			const translateY = -Math.min(48, d * 0.35); // px
+			const scale = this.canReleaseToSwitchNext ? 1.02 : 1;
+			const opacity = this.isProductAtBottom ? 1 : 0.85;
+			return {
+				transform: `translateY(${translateY}px) scale(${scale})`,
+				opacity
+			};
+		},
+
+		pullSwitchHintText() {
+			// 仅在“无更多商品”且在底部时给出上拉切换提示
+			if (!this.productsNoMore) return '';
+			if (!this.atBottomForSwitch) return '下滑到底后上拉切换下一个分类';
+			if (this.canReleaseToSwitchNext) return '松手切换下一个分类';
+			return '继续上拉切换下一个分类';
+		}
+	},
+
 	// 生命周期函数 - 监听页面加载
 	onLoad(options) {
 		// 初始化用户类型
@@ -214,6 +302,7 @@ export default {
 		const systemInfo = uni.getSystemInfoSync();
 		this.statusBarHeight = systemInfo.statusBarHeight;
 		this.screenHeight = systemInfo.windowHeight;
+		this.isIOS = String(systemInfo.platform || '').toLowerCase() === 'ios';
 
 		// 计算布局高度
 		this.calculateLayoutHeight();
@@ -579,27 +668,32 @@ export default {
 			}
 		},
 
-		// 加载分类商品
-		async loadProductsByCategory(categoryId) {
+		// 加载更多商品（分页追加）
+		async loadMoreProducts() {
+			// 防抖/并发保护
+			if (this.isLoadingMoreProducts) return;
+			if (this.productsNoMore) return;
+			if (!this.selectedSecondaryCategoryId) return;
+
+			// 如果总数已知且已加载完，直接标记 no more
+			if (this.productTotal > 0 && this.currentProducts.length >= this.productTotal) {
+				this.productsNoMore = true;
+				return;
+			}
+
+			const nextPage = (this.productPageNum || 1) + 1;
+			this.isLoadingMoreProducts = true;
 			try {
-				console.log('加载分类商品，分类ID:', categoryId);
-				// 更新调试信息
-				this.debugInfo.categoryId = categoryId;
-				this.debugInfo.apiResult = '加载中...';
+				const categoryId = this.selectedSecondaryCategoryId;
+				const res = await getProductsByCategory({ categoryId, pageNum: nextPage, pageSize: this.productPageSize });
+				const list = res.data && res.data.list ? res.data.list : [];
 
-				// 显示加载状态
-				uni.showLoading({
-					title: '加载中...'
-				});
+				if (!list.length) {
+					this.productsNoMore = true;
+					return;
+				}
 
-				// 正确传递参数对象，包含categoryId、pageNum和pageSize
-				const res = await getProductsByCategory({ categoryId, pageNum: 1, pageSize: 10 });
-				console.log('获取分类商品结果:', res);
-				// 更新调试信息
-				this.debugInfo.apiResult = JSON.stringify(res, null, 2);
-				const productList = res.data && res.data.list ? res.data.list : [];
-
-				this.currentProducts = productList.map(product => {
+				const appended = list.map(product => {
 					const normalized = { ...product };
 
 					if (!Array.isArray(normalized.images)) {
@@ -628,18 +722,167 @@ export default {
 					return normalized;
 				});
 
+				this.productPageNum = nextPage;
+				if (typeof res?.data?.total === 'number') {
+					this.productTotal = res.data.total;
+				}
+				this.currentProducts = this.currentProducts.concat(appended);
+
+				if (this.productTotal > 0 && this.currentProducts.length >= this.productTotal) {
+					this.productsNoMore = true;
+				}
+				// 追加渲染后刷新“是否到底”，避免提示闪烁/状态滞后
+				this.$nextTick(() => {
+					this.refreshProductAtBottom();
+				});
+			} catch (error) {
+				console.error('加载更多商品失败:', error);
+			} finally {
+				this.isLoadingMoreProducts = false;
+			}
+		},
+
+		// 刷新商品列表“是否到底”的状态（基于真实内容高度）
+		refreshProductAtBottom() {
+			// 上拉手势中锁定，不刷新，避免抖动
+			if (this.isPullingToSwitchNext) return;
+			// 没有商品时不处理
+			if (!this.currentProducts || this.currentProducts.length === 0) {
+				this.isProductAtBottom = false;
+				return;
+			}
+
+			// 性能保护：避免在滚动事件中频繁测量 DOM（iOS 上尤其容易卡顿/闪白）
+			if (this.productBottomMeasureTimer) return;
+			this.productBottomMeasureTimer = setTimeout(() => {
+				this.productBottomMeasureTimer = null;
+
+			// 通过测量 .product-list 的真实高度，推算是否到底（解决真机首次不触发 scroll 导致状态不更新）
+			uni.createSelectorQuery()
+				.in(this)
+				.select('.product-list')
+				.boundingClientRect(rect => {
+					if (!rect) return;
+					const contentHeight = Number(rect.height) || 0;
+					const viewHeight = Number(this.productScrollHeight) || 0;
+					const scrollTop = Number(this.productScrollTopLive) || 0;
+					const BOTTOM_THRESHOLD = 30; // px
+					// 内容不足一屏：视为到底（因为无法再下滑触发 scroll 更新）
+					if (contentHeight <= viewHeight + BOTTOM_THRESHOLD) {
+						this.isProductAtBottom = true;
+						return;
+					}
+					// 内容可滚动：用 scrollTop + viewHeight 判断是否到达底部
+					this.isProductAtBottom = (scrollTop + viewHeight) >= (contentHeight - BOTTOM_THRESHOLD);
+				})
+				.exec();
+			}, 120);
+		},
+
+		// 加载分类商品
+		async loadProductsByCategory(categoryId) {
+			try {
+				console.log('加载分类商品，分类ID:', categoryId);
+				this.isLoadingCategoryProducts = true;
+				this.isFetchingCategoryProducts = true;
+				// 重置分页状态
+				this.productPageNum = 1;
+				this.productTotal = 0;
+				this.productsNoMore = false;
+				this.isLoadingMoreProducts = false;
+				// 切换分类时先清掉 scroll-into-view，避免残留指令造成跳动/白屏
+				this.productScrollIntoView = '';
+				// 更新调试信息
+				this.debugInfo.categoryId = categoryId;
+				this.debugInfo.apiResult = '加载中...';
+
+				// 正确传递参数对象，包含categoryId、pageNum和pageSize
+				const res = await getProductsByCategory({ categoryId, pageNum: this.productPageNum, pageSize: this.productPageSize });
+				console.log('获取分类商品结果:', res);
+				// 更新调试信息
+				this.debugInfo.apiResult = JSON.stringify(res, null, 2);
+				const productList = res.data && res.data.list ? res.data.list : [];
+				if (typeof res?.data?.total === 'number') {
+					this.productTotal = res.data.total;
+				}
+
+				const nextProducts = productList.map(product => {
+					const normalized = { ...product };
+
+					if (!Array.isArray(normalized.images)) {
+						if (normalized.images && typeof normalized.images === 'string') {
+							try {
+								normalized.images = JSON.parse(normalized.images);
+							} catch (error) {
+								normalized.images = [normalized.images];
+							}
+						} else if (normalized.image) {
+							normalized.images = [normalized.image];
+						} else {
+							normalized.images = [];
+						}
+					}
+
+					if (!Array.isArray(normalized.specs) && typeof normalized.specs === 'string') {
+						try {
+							normalized.specs = JSON.parse(normalized.specs);
+						} catch (error) {
+							normalized.specs = [];
+						}
+					}
+
+					this.applyPriceRange(normalized);
+					return normalized;
+				});
+
+				// 一次性替换列表：请求期间不清空旧列表，降低 iOS 长列表切换白屏概率
+				this.currentProducts = nextProducts;
+
 				if (!this.currentProducts.length) {
 					console.log('没有找到商品数据，显示空状态');
 					this.currentProducts = [];
 				}
+				// 判断是否还有更多
+				if (this.productTotal > 0 && this.currentProducts.length >= this.productTotal) {
+					this.productsNoMore = true;
+				}
+				// 首屏渲染后刷新“是否到底”，避免需要轻微滚动才出现正确提示
+				this.$nextTick(() => {
+					// 若由切换分类触发：等数据渲染完再回顶
+					if (this.pendingScrollToTopAfterLoad) {
+						this.pendingScrollToTopAfterLoad = false;
+						// 非 iOS：在新数据渲染后回顶（避免切换同帧）
+						const doScrollToTop = () => {
+							this.scrollWithAnimation = false;
+							this.scrollTop = 0;
+							this.productScrollTopLive = 0;
+							// 用锚点回顶（更稳）
+							this.productScrollIntoView = 'product-scroll-top-anchor';
+							setTimeout(() => {
+								this.productScrollIntoView = '';
+							}, 120);
+							// 恢复动画
+							setTimeout(() => {
+								this.scrollWithAnimation = true;
+							}, 120);
+						};
+
+						// 延迟一帧，等布局稳定后回顶
+						setTimeout(() => {
+							doScrollToTop();
+						}, 16);
+					}
+					this.refreshProductAtBottom();
+				});
 				console.log('最终显示的商品数据:', this.currentProducts);
 			} catch (error) {
 				console.error('加载商品失败:', error);
 				// 出错时也显示空状态
 				this.currentProducts = [];
 			} finally {
-				// 隐藏加载状态
-				uni.hideLoading();
+				this.isLoadingCategoryProducts = false;
+				this.scrollWithAnimation = true;
+				this.isFetchingCategoryProducts = false;
 			}
 		},
 
@@ -756,11 +999,26 @@ export default {
 			
 			// 重置滚动位置到顶部
 			if (resetScroll) {
-				// 使用 key 变化来强制重置滚动位置
-				this.scrollTopKey = Date.now();
-				this.$nextTick(() => {
-					this.scrollTop = 0;
-				});
+				// iOS: 先把“旧列表”回到顶部，再替换新列表，避免“滚动+大列表重绘”同帧触发白屏
+				// 非 iOS: 仍然等新数据渲染完再回顶（更稳）
+				this.isProductAtBottom = false;
+				this.resetProductPullGesture?.();
+				if (this.isIOS) {
+					// 强制触发 iOS scroll-view 回顶
+					this.scrollWithAnimation = false;
+					this.scrollTop = 1;
+					this.productScrollTopLive = 1;
+					setTimeout(() => {
+						this.scrollTop = 0;
+						this.productScrollTopLive = 0;
+						this.scrollWithAnimation = true;
+					}, 16);
+					this.pendingScrollToTopAfterLoad = false;
+				} else {
+					this.pendingScrollToTopAfterLoad = true;
+					// 切换分类期间先关掉滚动动画，减少“回顶+重绘”叠加抖动
+					this.scrollWithAnimation = false;
+				}
 			}
 
 			// 更新左侧二级分类列表的滚动位置，使其滚动到选中的分类
@@ -779,85 +1037,118 @@ export default {
 
 		// 滚动事件处理
 		onScroll(e) {
-			// 可以在这里添加其他滚动相关的逻辑
+			if (!e || !e.detail) return;
+
+			// 更稳定的“是否到底”判断：scrollTop + 可视高度 >= scrollHeight - 阈值
+			// uni-app scroll-view: e.detail.scrollTop / e.detail.scrollHeight
+			const scrollTop = Number(e.detail.scrollTop) || 0;
+			this.productScrollTopLive = scrollTop;
+
+			// 进入“上拉切换”手势期间，锁定底部状态，避免提示闪烁
+			if (!this.isPullingToSwitchNext) {
+				// scrollHeight 在部分真机上会短暂不准，统一走 refreshProductAtBottom 做最终判定
+				this.refreshProductAtBottom();
+			}
+
+			// 只要不是在上拉切换手势里，滚动就把上拉距离清零（避免轻微滚动造成样式抖动）
+			if (!this.isPullingToSwitchNext && this.productPullDistance > 0) {
+				this.productPullDistance = 0;
+				this.canReleaseToSwitchNext = false;
+			}
 		},
 
-		// 滚动到底部时触发（至少两次滑动才切换：两次触底需间隔 ≥ 600ms，避免一次慢滑触发多次 scrolltolower）
-		onScrollToLower() {
-			// 计算距上次触底的时间间隔
-			const now = Date.now();
-			const interval = now - this.lastScrollTime;
-			this.lastScrollTime = now;
+		// 商品列表触摸手势：在无更多商品时，上拉一定距离 -> 松手切换下一个二级分类
+		onProductTouchStart(e) {
+			if (!this.productsNoMore) return;
+			if (!this.atBottomForSwitch) return;
+			if (!this.hasNextSecondaryCategory) return;
+			const touch = e?.touches?.[0];
+			if (!touch) return;
+			this.isPullingToSwitchNext = true;
+			this.productTouchStartY = touch.clientY;
+			this.productPullDistance = 0;
+			this.canReleaseToSwitchNext = false;
+		},
 
-			// 如果正在自动切换，忽略此次触发
-			if (this.isAutoSwitching) {
+		onProductTouchMove(e) {
+			if (!this.productsNoMore) return;
+			if (!this.atBottomForSwitch) return;
+			if (!this.hasNextSecondaryCategory) return;
+			const touch = e?.touches?.[0];
+			if (!touch) return;
+			const dy = this.productTouchStartY - touch.clientY; // 上拉为正
+			const distance = Math.max(0, dy);
+			// 给个上限，避免异常大值
+			this.productPullDistance = Math.min(distance, 160);
+			const THRESHOLD = 80;
+			this.canReleaseToSwitchNext = this.productPullDistance >= THRESHOLD;
+		},
+
+		onProductTouchEnd() {
+			if (!this.productsNoMore) {
+				this.resetProductPullGesture();
 				return;
 			}
+			if (!this.atBottomForSwitch) {
+				this.resetProductPullGesture();
+				return;
+			}
+			if (!this.hasNextSecondaryCategory) {
+				this.resetProductPullGesture();
+				return;
+			}
+			if (this.canReleaseToSwitchNext) {
+				this.resetProductPullGesture();
+				this.switchToNextSecondaryCategory();
+				return;
+			}
+			this.resetProductPullGesture();
+		},
 
+		resetProductPullGesture() {
+			this.isPullingToSwitchNext = false;
+			this.productTouchStartY = 0;
+			this.productPullDistance = 0;
+			this.canReleaseToSwitchNext = false;
+		},
+
+		switchToNextSecondaryCategory() {
+			// 如果正在自动切换，忽略
+			if (this.isAutoSwitching) return;
 			// 如果没有二级分类或只有一个分类，不执行切换
-			if (!this.secondaryCategories || this.secondaryCategories.length <= 1) {
-				return;
-			}
-
-			// 如果当前没有商品，不执行切换
-			if (!this.currentProducts || this.currentProducts.length === 0) {
-				return;
-			}
-
-			// 至少两次滑动才切换：两次触底之间需间隔至少 600ms，避免一次慢滑到底触发多次 scrolltolower 被当成两次
-			const MIN_SCROLL_INTERVAL = 600;
-			const MAX_SCROLL_INTERVAL = 1000;
-			if (interval >= MAX_SCROLL_INTERVAL) {
-				this.scrollToLowerCount = 1;
-			} else if (interval < MIN_SCROLL_INTERVAL) {
-				return;
-			} else {
-				this.scrollToLowerCount += 1;
-			}
-
-			// 第一次触底：不切换
-			if (this.scrollToLowerCount === 1) {
-				return;
-			}
-
-			// 第二次触底（且与第一次间隔 ≥ 600ms）：执行自动切换
-			if (this.scrollToLowerCount < 2) {
-				return;
-			}
-
-			// 重置计数，避免后续误触
-			this.scrollToLowerCount = 0;
-
+			if (!this.secondaryCategories || this.secondaryCategories.length <= 1) return;
 			// 找到当前分类在列表中的索引
 			const currentIndex = this.secondaryCategories.findIndex(cat => {
-				return cat.id == this.selectedSecondaryCategoryId || 
-					   cat.id === this.selectedSecondaryCategoryId;
+				return cat.id == this.selectedSecondaryCategoryId || cat.id === this.selectedSecondaryCategoryId;
 			});
-
 			// 如果找不到当前分类或已经是最后一个，不执行切换
-			if (currentIndex === -1 || currentIndex >= this.secondaryCategories.length - 1) {
-				return;
-			}
+			if (currentIndex === -1 || currentIndex >= this.secondaryCategories.length - 1) return;
 
-			// 获取下一个分类
 			const nextCategory = this.secondaryCategories[currentIndex + 1];
-			if (!nextCategory) {
-				return;
-			}
+			if (!nextCategory) return;
 
-			// 标记正在自动切换
 			this.isAutoSwitching = true;
-
-			// 平滑切换到下一个分类
 			this.$nextTick(() => {
-				// 使用平滑过渡效果
 				this.selectSecondaryCategory(nextCategory, true);
-				
-				// 重置自动切换标记，延迟稍长一些确保切换完成
 				setTimeout(() => {
 					this.isAutoSwitching = false;
 				}, 600);
 			});
+		},
+
+		// 滚动到底部时触发（至少两次滑动才切换：两次触底需间隔 ≥ 600ms，避免一次慢滑触发多次 scrolltolower）
+		async onScrollToLower() {
+			this.lastReachBottomAt = Date.now();
+			// 到达底部（scrolltolower 可能频繁触发；底部状态以 onScroll 的计算为准）
+			if (!this.productsNoMore) {
+				await this.loadMoreProducts();
+				// 如果加载后仍然有更多，说明这次触底是“加载更多”场景，不走自动切换分类逻辑
+				if (!this.productsNoMore) {
+					return;
+				}
+			}
+			
+			// 到这里说明：没有更多商品了。接下来由“上拉松手切换下一个二级分类”的手势负责切换。
 		},
 
 		// 计算布局高度
@@ -1505,6 +1796,84 @@ page {
 	display: flex;
 	flex-direction: column;
 	padding: 20rpx 0 60rpx; // 底部留出额外空间，避免最后一项被挡住
+}
+
+.product-scroll-top-anchor {
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+}
+
+.category-loading-inline {
+	width: 100%;
+	padding: 12rpx 0 8rpx;
+	text-align: center;
+}
+
+.category-loading-inline-text {
+	font-size: 22rpx;
+	color: #999;
+}
+
+.empty-tip--inline {
+	margin-top: 40rpx;
+}
+
+.product-footer-hint {
+	width: 100%;
+	padding: 6rpx 0 24rpx;
+	text-align: center;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+}
+
+.hint-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 10rpx;
+	padding: 10rpx 18rpx;
+	border-radius: 999rpx;
+	background: rgba(32, 203, 107, 0.08);
+	border: 1rpx solid rgba(32, 203, 107, 0.22);
+	backdrop-filter: blur(6px);
+	transition: transform 120ms ease, opacity 120ms ease, background 120ms ease, border-color 120ms ease;
+	transform: translateY(0) scale(1);
+}
+
+.hint-pill--neutral {
+	background: rgba(0, 0, 0, 0.04);
+	border-color: rgba(0, 0, 0, 0.08);
+}
+
+.hint-pill--active {
+	background: #20CB6B;
+	border-color: #20CB6B;
+}
+
+.hint-pill--disabled {
+	background: rgba(0, 0, 0, 0.03);
+	border-color: rgba(0, 0, 0, 0.06);
+}
+
+.hint-text {
+	font-size: 22rpx;
+	color: #999;
+	letter-spacing: 0.3rpx;
+}
+
+.hint-text--end {
+	color: #999;
+	font-size: 22rpx;
+	padding: 10rpx 0;
+}
+
+.hint-pill--active .hint-text {
+	color: #fff;
+}
+
+.hint-pill--disabled .hint-text {
+	color: #999;
 }
 
 .product-item {

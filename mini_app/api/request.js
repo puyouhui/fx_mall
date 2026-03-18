@@ -17,13 +17,16 @@ export const request = (options = {}) => {
     },
     success: () => {},
     fail: () => {},
-    complete: () => {}
+    complete: () => {},
+    ignoreAuthClear: false
   };
 
   // 合并用户参数和默认参数
   const finalOptions = { ...defaultOptions, ...options };
   const silent = finalOptions.silent === true;
+  const ignoreAuthClear = finalOptions.ignoreAuthClear === true;
   delete finalOptions.silent;
+  delete finalOptions.ignoreAuthClear;
   finalOptions.url = BASE_URL + finalOptions.url;
 
   // 返回Promise对象
@@ -36,9 +39,9 @@ export const request = (options = {}) => {
         if (res.statusCode === 200) {
           if (res.data && res.data.code === 200) {
             resolve(res.data);
-        } else {
-          // 检查业务错误码，如果需要清空登录信息（如 401 token 过期）
-            const needClearAuth = res.data && shouldClearAuthInfo(res.statusCode, res.data.code, silent);
+          } else {
+            // 检查业务错误码，如果需要清空登录信息（如 401 token 过期）
+            const needClearAuth = res.data && shouldClearAuthInfo(res.statusCode, res.data.code, silent, ignoreAuthClear);
             if (needClearAuth) {
               clearLocalAuthInfo();
             }
@@ -53,7 +56,7 @@ export const request = (options = {}) => {
           }
         } else {
           // HTTP状态码错误（401, 403, 404等）
-          const needClearAuth = shouldClearAuthInfo(res.statusCode, null, silent);
+          const needClearAuth = shouldClearAuthInfo(res.statusCode, null, silent, ignoreAuthClear);
           if (needClearAuth) {
             clearLocalAuthInfo();
           }
@@ -117,7 +120,9 @@ function clearLocalAuthInfo() {
 
 // 检查状态码是否需要清空登录信息
 // silent 为 true 时（如轮询订单详情）404 不应清空登录，避免误跳首页
-function shouldClearAuthInfo(statusCode, businessCode, silent) {
+// ignoreAuthClear 为 true 时，不触发清空登录（用于个别非关键接口的临时兼容）
+function shouldClearAuthInfo(statusCode, businessCode, silent, ignoreAuthClear) {
+  if (ignoreAuthClear) return false;
   if (silent && statusCode === 404) return false;
   // HTTP状态码：401未授权、403禁止
   if (statusCode === 401 || statusCode === 403) return true;

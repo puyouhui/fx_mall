@@ -77,6 +77,11 @@
           <text class="logout-text">退出登录</text>
         </view>
       </view>
+
+      <!-- 版本号 -->
+      <view class="version-section">
+        <text class="version-text">版本号 1.0.9</text>
+      </view>
     </view>
   </view>
 </template>
@@ -146,38 +151,23 @@ export default {
     
     // 跳转到关于我们
     goToAbout() {
-      uni.showModal({
-        title: '关于我们',
-        content: '商品选购小程序\n\n版本：1.0.0\n\n我们致力于为您提供优质的商品选购服务，让您的采购更加便捷高效。',
-        showCancel: false,
-        confirmText: '知道了',
-        confirmColor: '#20CB6B'
+      uni.navigateTo({
+        url: '/pages/about-us/about-us'
       });
-      // TODO: 可以跳转到专门的关于我们页面
     },
     
     // 隐私政策
     handlePrivacy() {
-      uni.showModal({
-        title: '隐私政策',
-        content: '我们非常重视您的隐私保护。我们会严格保护您的个人信息，不会向第三方泄露。',
-        showCancel: false,
-        confirmText: '知道了',
-        confirmColor: '#20CB6B'
+      uni.navigateTo({
+        url: '/pages/policy/policy?type=privacy'
       });
-      // TODO: 可以跳转到隐私政策页面
     },
     
     // 用户协议
     handleTerms() {
-      uni.showModal({
-        title: '用户协议',
-        content: '欢迎使用我们的服务。使用本服务即表示您同意遵守相关条款和条件。',
-        showCancel: false,
-        confirmText: '知道了',
-        confirmColor: '#20CB6B'
+      uni.navigateTo({
+        url: '/pages/policy/policy?type=terms'
       });
-      // TODO: 可以跳转到用户协议页面
     },
     
     // 退出登录
@@ -373,6 +363,19 @@ export default {
   color: #ff4d4f;
   font-weight: 600;
   letter-spacing: 1rpx;
+}
+
+/* 版本号 */
+.version-section {
+  margin-top: 40rpx;
+  padding: 20rpx 0 40rpx 0;
+  display: flex;
+  justify-content: center;
+}
+
+.version-text {
+  font-size: 24rpx;
+  color: #999;
 }
 </style>
 

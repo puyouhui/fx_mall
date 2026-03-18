@@ -1161,6 +1161,8 @@ func GetProductsByCategory(c *gin.Context) {
 			"supplier_id":     p.SupplierID,
 			"uom_category_id": p.UomCategoryID,
 			"is_special":      p.IsSpecial,
+			// 分类内排序字段，供前台/后台排序管理使用（越小越靠前）
+			"sort":            p.Sort,
 			"images":          p.Images,
 			"specs":           p.Specs,
 			"status":          p.Status,

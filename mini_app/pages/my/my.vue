@@ -490,6 +490,14 @@ export default {
         this.goToLogin();
         return;
       }
+      // 当前没有积分时，直接提示，不请求接口，避免无意义 401
+      if (!this.userPoints || this.userPoints <= 0) {
+        uni.showToast({
+          title: '当前暂无积分记录',
+          icon: 'none'
+        });
+        return;
+      }
       uni.navigateTo({
         url: '/pages/points/logs'
       });
