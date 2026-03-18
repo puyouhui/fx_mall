@@ -47,7 +47,7 @@ func GetAllHotProducts(db *sql.DB) ([]HotProduct, error) {
 // GetHotProducts 获取启用的热销产品（小程序用）
 func GetHotProducts(db *sql.DB) ([]Product, error) {
 	query := `SELECT p.id, p.name, p.description, p.original_price, p.price, p.category_id, 
-			  p.supplier_id, p.is_special, p.images, p.specs, p.status, p.created_at, p.updated_at
+			  p.supplier_id, p.uom_category_id, p.is_special, p.images, p.specs, p.status, p.created_at, p.updated_at
 			  FROM hot_products hp
 			  INNER JOIN products p ON hp.product_id = p.id
 			  WHERE hp.status = 1 AND p.status = 1
@@ -64,10 +64,10 @@ func GetHotProducts(db *sql.DB) ([]Product, error) {
 		var product Product
 		var imagesJSON, specsJSON string
 		var dbPrice, dbOriginalPrice sql.NullFloat64
-		var dbSupplierID sql.NullInt64
+		var dbSupplierID, dbUomCategoryID sql.NullInt64
 
-		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &dbOriginalPrice, &dbPrice, 
-			&product.CategoryID, &dbSupplierID, &product.IsSpecial, &imagesJSON, &specsJSON, 
+		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &dbOriginalPrice, &dbPrice,
+			&product.CategoryID, &dbSupplierID, &dbUomCategoryID, &product.IsSpecial, &imagesJSON, &specsJSON,
 			&product.Status, &product.CreatedAt, &product.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -82,6 +82,10 @@ func GetHotProducts(db *sql.DB) ([]Product, error) {
 		if dbSupplierID.Valid {
 			supplierIDVal := int(dbSupplierID.Int64)
 			product.SupplierID = &supplierIDVal
+		}
+		if dbUomCategoryID.Valid {
+			id := int(dbUomCategoryID.Int64)
+			product.UomCategoryID = &id
 		}
 
 		// 解析JSON字符串到切片

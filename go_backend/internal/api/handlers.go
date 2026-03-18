@@ -905,9 +905,64 @@ func GetSpecialProducts(c *gin.Context) {
 		return
 	}
 
+	// 为前端小程序补充单位类别的基准单位ID，便于按基准单位展示价格
+	uomBaseUnitMap := make(map[int]*int)
+	if len(specialProducts) > 0 {
+		rows, err := database.DB.Query("SELECT id, base_unit_id FROM uom_categories")
+		if err != nil {
+			log.Printf("查询单位类别失败: %v", err)
+		} else {
+			defer rows.Close()
+			for rows.Next() {
+				var id int
+				var baseUnitID sql.NullInt64
+				if err := rows.Scan(&id, &baseUnitID); err == nil {
+					if baseUnitID.Valid {
+						v := int(baseUnitID.Int64)
+						uomBaseUnitMap[id] = &v
+					} else {
+						uomBaseUnitMap[id] = nil
+					}
+				}
+			}
+			if err := rows.Err(); err != nil {
+				log.Printf("遍历单位类别失败: %v", err)
+			}
+		}
+	}
+
+	// 转换结果为 map，附加 uom_base_unit_id 字段
+	resultList := make([]map[string]interface{}, 0, len(specialProducts))
+	for _, p := range specialProducts {
+		item := map[string]interface{}{
+			"id":              p.ID,
+			"name":            p.Name,
+			"description":     p.Description,
+			"original_price":  p.OriginalPrice,
+			"price":           p.Price,
+			"category_id":     p.CategoryID,
+			"supplier_id":     p.SupplierID,
+			"uom_category_id": p.UomCategoryID,
+			"is_special":      p.IsSpecial,
+			"images":          p.Images,
+			"specs":           p.Specs,
+			"status":          p.Status,
+			"created_at":      p.CreatedAt,
+			"updated_at":      p.UpdatedAt,
+		}
+
+		if p.UomCategoryID != nil {
+			if baseID, ok := uomBaseUnitMap[*p.UomCategoryID]; ok && baseID != nil {
+				item["uom_base_unit_id"] = *baseID
+			}
+		}
+
+		resultList = append(resultList, item)
+	}
+
 	// 返回数据
 	result := map[string]interface{}{
-		"list":     specialProducts,
+		"list":     resultList,
 		"total":    total,
 		"pageNum":  pageNum,
 		"pageSize": pageSize,
@@ -979,9 +1034,64 @@ func SearchProducts(c *gin.Context) {
 		return
 	}
 
+	// 为前端小程序补充单位类别的基准单位ID，便于按基准单位展示价格
+	uomBaseUnitMap := make(map[int]*int)
+	if len(products) > 0 {
+		rows, err := database.DB.Query("SELECT id, base_unit_id FROM uom_categories")
+		if err != nil {
+			log.Printf("查询单位类别失败: %v", err)
+		} else {
+			defer rows.Close()
+			for rows.Next() {
+				var id int
+				var baseUnitID sql.NullInt64
+				if err := rows.Scan(&id, &baseUnitID); err == nil {
+					if baseUnitID.Valid {
+						v := int(baseUnitID.Int64)
+						uomBaseUnitMap[id] = &v
+					} else {
+						uomBaseUnitMap[id] = nil
+					}
+				}
+			}
+			if err := rows.Err(); err != nil {
+				log.Printf("遍历单位类别失败: %v", err)
+			}
+		}
+	}
+
+	// 转换结果为 map，附加 uom_base_unit_id 字段
+	resultList := make([]map[string]interface{}, 0, len(products))
+	for _, p := range products {
+		item := map[string]interface{}{
+			"id":              p.ID,
+			"name":            p.Name,
+			"description":     p.Description,
+			"original_price":  p.OriginalPrice,
+			"price":           p.Price,
+			"category_id":     p.CategoryID,
+			"supplier_id":     p.SupplierID,
+			"uom_category_id": p.UomCategoryID,
+			"is_special":      p.IsSpecial,
+			"images":          p.Images,
+			"specs":           p.Specs,
+			"status":          p.Status,
+			"created_at":      p.CreatedAt,
+			"updated_at":      p.UpdatedAt,
+		}
+
+		if p.UomCategoryID != nil {
+			if baseID, ok := uomBaseUnitMap[*p.UomCategoryID]; ok && baseID != nil {
+				item["uom_base_unit_id"] = *baseID
+			}
+		}
+
+		resultList = append(resultList, item)
+	}
+
 	// 构建返回数据结构
 	result := map[string]interface{}{
-		"list":     products,
+		"list":     resultList,
 		"total":    total,
 		"pageNum":  pageNum,
 		"pageSize": pageSize,
@@ -1012,9 +1122,64 @@ func GetProductsByCategory(c *gin.Context) {
 		return
 	}
 
+	// 为前端小程序补充单位类别的基准单位ID，便于按基准单位展示价格
+	uomBaseUnitMap := make(map[int]*int)
+	if len(products) > 0 {
+		rows, err := database.DB.Query("SELECT id, base_unit_id FROM uom_categories")
+		if err != nil {
+			log.Printf("查询单位类别失败: %v", err)
+		} else {
+			defer rows.Close()
+			for rows.Next() {
+				var id int
+				var baseUnitID sql.NullInt64
+				if err := rows.Scan(&id, &baseUnitID); err == nil {
+					if baseUnitID.Valid {
+						v := int(baseUnitID.Int64)
+						uomBaseUnitMap[id] = &v
+					} else {
+						uomBaseUnitMap[id] = nil
+					}
+				}
+			}
+			if err := rows.Err(); err != nil {
+				log.Printf("遍历单位类别失败: %v", err)
+			}
+		}
+	}
+
+	// 将结果转换为 map，附加 uom_base_unit_id 字段，其余结构保持不变
+	resultList := make([]map[string]interface{}, 0, len(products))
+	for _, p := range products {
+		item := map[string]interface{}{
+			"id":              p.ID,
+			"name":            p.Name,
+			"description":     p.Description,
+			"original_price":  p.OriginalPrice,
+			"price":           p.Price,
+			"category_id":     p.CategoryID,
+			"supplier_id":     p.SupplierID,
+			"uom_category_id": p.UomCategoryID,
+			"is_special":      p.IsSpecial,
+			"images":          p.Images,
+			"specs":           p.Specs,
+			"status":          p.Status,
+			"created_at":      p.CreatedAt,
+			"updated_at":      p.UpdatedAt,
+		}
+
+		if p.UomCategoryID != nil {
+			if baseID, ok := uomBaseUnitMap[*p.UomCategoryID]; ok && baseID != nil {
+				item["uom_base_unit_id"] = *baseID
+			}
+		}
+
+		resultList = append(resultList, item)
+	}
+
 	// 构建返回数据结构
 	result := map[string]interface{}{
-		"list":     products,
+		"list":     resultList,
 		"total":    total,
 		"pageNum":  pageNum,
 		"pageSize": pageSize,
@@ -1647,7 +1812,62 @@ func GetHotProducts(c *gin.Context) {
 		return
 	}
 
-	successResponse(c, products, "获取成功")
+	// 为前端小程序补充单位类别的基准单位ID，便于按基准单位展示价格
+	uomBaseUnitMap := make(map[int]*int)
+	if len(products) > 0 {
+		rows, err := database.DB.Query("SELECT id, base_unit_id FROM uom_categories")
+		if err != nil {
+			log.Printf("查询单位类别失败: %v", err)
+		} else {
+			defer rows.Close()
+			for rows.Next() {
+				var id int
+				var baseUnitID sql.NullInt64
+				if err := rows.Scan(&id, &baseUnitID); err == nil {
+					if baseUnitID.Valid {
+						v := int(baseUnitID.Int64)
+						uomBaseUnitMap[id] = &v
+					} else {
+						uomBaseUnitMap[id] = nil
+					}
+				}
+			}
+			if err := rows.Err(); err != nil {
+				log.Printf("遍历单位类别失败: %v", err)
+			}
+		}
+	}
+
+	// 转换结果为 map，附加 uom_base_unit_id 字段
+	resultList := make([]map[string]interface{}, 0, len(products))
+	for _, p := range products {
+		item := map[string]interface{}{
+			"id":              p.ID,
+			"name":            p.Name,
+			"description":     p.Description,
+			"original_price":  p.OriginalPrice,
+			"price":           p.Price,
+			"category_id":     p.CategoryID,
+			"supplier_id":     p.SupplierID,
+			"uom_category_id": p.UomCategoryID,
+			"is_special":      p.IsSpecial,
+			"images":          p.Images,
+			"specs":           p.Specs,
+			"status":          p.Status,
+			"created_at":      p.CreatedAt,
+			"updated_at":      p.UpdatedAt,
+		}
+
+		if p.UomCategoryID != nil {
+			if baseID, ok := uomBaseUnitMap[*p.UomCategoryID]; ok && baseID != nil {
+				item["uom_base_unit_id"] = *baseID
+			}
+		}
+
+		resultList = append(resultList, item)
+	}
+
+	successResponse(c, resultList, "获取成功")
 }
 
 // GetAllHotProductsForAdmin 获取所有热销产品（管理后台）

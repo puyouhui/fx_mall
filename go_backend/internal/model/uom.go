@@ -133,8 +133,9 @@ func CreateUomCategory(c *UomCategory) error {
 
 // UpdateUomCategory 更新单位类别
 func UpdateUomCategory(c *UomCategory) error {
-	query := `UPDATE uom_categories SET name = ?, base_unit_id = ?, sort = ?, updated_at = NOW() WHERE id = ?`
-	_, err := database.DB.Exec(query, c.Name, c.BaseUnitID, c.Sort, c.ID)
+	// 注意：base_unit_id 由单位的基准标记自动维护，这里不要覆盖
+	query := `UPDATE uom_categories SET name = ?, sort = ?, updated_at = NOW() WHERE id = ?`
+	_, err := database.DB.Exec(query, c.Name, c.Sort, c.ID)
 	return err
 }
 
@@ -171,6 +172,12 @@ func CreateUomUnit(u *UomUnit) error {
 	u.ID = int(id)
 	u.CreatedAt = time.Now()
 	u.UpdatedAt = time.Now()
+
+	// 同步更新所属类别的基准单位ID
+	if err := updateCategoryBaseUnitFromUnits(u.CategoryID); err != nil {
+		// 不让整个创建失败，只记录错误
+		return err
+	}
 	return nil
 }
 
@@ -179,12 +186,64 @@ func UpdateUomUnit(u *UomUnit) error {
 	query := `UPDATE uom_units SET name = ?, ratio = ?, is_base = ?, sort = ?, updated_at = NOW() 
 		WHERE id = ?`
 	_, err := database.DB.Exec(query, u.Name, u.Ratio, u.IsBase, u.Sort, u.ID)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// 更新完单位后，同步类别的基准单位ID
+	if err := updateCategoryBaseUnitFromUnits(u.CategoryID); err != nil {
+		return err
+	}
+	return nil
 }
 
 // DeleteUomUnit 删除单位
 func DeleteUomUnit(id int) error {
-	_, err := database.DB.Exec("DELETE FROM uom_units WHERE id = ?", id)
+	// 先查出所属类别ID，方便后续同步 base_unit_id
+	var categoryID int
+	err := database.DB.QueryRow("SELECT category_id FROM uom_units WHERE id = ?", id).Scan(&categoryID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil
+		}
+		return err
+	}
+
+	if _, err := database.DB.Exec("DELETE FROM uom_units WHERE id = ?", id); err != nil {
+		return err
+	}
+
+	// 删除后重新计算该类别的基准单位
+	if err := updateCategoryBaseUnitFromUnits(categoryID); err != nil {
+		return err
+	}
+	return nil
+}
+
+// updateCategoryBaseUnitFromUnits 根据类别下的单位情况刷新 uom_categories.base_unit_id
+func updateCategoryBaseUnitFromUnits(categoryID int) error {
+	// 查找该类别下的基准单位（理论上最多一条，多条时取第一条）
+	var baseUnitID sql.NullInt64
+	err := database.DB.QueryRow(
+		"SELECT id FROM uom_units WHERE category_id = ? AND is_base = 1 ORDER BY id LIMIT 1",
+		categoryID,
+	).Scan(&baseUnitID)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+
+	if baseUnitID.Valid {
+		_, err = database.DB.Exec(
+			"UPDATE uom_categories SET base_unit_id = ? WHERE id = ?",
+			int(baseUnitID.Int64), categoryID,
+		)
+	} else {
+		// 没有任何基准单位，置为 NULL
+		_, err = database.DB.Exec(
+			"UPDATE uom_categories SET base_unit_id = NULL WHERE id = ?",
+			categoryID,
+		)
+	}
 	return err
 }
 

@@ -19,9 +19,20 @@
             {{ row.base_unit ? row.base_unit.name : '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="units" label="单位数量" min-width="100">
+        <el-table-column prop="units" label="单位标签" min-width="220">
           <template #default="{ row }">
-            {{ (row.units || []).length }}
+            <template v-if="(row.units || []).length">
+              <el-tag
+                v-for="unit in row.units"
+                :key="unit.id"
+                size="small"
+                :type="unit.is_base === 1 ? 'success' : 'info'"
+                style="margin-right: 4px; margin-bottom: 4px;"
+              >
+                {{ unit.name }}<span v-if="unit.is_base === 1">（基准）</span>
+              </el-tag>
+            </template>
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="创建时间" min-width="160">

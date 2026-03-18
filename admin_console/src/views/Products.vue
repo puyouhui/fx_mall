@@ -452,6 +452,9 @@ const currentUomUnits = computed(() => {
   return cat && cat.units ? cat.units : []
 })
 
+// 记录上一次选择的计量单位类别，用于切换时清理不合法的规格单位
+const lastUomCategoryId = ref(null)
+
 const getUnitName = (unitId) => {
   if (!unitId) return '件'
   for (const c of uomCategories.value) {
@@ -611,6 +614,13 @@ const productRules = {
   ],
   description: [
     { max: 500, message: '商品描述不能超过 500 个字符', trigger: 'blur' }
+  ],
+  uomCategoryId: [
+    {
+      required: true,
+      message: '请选择计量单位类别',
+      trigger: 'change'
+    }
   ],
   supplierId: [
     // 供应商ID为可选，后端会自动分配默认供应商
@@ -849,6 +859,7 @@ const handleAddProduct = () => {
     deliveryCount: 1.0,
     uomUnitId: null
   })
+  lastUomCategoryId.value = productForm.uomCategoryId
   dialogVisible.value = true
 }
 
@@ -932,6 +943,7 @@ const handleEditProduct = (row) => {
   })
   // 清空当前规格输入表单
   resetSpecForm()
+  lastUomCategoryId.value = productForm.uomCategoryId
   dialogVisible.value = true
 }
 
@@ -1585,6 +1597,49 @@ watch(showImageLibraryDialog, (newVal) => {
   }
 })
 
+// 监听计量单位类别切换，避免规格继续引用旧类别下的单位
+watch(
+  () => productForm.uomCategoryId,
+  (newVal, oldVal) => {
+    // 首次赋值或未真正变化时不处理
+    if (newVal === oldVal || newVal == null) {
+      lastUomCategoryId.value = newVal
+      return
+    }
+
+    // 仅在已经有规格时才需要清理
+    if (!productForm.specs || !productForm.specs.length) {
+      lastUomCategoryId.value = newVal
+      return
+    }
+
+    // 当前类别下可用的单位ID集合
+    const units = currentUomUnits.value || []
+    const validIds = new Set(units.map(u => Number(u.id)))
+
+    let clearedCount = 0
+    productForm.specs.forEach(spec => {
+      const rawId = spec.uom_unit_id ?? spec.uomUnitId
+      if (!rawId) {
+        return
+      }
+      const idNum = Number(rawId)
+      if (!validIds.has(idNum)) {
+        // 该规格原来绑定的单位不属于新类别，清空绑定，强制用户重新选择
+        spec.uom_unit_id = null
+        spec.uomUnitId = null
+        clearedCount++
+      }
+    })
+
+    if (clearedCount > 0) {
+      ElMessage.info(`已切换计量单位类别，有 ${clearedCount} 个规格的单位需要重新选择`)
+    }
+
+    lastUomCategoryId.value = newVal
+  }
+)
+
 // 组件挂载时
 onMounted(() => {
   initData()
@@ -1849,10 +1904,8 @@ onMounted(() => {
 }
 
 /* 价格输入框样式优化 */
-.el-input-number {
-  .el-input__wrapper {
-    padding: 0 32px 0 12px;
-  }
+.el-input-number .el-input__wrapper {
+  padding: 0 32px 0 12px;
 }
 
 /* 响应式布局 */

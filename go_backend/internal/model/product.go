@@ -58,7 +58,7 @@ func GetSpecialProductsWithPagination(pageNum, pageSize int) ([]Product, int, er
 	}
 
 	// 获取分页数据，按 special_sort 排序
-	query := `SELECT id, name, description, original_price, price, category_id, is_special, 
+	query := `SELECT id, name, description, original_price, price, category_id, supplier_id, uom_category_id, is_special, 
 			  images, specs, status, COALESCE(special_sort, 0) as special_sort, 
 			  created_at, updated_at 
 			  FROM products 
@@ -75,8 +75,11 @@ func GetSpecialProductsWithPagination(pageNum, pageSize int) ([]Product, int, er
 		var product Product
 		var imagesJSON, specsJSON string
 		var dbPrice, dbOriginalPrice sql.NullFloat64 // 使用可空类型
+		var dbSupplierID, dbUomCategoryID sql.NullInt64
 
-		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &dbOriginalPrice, &dbPrice, &product.CategoryID, &product.IsSpecial, &imagesJSON, &specsJSON, &product.Status, &product.SpecialSort, &product.CreatedAt, &product.UpdatedAt); err != nil {
+		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &dbOriginalPrice, &dbPrice,
+			&product.CategoryID, &dbSupplierID, &dbUomCategoryID, &product.IsSpecial,
+			&imagesJSON, &specsJSON, &product.Status, &product.SpecialSort, &product.CreatedAt, &product.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 
@@ -86,6 +89,14 @@ func GetSpecialProductsWithPagination(pageNum, pageSize int) ([]Product, int, er
 		}
 		if dbOriginalPrice.Valid {
 			product.OriginalPrice = dbOriginalPrice.Float64
+		}
+		if dbSupplierID.Valid {
+			id := int(dbSupplierID.Int64)
+			product.SupplierID = &id
+		}
+		if dbUomCategoryID.Valid {
+			id := int(dbUomCategoryID.Int64)
+			product.UomCategoryID = &id
 		}
 
 		// 解析JSON字符串到切片
@@ -286,6 +297,11 @@ func fixSpecDeliveryCount(specs *[]Spec) {
 
 // CreateProduct 创建商品
 func CreateProduct(product *Product) error {
+	// 创建商品时必须绑定计量单位类别
+	if product.UomCategoryID == nil {
+		return fmt.Errorf("商品必须绑定计量单位类别")
+	}
+
 	// 序列化图片和规格为JSON字符串
 	imagesJSON, err := json.Marshal(product.Images)
 	if err != nil {
@@ -324,6 +340,11 @@ func CreateProduct(product *Product) error {
 
 // UpdateProduct 更新商品
 func UpdateProduct(product *Product) error {
+	// 更新商品时必须绑定计量单位类别
+	if product.UomCategoryID == nil {
+		return fmt.Errorf("商品必须绑定计量单位类别")
+	}
+
 	// 序列化图片和规格为JSON字符串
 	imagesJSON, err := json.Marshal(product.Images)
 	if err != nil {

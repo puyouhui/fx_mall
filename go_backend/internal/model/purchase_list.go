@@ -16,7 +16,9 @@ type PurchaseSpecSnapshot struct {
 	Cost           float64 `json:"cost"`
 	WholesalePrice float64 `json:"wholesale_price"`
 	RetailPrice    float64 `json:"retail_price"`
-	DeliveryCount  float64 `json:"delivery_count"` // 配送计件数（默认1.0，用于计算件数补贴）
+	DeliveryCount  float64 `json:"delivery_count"`          // 配送计件数（默认1.0，用于计算件数补贴）
+	UomCategoryID  *int    `json:"uom_category_id,omitempty"` // 计量单位类别ID（下单时快照）
+	UomUnitID      *int    `json:"uom_unit_id,omitempty"`      // 绑定的计量单位ID（下单时快照）
 }
 
 // PurchaseListItem 采购单中的商品

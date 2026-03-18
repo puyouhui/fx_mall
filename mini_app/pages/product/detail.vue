@@ -48,7 +48,7 @@
 			</view>
 			<view class="product-info-content">
 				<view class="price-container">
-					<text class="price-symbol"></text>
+					<text class="price-symbol">¥</text>
 					<text class="product-price">{{ product.priceRange || '0.00' }}</text>
 				</view>
 				<text class="product-name">{{ product.name }}</text>
@@ -527,7 +527,7 @@ export default {
 				const productPrice = parseFloat(this.product.price) || 0;
 				this.product.minPrice = productPrice;
 				this.product.maxPrice = productPrice;
-				this.product.priceRange = '¥' + productPrice.toFixed(2);
+				this.product.priceRange = productPrice.toFixed(2);
 				return;
 			}
 
@@ -580,14 +580,19 @@ export default {
 				const fallbackPrice = parseFloat(this.product.price) || 0;
 				this.product.minPrice = fallbackPrice;
 				this.product.maxPrice = fallbackPrice;
-				this.product.priceRange = '¥' + fallbackPrice.toFixed(2);
+				this.product.priceRange = fallbackPrice.toFixed(2);
 				return;
 			}
 
-			// 只显示最低价格
 			this.product.minPrice = Math.min(...prices);
 			this.product.maxPrice = Math.max(...prices);
-				this.product.priceRange = '¥' + this.product.minPrice.toFixed(2);
+
+			// 单价或区间价
+			if (this.product.minPrice === this.product.maxPrice) {
+				this.product.priceRange = this.product.minPrice.toFixed(2);
+			} else {
+				this.product.priceRange = `${this.product.minPrice.toFixed(2)}~${this.product.maxPrice.toFixed(2)}`;
+			}
 		},
 
 		// 格式化规格价格

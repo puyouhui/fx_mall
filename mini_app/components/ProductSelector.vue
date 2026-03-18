@@ -21,7 +21,7 @@
                 {{ selectedProduct?.specs?.length || 0 }} 个可选规格
               </text>
             </view>
-            <text class="ps-price-range">¥{{ selectedProduct?.displayPrice || '0.00' }}</text>
+            <text class="ps-price-range">¥{{ getHeaderPriceText(selectedProduct) }}</text>
           </view>
         </view>
 
@@ -38,7 +38,8 @@
               <view class="ps-spec-info">
                 <view class="ps-spec-header">
                   <text class="ps-spec-name">{{ spec.name }}</text>
-                  <text class="ps-spec-desc" v-if="spec.description">{{ spec.description }}</text>
+                  <!-- 规格描述只对批发用户展示，零售用户不显示 -->
+                  <text class="ps-spec-desc" v-if="spec.description && isWholesaleUser">{{ spec.description }}</text>
                 </view>
                 <view class="ps-spec-price-container" :class="{ 'wholesale-layout': isWholesaleUser }">
                   <text v-if="isWholesaleUser" class="ps-spec-price">
@@ -354,69 +355,134 @@ const normalizeProductDetail = (product) => {
 }
 
 const calculateProductPriceRange = (product) => {
-  if (!product.specs || !Array.isArray(product.specs) || product.specs.length === 0) {
-    return (product.price || 0).toFixed(2)
+  let specs = product.specs
+  if (typeof specs === 'string') {
+    try {
+      specs = JSON.parse(specs)
+    } catch (error) {
+      specs = []
+    }
+  }
+
+  if (!Array.isArray(specs) || specs.length === 0) {
+    return (Number(product.price) || 0).toFixed(2)
   }
 
   // 根据用户类型决定显示哪种价格
   const info = userState.value.info
   const isWholesale = info && info.user_type === 'wholesale'
 
-  const prices = []
-  product.specs.forEach(spec => {
-    if (isWholesale) {
-      // 批发用户：显示批发价
-      const wholesalePrice = spec.wholesale_price || spec.wholesalePrice
-      if (wholesalePrice && wholesalePrice > 0) {
-        prices.push(parseFloat(wholesalePrice))
-      }
-    } else {
-      // 未登录或零售用户：显示零售价
-      const retailPrice = spec.retail_price || spec.retailPrice
-      if (retailPrice && retailPrice > 0) {
-        prices.push(parseFloat(retailPrice))
-      }
-    }
-  })
+  // 优先按基准单位的规格计算价格
+  const baseUnitId = product.uom_base_unit_id || product.uomBaseUnitId
 
-  // 如果没有找到对应类型的价格，使用另一种价格作为后备
-  if (prices.length === 0) {
-    product.specs.forEach(spec => {
-      if (isWholesale) {
-        // 批发用户找不到批发价，使用零售价作为后备
-        const retailPrice = spec.retail_price || spec.retailPrice
-        if (retailPrice && retailPrice > 0) {
-          prices.push(parseFloat(retailPrice))
-        }
-      } else {
-        // 零售用户找不到零售价，使用批发价作为后备
-        const wholesalePrice = spec.wholesale_price || spec.wholesalePrice
-        if (wholesalePrice && wholesalePrice > 0) {
-          prices.push(parseFloat(wholesalePrice))
-        }
+  // 帮助函数：从一组规格中按用户身份取预览价
+  const getPriceFromSpecs = (list) => {
+    if (!list || !list.length) return null
+    const prices = []
+
+    // 1) 首选价型：批发用户看批发价，零售用户看零售价
+    list.forEach(spec => {
+      const primary = isWholesale
+        ? (spec?.wholesale_price ?? spec?.wholesalePrice)
+        : (spec?.retail_price ?? spec?.retailPrice)
+      if (primary && primary > 0) {
+        prices.push(parseFloat(primary))
       }
-      // 最后使用通用价格字段
-      if (spec.price && spec.price > 0 && prices.length === 0) {
+    })
+    if (prices.length) return Math.min(...prices)
+
+    // 2) 备用价型：没填首选价时，看另一种价
+    list.forEach(spec => {
+      const secondary = isWholesale
+        ? (spec?.retail_price ?? spec?.retailPrice)
+        : (spec?.wholesale_price ?? spec?.wholesalePrice)
+      if (secondary && secondary > 0) {
+        prices.push(parseFloat(secondary))
+      }
+    })
+    if (prices.length) return Math.min(...prices)
+
+    // 3) 通用价格兜底
+    list.forEach(spec => {
+      if (spec.price && spec.price > 0) {
         prices.push(parseFloat(spec.price))
       }
     })
+    if (prices.length) return Math.min(...prices)
+
+    return null
   }
 
-  if (prices.length === 0) {
-    return (product.price || 0).toFixed(2)
+  let price = null
+
+  // 先从基准单位规格中取价
+  if (baseUnitId) {
+    const baseSpecs = []
+    specs.forEach(spec => {
+      const specUnitId = spec?.uom_unit_id ?? spec?.uomUnitId
+      if (!specUnitId || Number(specUnitId) !== Number(baseUnitId)) {
+        return
+      }
+      baseSpecs.push(spec)
+    })
+    if (baseSpecs.length) {
+      price = getPriceFromSpecs(baseSpecs)
+    }
   }
 
-  // 显示价格范围（最低价~最高价）
-  const minPrice = Math.min(...prices)
-  const maxPrice = Math.max(...prices)
-  
-  if (minPrice === maxPrice) {
-    // 如果所有规格价格相同，只显示一个价格
-    return minPrice.toFixed(2)
-  } else {
-    // 显示价格范围
-    return `${minPrice.toFixed(2)}~${maxPrice.toFixed(2)}`
+  // 如果基准规格没有可用价格，再退回所有规格
+  if (price === null) {
+    price = getPriceFromSpecs(specs)
   }
+
+  // 所有规格也没有价格，兜底用商品本身的 price
+  if (price === null) {
+    price = Number(product.price) || 0
+  }
+
+  return Number(price).toFixed(2)
+}
+
+// 头部价格文案：
+// - 只有 1 个规格：直接显示该规格针对当前用户身份的价格
+// - 多个规格：显示当前用户身份对应的价格范围（所有规格的最小价 ~ 最大价）
+const getHeaderPriceText = (product) => {
+  if (!product) return '0.00'
+  const specs = Array.isArray(product.specs) ? product.specs : []
+
+  // 单规格：直接按用户类型取价
+  if (specs.length === 1) {
+    const spec = specs[0]
+    const info = userState.value.info
+    const isWholesale = info && info.user_type === 'wholesale'
+    return formatSpecPrice(spec, isWholesale ? 'wholesale' : 'retail')
+  }
+
+  // 无规格：兜底用商品价
+  if (specs.length === 0) {
+    return (Number(product.price) || 0).toFixed(2)
+  }
+
+  // 多规格：统计当前用户身份下所有规格的价格，给出范围
+  const info = userState.value.info
+  const isWholesale = info && info.user_type === 'wholesale'
+  const priceType = isWholesale ? 'wholesale' : 'retail'
+
+  const prices = specs
+    .map(spec => parseFloat(formatSpecPrice(spec, priceType)))
+    .filter(v => !Number.isNaN(v))
+
+  if (!prices.length) {
+    return (Number(product.price) || 0).toFixed(2)
+  }
+
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+
+  if (min === max) {
+    return min.toFixed(2)
+  }
+  return `${min.toFixed(2)}~${max.toFixed(2)}`
 }
 
 const getSpecQuantity = (spec) => {
@@ -613,6 +679,7 @@ defineExpose({
   height: 200rpx;
   border-radius: 12rpx;
   margin-right: 20rpx;
+  flex-shrink: 0;
 }
 
 .ps-name {
@@ -643,6 +710,8 @@ defineExpose({
   font-size: 30rpx;
   font-weight: 600;
   color: #ff4d4f;
+  margin-top: 8rpx;
+  word-break: break-all;
 }
 .ps-specs{
   padding: 0;

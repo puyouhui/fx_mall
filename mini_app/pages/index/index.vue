@@ -647,62 +647,96 @@ export default {
 			}
 		},
 
-		// 计算单个商品的最低价格（使用批发价和零售价）
+		// 计算单个商品的最低价格（列表预览价）
 		calculateProductPriceRange(product) {
-			if (!product.specs || !Array.isArray(product.specs) || product.specs.length === 0) {
+			let specs = product.specs;
+			if (typeof specs === 'string') {
+				try {
+					specs = JSON.parse(specs);
+				} catch (error) {
+					specs = [];
+				}
+			}
+
+			if (!Array.isArray(specs) || specs.length === 0) {
 				// 如果没有规格数据，使用原价格
-				product.displayPrice = product.price || '0.00';
+				const basePrice = Number(product.price) || 0;
+				product.displayPrice = basePrice.toFixed(2);
 				return;
 			}
 
 			// 根据用户类型决定显示哪种价格
 			const isWholesaleUser = this.userType === 'wholesale';
 
-			// 收集价格
-			const prices = [];
-			product.specs.forEach(spec => {
-				if (isWholesaleUser) {
-					// 批发用户：显示批发价
-					const wholesalePrice = spec.wholesale_price || spec.wholesalePrice;
-					if (wholesalePrice && wholesalePrice > 0) {
-						prices.push(parseFloat(wholesalePrice));
-					}
-				} else {
-					// 未登录或零售用户：显示零售价
-					const retailPrice = spec.retail_price || spec.retailPrice;
-					if (retailPrice && retailPrice > 0) {
-						prices.push(parseFloat(retailPrice));
-					}
-				}
-			});
+			// 优先按基准单位的规格计算价格
+			const baseUnitId = product.uom_base_unit_id || product.uomBaseUnitId;
 
-			if (prices.length === 0) {
-				// 如果没有找到对应类型的价格，尝试使用另一种价格作为后备
-				product.specs.forEach(spec => {
-					if (isWholesaleUser) {
-						// 批发用户找不到批发价，使用零售价作为后备
-						const retailPrice = spec.retail_price || spec.retailPrice;
-						if (retailPrice && retailPrice > 0) {
-							prices.push(parseFloat(retailPrice));
-						}
-					} else {
-						// 零售用户找不到零售价，使用批发价作为后备
-						const wholesalePrice = spec.wholesale_price || spec.wholesalePrice;
-						if (wholesalePrice && wholesalePrice > 0) {
-							prices.push(parseFloat(wholesalePrice));
-						}
+			// 帮助函数：从一组规格中按用户身份取预览价
+			const getPriceFromSpecs = (list) => {
+				if (!list || !list.length) return null;
+				const prices = [];
+
+				// 1) 首选价型：批发用户看批发价，零售用户看零售价
+				list.forEach(spec => {
+					const primary = isWholesaleUser
+						? (spec?.wholesale_price ?? spec?.wholesalePrice)
+						: (spec?.retail_price ?? spec?.retailPrice);
+					if (primary && primary > 0) {
+						prices.push(parseFloat(primary));
 					}
 				});
+				if (prices.length) return Math.min(...prices);
+
+				// 2) 备用价型：没填首选价时，看另一种价
+				list.forEach(spec => {
+					const secondary = isWholesaleUser
+						? (spec?.retail_price ?? spec?.retailPrice)
+						: (spec?.wholesale_price ?? spec?.wholesalePrice);
+					if (secondary && secondary > 0) {
+						prices.push(parseFloat(secondary));
+					}
+				});
+				if (prices.length) return Math.min(...prices);
+
+				// 3) 通用价格兜底
+				list.forEach(spec => {
+					if (spec.price && spec.price > 0) {
+						prices.push(parseFloat(spec.price));
+					}
+				});
+				if (prices.length) return Math.min(...prices);
+
+				return null;
+			};
+
+			let price = null;
+
+			// 先从基准单位规格中取价
+			if (baseUnitId) {
+				const baseSpecs = [];
+				specs.forEach(spec => {
+					const specUnitId = spec?.uom_unit_id ?? spec?.uomUnitId;
+					if (!specUnitId || Number(specUnitId) !== Number(baseUnitId)) {
+						return;
+					}
+					baseSpecs.push(spec);
+				});
+				if (baseSpecs.length) {
+					price = getPriceFromSpecs(baseSpecs);
+				}
 			}
 
-			if (prices.length === 0) {
-				product.displayPrice = product.price || '0.00';
-				return;
+			// 如果基准规格没有可用价格，再退回所有规格
+			if (price === null) {
+				price = getPriceFromSpecs(specs);
 			}
 
-			// 计算最低价格
-			const minPrice = Math.min(...prices);
-			product.displayPrice = minPrice.toFixed(2);
+			// 所有规格也没有价格，兜底用商品本身的 price
+			if (price === null) {
+				price = Number(product.price) || 0;
+			}
+
+			product.displayPrice = Number(price).toFixed(2);
 		},
 
 		// 热销价格展示格式化（控制小数位）

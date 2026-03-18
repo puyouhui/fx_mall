@@ -108,6 +108,16 @@ func AddPurchaseListItem(c *gin.Context) {
 		DeliveryCount:  matchedSpec.DeliveryCount, // 配送计件数
 	}
 
+	// 记录下单时的单位类别和单位ID快照，便于后续统计
+	if product.UomCategoryID != nil {
+		id := *product.UomCategoryID
+		specSnapshot.UomCategoryID = &id
+	}
+	if matchedSpec.UomUnitID != nil {
+		id := *matchedSpec.UomUnitID
+		specSnapshot.UomUnitID = &id
+	}
+
 	image := ""
 	if len(product.Images) > 0 {
 		image = product.Images[0]
