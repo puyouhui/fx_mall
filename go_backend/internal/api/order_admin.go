@@ -687,8 +687,15 @@ func UpdateOrderStatus(c *gin.Context) {
 		return
 	}
 
+	// 管理员标记「已送达」时：在线支付且已支付的订单自动设为已收款
+	effectiveStatus := req.Status
+	// 只要已完成微信支付回调写入 paid_at，就把已送达提升为已收款
+	if req.Status == "delivered" && order.PaidAt != nil {
+		effectiveStatus = "paid"
+	}
+
 	// 更新订单状态
-	err = model.UpdateOrderStatus(id, req.Status)
+	err = model.UpdateOrderStatus(id, effectiveStatus)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新订单状态失败: " + err.Error()})
 		return
@@ -696,7 +703,7 @@ func UpdateOrderStatus(c *gin.Context) {
 
 	// 如果订单状态变为 cancelled（已取消），清理该订单的分成记录
 	// 特别是新客订单记录，这样其他订单就可以重新计算新客激励了
-	if req.Status == "cancelled" {
+	if effectiveStatus == "cancelled" {
 		// 异步处理，避免阻塞
 		go func(orderID int) {
 			if err := model.CancelOrderCommissions(orderID); err != nil {
@@ -716,7 +723,7 @@ func UpdateOrderStatus(c *gin.Context) {
 	}
 
 	// 如果订单状态变为 paid（已收款），需要计算销售分成和处理推荐奖励
-	if req.Status == "paid" {
+	if effectiveStatus == "paid" {
 		// 异步处理销售分成计算和推荐奖励（避免阻塞）
 		go func(orderID int) {
 			// 等待一下，确保订单状态和结算日期已更新

@@ -81,6 +81,46 @@ class ApiClient:
         except Exception as e:
             return False, [], 0
     
+    def get_default_uom_category(self) -> tuple[bool, Optional[int]]:
+        """获取默认「件」单位类别 ID"""
+        try:
+            r = self.session.get(self._url("/admin/uom/default-category"), headers=self._headers(), timeout=15)
+            data = r.json()
+            if r.status_code == 200 and data.get("code") == 200:
+                d = data.get("data", data)
+                uid = d.get("id") if isinstance(d, dict) else None
+                return True, int(uid) if uid is not None else None
+            return False, None
+        except Exception:
+            return False, None
+    
+    def get_uom_categories(self) -> tuple[bool, Any]:
+        """获取所有单位类别（含单位列表）"""
+        try:
+            r = self.session.get(self._url("/admin/uom/categories"), headers=self._headers(), timeout=15)
+            data = r.json()
+            if r.status_code == 200 and data.get("code") == 200:
+                return True, data.get("data", data) or []
+            return False, []
+        except Exception:
+            return False, []
+    
+    def get_uom_units(self, category_id: int) -> tuple[bool, Any]:
+        """获取某单位类别下的单位列表"""
+        try:
+            r = self.session.get(
+                self._url("/admin/uom/units"),
+                params={"category_id": category_id},
+                headers=self._headers(),
+                timeout=15,
+            )
+            data = r.json()
+            if r.status_code == 200 and data.get("code") == 200:
+                return True, data.get("data", data) or []
+            return False, []
+        except Exception:
+            return False, []
+    
     def update_product(self, product_id: int, product_data: dict) -> tuple[bool, str]:
         """更新商品"""
         try:
@@ -122,6 +162,23 @@ def apply_price_delta(specs: list, cost_delta: float, wholesale_delta: float, re
         ns["retail_price"] = max(0, (ns.get("retail_price") or ns.get("retailPrice") or 0) + retail_delta)
         new_specs.append(ns)
     return new_specs
+
+
+def _get_effective_uom_category_id(product: dict, default_category_id: int) -> int:
+    """商品必须绑定计量单位类别：有原单位的用原单位，没有的用默认「件」"""
+    uid = product.get("uom_category_id") or product.get("uomCategoryId")
+    if uid is not None and uid != 0:
+        return int(uid)
+    return default_category_id
+
+
+def _ensure_spec_uom_unit_id(spec: dict, uom_category_id: int, category_to_base_unit: dict, default_unit_id: int) -> None:
+    """规格必须绑定单位：有原单位的保留，没有的绑定该类别基准单位或默认「件」"""
+    uid = spec.get("uom_unit_id") or spec.get("uomUnitId")
+    if uid is not None and uid != 0:
+        return  # 已有单位，保留
+    base_unit = category_to_base_unit.get(uom_category_id)
+    spec["uom_unit_id"] = int(base_unit) if base_unit else default_unit_id
 
 
 class BatchPriceApp:
@@ -296,6 +353,50 @@ class BatchPriceApp:
         total_products = len(products)
         self.root.after(0, lambda: self._log(f"该分类下共 {total_products} 个商品"))
         
+        # 获取默认「件」单位类别 ID 和单位映射（商品必须绑定计量单位类别）
+        ok_default, default_uom_cat_id = self.client.get_default_uom_category()
+        if not ok_default or not default_uom_cat_id:
+            self.root.after(0, lambda: self._log("获取默认单位类别失败，无法继续"))
+            self.root.after(0, lambda: self._on_batch_done(0, total_products, total_products))
+            return
+        
+        # 构建 单位类别ID -> 基准单位ID 映射，并获取默认「件」单位 ID
+        ok_cats, uom_cats = self.client.get_uom_categories()
+        category_to_base_unit: Dict[int, int] = {}
+        default_uom_unit_id: Optional[int] = None
+        if ok_cats and isinstance(uom_cats, list):
+            for cat in uom_cats:
+                cid = cat.get("id")
+                if cid is None:
+                    continue
+                cid = int(cid)
+                base_id = cat.get("base_unit_id")
+                units = cat.get("units", [])
+                found_base: Optional[int] = None
+                if base_id:
+                    found_base = int(base_id)
+                else:
+                    for u in units:
+                        if u.get("is_base") == 1:
+                            found_base = int(u.get("id", 0))
+                            break
+                if found_base:
+                    category_to_base_unit[cid] = found_base
+                if cid == default_uom_cat_id and found_base:
+                    default_uom_unit_id = found_base
+        
+        if not default_uom_unit_id:
+            ok_units, units = self.client.get_uom_units(default_uom_cat_id)
+            if ok_units and units:
+                for u in units:
+                    if u.get("is_base") == 1:
+                        default_uom_unit_id = int(u.get("id", 0))
+                        break
+                if not default_uom_unit_id and units:
+                    default_uom_unit_id = int(units[0].get("id", 0))
+            else:
+                default_uom_unit_id = category_to_base_unit.get(default_uom_cat_id) or default_uom_cat_id
+        
         success = 0
         fail = 0
         for i, p in enumerate(products):
@@ -309,7 +410,15 @@ class BatchPriceApp:
                 continue
             
             new_specs = apply_price_delta(specs, cost_d, wholesale_d, retail_d)
+            
+            # 商品必须绑定计量单位类别：有原单位的用原单位，没有的自动绑定「件」
+            uom_cat_id = _get_effective_uom_category_id(p, default_uom_cat_id)
+            # 规格必须绑定单位：有原单位的保留，没有的绑定该类别基准单位或默认「件」
+            for spec in new_specs:
+                _ensure_spec_uom_unit_id(spec, uom_cat_id, category_to_base_unit, default_uom_unit_id)
+            
             payload = dict(p)
+            payload["uom_category_id"] = uom_cat_id
             payload["specs"] = new_specs
             
             ok, err = self.client.update_product(pid, payload)

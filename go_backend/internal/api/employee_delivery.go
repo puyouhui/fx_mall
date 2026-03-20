@@ -742,6 +742,24 @@ func StartDeliveryOrder(c *gin.Context) {
 	})
 }
 
+// triggerPaidSettlement 订单变为已收款时触发结算逻辑（与 order_admin 一致）
+func triggerPaidSettlement(orderID int) {
+	time.Sleep(100 * time.Millisecond)
+	o, err := model.GetOrderByID(orderID)
+	if err != nil || o == nil {
+		return
+	}
+	if o.SettlementDate == nil {
+		now := time.Now()
+		_, _ = database.DB.Exec("UPDATE orders SET settlement_date = ? WHERE id = ? AND settlement_date IS NULL", now, orderID)
+		o.SettlementDate = &now
+	}
+	_ = model.ProcessOrderSettlement(orderID)
+	_ = model.ProcessReferralReward(orderID)
+	_ = model.AddPointsForOrder(o.UserID, orderID, o.OrderNumber, o.TotalAmount)
+	// 在线支付订单在支付回调时已发 NotifyOrderPaid，此处不重复发送
+}
+
 // CompleteDeliveryOrder 完成配送（支持上传图片）
 func CompleteDeliveryOrder(c *gin.Context) {
 	employee, ok := getEmployeeFromContext(c)
@@ -826,8 +844,13 @@ func CompleteDeliveryOrder(c *gin.Context) {
 		}
 	}()
 
-	// 更新订单状态为已送达
-	_, err = tx.Exec("UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = ?", id)
+	// 更新订单状态：在线支付且已支付的订单，送达即自动设为已收款；否则为已送达
+	newStatus := "delivered"
+	// 只要已完成微信支付回调并写入 paid_at，就把已送达提升为已收款
+	if order.PaidAt != nil {
+		newStatus = "paid"
+	}
+	_, err = tx.Exec("UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?", newStatus, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新订单状态失败: " + err.Error()})
 		return
@@ -899,6 +922,11 @@ func CompleteDeliveryOrder(c *gin.Context) {
 			notify.NotifyOrderDelivered(o, items, u, addr)
 		}
 	}(id)
+
+	// 在线支付订单送达时自动变已收款：触发结算、推荐奖励、积分（与 order_admin 标记已收款一致）
+	if newStatus == "paid" {
+		go triggerPaidSettlement(order.ID)
+	}
 
 	// 异步检查是否所有订单都已完成，如果是则清空路线记录（开始新的一趟）
 	// 注意：完成配送时不需要重新计算路线，因为订单已完成，路线会自动更新
@@ -973,7 +1001,13 @@ func CompleteDeliveryOrderWithoutImages(c *gin.Context) {
 		}
 	}()
 
-	_, err = tx.Exec("UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = ?", id)
+	// 在线支付且已支付的订单，送达即自动设为已收款；否则为已送达
+	newStatus := "delivered"
+	// 只要已完成微信支付回调并写入 paid_at，就把已送达提升为已收款
+	if order.PaidAt != nil {
+		newStatus = "paid"
+	}
+	_, err = tx.Exec("UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?", newStatus, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "更新订单状态失败: " + err.Error()})
 		return
@@ -1024,6 +1058,11 @@ func CompleteDeliveryOrderWithoutImages(c *gin.Context) {
 			notify.NotifyOrderDelivered(o, items, u, addr)
 		}
 	}(id)
+
+	// 在线支付订单送达时自动变已收款：触发结算逻辑
+	if newStatus == "paid" {
+		go triggerPaidSettlement(id)
+	}
 
 	go func() {
 		currentBatchID, batchErr := model.GetCurrentBatchID(employee.EmployeeCode)
