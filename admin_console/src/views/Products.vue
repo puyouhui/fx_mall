@@ -82,10 +82,13 @@
               {{ formatDate(scope.row.updated_at) }}
             </template>
           </el-table-column>
-          <el-table-column label="操作" fixed="right" align="center">
+          <el-table-column label="操作" fixed="right" align="center" width="180">
             <template #default="scope">
               <el-button type="primary" size="small" @click="handleEditProduct(scope.row)">
                 编辑
+              </el-button>
+              <el-button type="success" size="small" @click="handleCopyProduct(scope.row)" :loading="scope.row.copying">
+                复制
               </el-button>
               <el-button type="danger" size="small" @click="handleDeleteProduct(scope.row.id)">
                 删除
@@ -304,11 +307,16 @@
                 </el-select>
                 <el-input
                   v-model="librarySearchKeyword"
-                  placeholder="搜索图片"
+                  placeholder="搜索图片名称"
                   :prefix-icon="Search"
                   style="width: 300px; margin-right: 10px;"
                   clearable
+                  @keyup.enter="handleLibrarySearch"
                 />
+                <el-button type="primary" @click="handleLibrarySearch">
+                  <el-icon><Search /></el-icon>
+                  搜索
+                </el-button>
                 <el-button type="primary" @click="loadImageLibrary">
                   <el-icon><Refresh /></el-icon>
                   刷新
@@ -316,7 +324,7 @@
               </div>
               <div class="library-image-grid" v-loading="libraryLoading">
                 <div
-                  v-for="image in filteredLibraryImages"
+                  v-for="image in libraryImages"
                   :key="image.url"
                   class="library-image-item"
                   :class="{ selected: selectedLibraryImages.includes(image.url) }"
@@ -332,7 +340,19 @@
                   </div>
                 </div>
               </div>
-              <el-empty v-if="!libraryLoading && filteredLibraryImages.length === 0" description="暂无图片" />
+              <el-empty v-if="!libraryLoading && libraryImages.length === 0" description="暂无图片" />
+              <!-- 分页 -->
+              <div class="library-pagination" v-if="libraryTotal > 0">
+                <el-pagination
+                  v-model:current-page="libraryPagination.pageNum"
+                  v-model:page-size="libraryPagination.pageSize"
+                  :page-sizes="[24, 48, 72, 120]"
+                  :total="libraryTotal"
+                  layout="total, sizes, prev, pager, next, jumper"
+                  @size-change="handleLibrarySizeChange"
+                  @current-change="handleLibraryPageChange"
+                />
+              </div>
             </div>
             <template #footer>
               <el-button @click="showImageLibraryDialog = false">取消</el-button>
@@ -366,7 +386,7 @@ import {
 } from '@element-plus/icons-vue'
 import draggable from 'vuedraggable'
 // 导入相关API函数
-import { getProductList, createProduct, updateProduct, deleteProduct, uploadProductImage, updateProductSpecialStatus } from '../api/product'
+import { getProductList, createProduct, updateProduct, deleteProduct, copyProduct, uploadProductImage, updateProductSpecialStatus } from '../api/product'
 import { getCategoryList } from '../api/category'
 import { getAllSuppliers } from '../api/suppliers'
 import { getImageList } from '../api/imageLibrary'
@@ -518,60 +538,10 @@ const libraryLoading = ref(false)
 const librarySearchKeyword = ref('')
 const selectedLibraryImages = ref([])
 const selectedLibraryCategory = ref('') // 图库分类筛选
-
-// 过滤后的图库图片
-const filteredLibraryImages = computed(() => {
-  let filtered = libraryImages.value
-
-  // 按分类筛选
-  if (selectedLibraryCategory.value) {
-    // 这里需要根据图片的category字段进行筛选
-    // 如果图片对象有category字段，使用它；否则根据URL路径判断
-    filtered = filtered.filter(img => {
-      if (img.category) {
-        return img.category === selectedLibraryCategory.value
-      }
-      // 如果没有category字段，根据URL路径判断（兼容老数据）
-      const url = img.url || ''
-      if (selectedLibraryCategory.value === 'products') {
-        return url.includes('/products/')
-      } else if (selectedLibraryCategory.value === 'carousels') {
-        return url.includes('/carousels/')
-      } else if (selectedLibraryCategory.value === 'categories') {
-        return url.includes('/categories/')
-      } else if (selectedLibraryCategory.value === 'users') {
-        return url.includes('/users/')
-      } else if (selectedLibraryCategory.value === 'delivery') {
-        return url.includes('/delivery/')
-      } else if (selectedLibraryCategory.value === 'rich-content') {
-        return url.includes('/rich-content/')
-      } else if (selectedLibraryCategory.value === 'others') {
-        // 其他图片：不包含上述任何路径的图片
-        return !url.includes('/products/') && 
-               !url.includes('/carousels/') && 
-               !url.includes('/categories/') && 
-               !url.includes('/users/') && 
-               !url.includes('/delivery/') && 
-               !url.includes('/rich-content/')
-      }
-      return true
-    })
-  }
-
-  // 按搜索关键词筛选
-  if (librarySearchKeyword.value) {
-    const keyword = librarySearchKeyword.value.toLowerCase()
-    filtered = filtered.filter(img => img.name.toLowerCase().includes(keyword))
-  }
-
-  // 按更新时间倒序排列（最新上传的在前）
-  filtered = [...filtered].sort((a, b) => {
-    const dateA = a.updatedAt ? new Date(a.updatedAt) : new Date(0)
-    const dateB = b.updatedAt ? new Date(b.updatedAt) : new Date(0)
-    return dateB - dateA
-  })
-
-  return filtered
+const libraryTotal = ref(0)
+const libraryPagination = reactive({
+  pageNum: 1,
+  pageSize: 24 // 每页 24 张（4行 x 6列）
 })
 
 // 表单验证规则
@@ -892,7 +862,7 @@ const getCategoryPath = (categoryId) => {
 const handleEditProduct = (row) => {
   dialogType.value = 'edit'
   // 复制行数据到表单
-  const categoryId = Number(row.categoryId || 0) // 确保分类ID是数字类型
+  const categoryId = Number(row.categoryId || row.category_id || 0) // 确保分类ID是数字类型
   const categoryPath = getCategoryPath(categoryId)
 
   // 如果没有供应商，默认选择自营供应商
@@ -975,6 +945,25 @@ const handleSpecialStatusChange = async (row) => {
     }
   } finally {
     row.updatingSpecial = false
+  }
+}
+
+// 复制商品
+const handleCopyProduct = async (row) => {
+  try {
+    row.copying = true
+    const res = await copyProduct(row.id)
+    ElMessage.success('复制成功，已生成副本商品')
+    await loadProducts()
+    // 打开编辑弹窗，方便用户修改副本名称等信息
+    if (res?.code === 200 && res?.data?.id) {
+      handleEditProduct(res.data)
+    }
+  } catch (error) {
+    console.error('复制失败:', error)
+    ElMessage.error(error?.response?.data?.message || '复制失败')
+  } finally {
+    row.copying = false
   }
 }
 
@@ -1498,28 +1487,28 @@ const uploadFiles = async (files) => {
   }
 }
 
-// 加载图库图片
+// 加载图库图片（支持分页、分类、关键词搜索）
 const loadImageLibrary = async () => {
   libraryLoading.value = true
   try {
-    // 构建请求参数
-    const params = {}
+    const params = {
+      pageNum: libraryPagination.pageNum,
+      pageSize: libraryPagination.pageSize
+    }
     if (selectedLibraryCategory.value) {
       params.category = selectedLibraryCategory.value
     }
-    
+    if (librarySearchKeyword.value) {
+      params.keyword = librarySearchKeyword.value.trim()
+    }
+
     const response = await getImageList(params)
     if (response.code === 200) {
-      libraryImages.value = response.data || []
-      // 过滤掉已经添加的图片
+      let list = response.data || []
+      // 过滤掉已添加的图片
       const existingUrls = productForm.images.map(img => img.url)
-      libraryImages.value = libraryImages.value.filter(img => !existingUrls.includes(img.url))
-      // 按更新时间倒序排列（最新上传的在前）
-      libraryImages.value.sort((a, b) => {
-        const dateA = a.updatedAt ? new Date(a.updatedAt) : new Date(0)
-        const dateB = b.updatedAt ? new Date(b.updatedAt) : new Date(0)
-        return dateB - dateA
-      })
+      libraryImages.value = list.filter(img => !existingUrls.includes(img.url))
+      libraryTotal.value = response.total ?? 0
     } else {
       ElMessage.error(response.message || '获取图片列表失败')
     }
@@ -1531,9 +1520,26 @@ const loadImageLibrary = async () => {
   }
 }
 
+// 图库搜索
+const handleLibrarySearch = () => {
+  libraryPagination.pageNum = 1
+  loadImageLibrary()
+}
+
+// 图库分页
+const handleLibraryPageChange = () => {
+  loadImageLibrary()
+}
+
+const handleLibrarySizeChange = () => {
+  libraryPagination.pageNum = 1
+  loadImageLibrary()
+}
+
 // 处理图库分类变更
 const handleLibraryCategoryChange = () => {
   librarySearchKeyword.value = ''
+  libraryPagination.pageNum = 1
   loadImageLibrary()
 }
 
@@ -1567,22 +1573,21 @@ const confirmSelectLibraryImages = () => {
     return
   }
 
-  // 添加选中的图片
+  // 添加选中的图片（支持跨页选择，未在当前页的用 URL 提取文件名）
   selectedLibraryImages.value.forEach(url => {
     const image = libraryImages.value.find(img => img.url === url)
-    if (image) {
-      productForm.images.push({
-        name: image.name,
-        url: image.url,
-        status: 'success'
-      })
-    }
+    const name = image?.name || (url.split('/').pop() || 'image').replace(/\?.*$/, '')
+    productForm.images.push({
+      name,
+      url,
+      status: 'success'
+    })
   })
 
   // 清空选择并关闭对话框
   selectedLibraryImages.value = []
   librarySearchKeyword.value = ''
-  selectedLibraryCategory.value = '' // 重置分类筛选
+  libraryPagination.pageNum = 1
   showImageLibraryDialog.value = false
   ElMessage.success('图片已添加')
 }
@@ -1592,7 +1597,7 @@ watch(showImageLibraryDialog, (newVal) => {
   if (newVal) {
     selectedLibraryImages.value = []
     librarySearchKeyword.value = ''
-    selectedLibraryCategory.value = '' // 重置分类筛选
+    libraryPagination.pageNum = 1
     loadImageLibrary()
   }
 })
@@ -2007,5 +2012,11 @@ onMounted(() => {
 
 .library-image-item:hover .library-image-overlay {
   opacity: 1;
+}
+
+.library-pagination {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

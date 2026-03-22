@@ -229,6 +229,7 @@ func main() {
 				protectedGroup.POST("/images/upload", api.UploadImageWithCategory)              // 上传图片（支持目录分类）
 				protectedGroup.DELETE("/images/batch", api.BatchDeleteImages)                   // 批量删除图片
 				protectedGroup.GET("/products/:id", api.GetProductDetail)                       // 获取商品详情（管理后台）
+				protectedGroup.POST("/products/:id/copy", api.CopyProduct)                      // 复制商品（创建副本）
 				protectedGroup.POST("/products", api.CreateProduct)                             // 创建商品
 				protectedGroup.PUT("/products/:id", api.UpdateProduct)                          // 更新商品
 				protectedGroup.PUT("/products/:id/special", api.UpdateProductSpecialStatus)     // 更新商品精选状态

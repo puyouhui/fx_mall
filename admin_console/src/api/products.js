@@ -114,6 +114,17 @@ export const updateProduct = async (id, productData) => {
   }
 }
 
+// 复制商品（创建副本，复用规格和图片）
+export const copyProduct = async (id) => {
+  try {
+    const { data } = await request.post(`/admin/products/${id}/copy`)
+    return data
+  } catch (error) {
+    console.error('复制商品失败:', error)
+    throw error
+  }
+}
+
 // 删除商品
 export const deleteProduct = async (id) => {
   try {

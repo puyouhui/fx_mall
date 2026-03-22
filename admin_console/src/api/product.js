@@ -35,6 +35,14 @@ export function updateProduct(id, data) {
   })
 }
 
+// 复制商品（创建副本，复用规格和图片）
+export function copyProduct(id) {
+  return request({
+    url: `/admin/products/${id}/copy`,
+    method: 'post'
+  })
+}
+
 // 删除商品
 export function deleteProduct(id) {
   return request({

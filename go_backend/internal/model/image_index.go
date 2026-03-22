@@ -61,14 +61,27 @@ func BatchDeleteImageIndex(db *sql.DB, imageURLs []string) error {
 	return err
 }
 
-// GetImageListWithPagination 从数据库分页查询图片列表
-func GetImageListWithPagination(db *sql.DB, category string, pageNum, pageSize int) ([]map[string]interface{}, int, error) {
-	var whereClause string
+// GetImageListWithPagination 从数据库分页查询图片列表（支持分类和关键词搜索）
+func GetImageListWithPagination(db *sql.DB, category, keyword string, pageNum, pageSize int) ([]map[string]interface{}, int, error) {
+	var conditions []string
 	var args []interface{}
 
 	if category != "" {
-		whereClause = "WHERE category = ?"
+		conditions = append(conditions, "category = ?")
 		args = append(args, category)
+	}
+	if keyword != "" {
+		conditions = append(conditions, "(file_name LIKE ? OR object_name LIKE ?)")
+		keywordPattern := "%" + keyword + "%"
+		args = append(args, keywordPattern, keywordPattern)
+	}
+
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = "WHERE " + conditions[0]
+		for i := 1; i < len(conditions); i++ {
+			whereClause += " AND " + conditions[i]
+		}
 	}
 
 	// 查询总数

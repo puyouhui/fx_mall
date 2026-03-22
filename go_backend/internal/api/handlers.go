@@ -527,6 +527,52 @@ func CreateProduct(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": product, "message": "创建成功"})
 }
 
+// CopyProduct 复制商品（创建副本，复用规格和图片）
+func CopyProduct(c *gin.Context) {
+	id := c.Param("id")
+	productID, err := strconv.Atoi(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效的商品ID"})
+		return
+	}
+
+	// 获取原商品
+	product, err := model.GetProductByID(productID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取商品失败: " + err.Error()})
+		return
+	}
+	if product == nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "商品不存在"})
+		return
+	}
+
+	// 确保计量单位类别存在
+	if product.UomCategoryID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "原商品未绑定计量单位类别，无法复制"})
+		return
+	}
+
+	// 创建副本：复用规格、图片、分类、供应商等，名称加「副本」
+	copyProduct := &model.Product{
+		Name:          product.Name + " (副本)",
+		Description:   product.Description,
+		CategoryID:    product.CategoryID,
+		SupplierID:    product.SupplierID,
+		UomCategoryID: product.UomCategoryID,
+		IsSpecial:     false, // 副本默认不设为精选
+		Images:        append([]string{}, product.Images...),
+		Specs:         append([]model.Spec{}, product.Specs...),
+		Status:        1,
+	}
+	if err := model.CreateProduct(copyProduct); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "复制商品失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": copyProduct, "message": "复制成功"})
+}
+
 // UpdateProduct 更新商品
 func UpdateProduct(c *gin.Context) {
 	id := c.Param("id")
@@ -731,11 +777,12 @@ func ListImages(c *gin.Context) {
 		}
 	}
 
-	// 解析目录分类参数
+	// 解析目录分类和关键词参数
 	category := strings.TrimSpace(c.Query("category"))
+	keyword := strings.TrimSpace(c.Query("keyword"))
 
-	// 从数据库查询（真正的分页，性能优化）
-	images, total, err := model.GetImageListWithPagination(database.DB, category, pageNum, pageSize)
+	// 从数据库查询（真正的分页，支持分类和关键词搜索）
+	images, total, err := model.GetImageListWithPagination(database.DB, category, keyword, pageNum, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
