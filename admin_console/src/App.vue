@@ -147,4 +147,9 @@ onMounted(() => {
 ::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
+
+/* 图片预览需高于表格固定列 */
+.el-image-viewer__wrapper {
+  z-index: 4000 !important;
+}
 </style>

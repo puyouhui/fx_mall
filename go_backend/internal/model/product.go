@@ -8,7 +8,19 @@ import (
 	"time"
 
 	"go_backend/internal/database"
+	"go_backend/internal/utils"
 )
+
+func ParseProductImages(imagesJSON string) []string {
+	var images []string
+	if strings.TrimSpace(imagesJSON) == "" {
+		return []string{}
+	}
+	if err := json.Unmarshal([]byte(imagesJSON), &images); err != nil {
+		return []string{}
+	}
+	return utils.RewriteMinIOPublicURLs(images)
+}
 
 // Spec 商品规格结构体
 type Spec struct {
@@ -100,9 +112,7 @@ func GetSpecialProductsWithPagination(pageNum, pageSize int) ([]Product, int, er
 		}
 
 		// 解析JSON字符串到切片
-		if err := json.Unmarshal([]byte(imagesJSON), &product.Images); err != nil {
-			product.Images = []string{}
-		}
+		product.Images = ParseProductImages(imagesJSON)
 
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
@@ -155,9 +165,7 @@ func GetAllProducts() ([]Product, error) {
 		}
 
 		// 解析JSON字符串到切片
-		if err := json.Unmarshal([]byte(imagesJSON), &product.Images); err != nil {
-			product.Images = []string{}
-		}
+		product.Images = ParseProductImages(imagesJSON)
 
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
@@ -219,9 +227,7 @@ func GetAllProductsWithPagination(pageNum, pageSize int) ([]Product, int, error)
 		}
 
 		// 解析JSON字符串到切片
-		if err := json.Unmarshal([]byte(imagesJSON), &product.Images); err != nil {
-			product.Images = []string{}
-		}
+		product.Images = ParseProductImages(imagesJSON)
 
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
@@ -268,9 +274,7 @@ func GetProductByID(id int) (*Product, error) {
 	}
 
 	// 解析JSON字符串到切片
-	if err := json.Unmarshal([]byte(imagesJSON), &product.Images); err != nil {
-		product.Images = []string{}
-	}
+	product.Images = ParseProductImages(imagesJSON)
 
 	if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 		product.Specs = []Spec{}
@@ -487,9 +491,7 @@ func SearchProductsWithPagination(keyword string, pageNum, pageSize int) ([]Prod
 		}
 
 		// 解析JSON字符串到切片
-		if err := json.Unmarshal([]byte(imagesJSON), &product.Images); err != nil {
-			product.Images = []string{}
-		}
+		product.Images = ParseProductImages(imagesJSON)
 
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
@@ -611,9 +613,7 @@ func GetProductsByCategoryWithPagination(categoryID, pageNum, pageSize int) ([]P
 		}
 
 		// 解析JSON字符串到切片
-		if err := json.Unmarshal([]byte(imagesJSON), &product.Images); err != nil {
-			product.Images = []string{}
-		}
+		product.Images = ParseProductImages(imagesJSON)
 
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
@@ -709,9 +709,7 @@ func GetProductsByCategoryID(categoryID int) ([]Product, error) {
 		}
 
 		// 解析JSON字符串到切片
-		if err := json.Unmarshal([]byte(imagesJSON), &product.Images); err != nil {
-			product.Images = []string{}
-		}
+		product.Images = ParseProductImages(imagesJSON)
 
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}
@@ -760,9 +758,7 @@ func GetSpecialProducts() ([]Product, error) {
 		}
 
 		// 解析JSON字符串到切片
-		if err := json.Unmarshal([]byte(imagesJSON), &product.Images); err != nil {
-			product.Images = []string{}
-		}
+		product.Images = ParseProductImages(imagesJSON)
 
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []Spec{}

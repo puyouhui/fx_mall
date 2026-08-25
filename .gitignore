@@ -174,3 +174,6 @@ coverage.out
 # 其他脚本和工具
 # ====================
 fix_powershell_encoding.ps1
+
+# 本地商品采集与导入素材（体积较大，不提交）
+/products/

@@ -3,11 +3,13 @@ package utils
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"image"
 	"image/jpeg"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -19,6 +21,56 @@ import (
 )
 
 var minioClient *minio.Client
+
+// uniqueObjectSuffix 生成对象名唯一后缀，避免同一秒内多图互相覆盖
+func uniqueObjectSuffix() string {
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("%d_%x", time.Now().UnixNano(), b)
+}
+
+// RewriteMinIOPublicURL 把库里旧的 MinIO 主机改成当前 MINIO_BASE_URL。
+// 本地电脑 IP 变化时，不必批量改数据库里的图片地址。
+func RewriteMinIOPublicURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return raw
+	}
+	base := strings.TrimRight(config.Config.MinIO.BaseURL, "/")
+	if base == "" {
+		return raw
+	}
+	if strings.HasPrefix(raw, base+"/") || raw == base {
+		return raw
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || parsed.Path == "" {
+		return raw
+	}
+	path := parsed.Path
+	if strings.HasPrefix(path, "/minio/") {
+		path = strings.TrimPrefix(path, "/minio")
+	}
+	bucket := strings.Trim(config.Config.MinIO.Bucket, "/")
+	if bucket != "" && !strings.HasPrefix(path, "/"+bucket+"/") && path != "/"+bucket {
+		return raw
+	}
+	return base + path
+}
+
+// RewriteMinIOPublicURLs 批量改写对象存储公开地址
+func RewriteMinIOPublicURLs(urls []string) []string {
+	if len(urls) == 0 {
+		return urls
+	}
+	rewritten := make([]string, len(urls))
+	for i, item := range urls {
+		rewritten[i] = RewriteMinIOPublicURL(item)
+	}
+	return rewritten
+}
 
 // InitMinIO 初始化MinIO客户端
 func InitMinIO() error {
@@ -51,6 +103,22 @@ func InitMinIO() error {
 		log.Printf("存储桶 %s 创建成功\n", cfg.Bucket)
 	}
 
+	if cfg.PublicRead {
+		policy := fmt.Sprintf(`{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"AWS": ["*"]},
+    "Action": ["s3:GetObject"],
+    "Resource": ["arn:aws:s3:::%s/*"]
+  }]
+}`, cfg.Bucket)
+		if err = client.SetBucketPolicy(context.Background(), cfg.Bucket, policy); err != nil {
+			return fmt.Errorf("设置存储桶公开读取策略失败: %w", err)
+		}
+		log.Printf("存储桶 %s 已启用本地公开读取\n", cfg.Bucket)
+	}
+
 	minioClient = client
 	log.Println("MinIO客户端初始化成功")
 	return nil
@@ -80,13 +148,13 @@ func UploadFile(fileName string, reader *http.Request, category ...string) (stri
 		return "", fmt.Errorf("文件大小不能超过 15MB")
 	}
 
-	// 生成唯一的对象名称
+	// 生成唯一的对象名称（纳秒+随机，避免同一秒批量上传互相覆盖）
 	var objectName string
+	suffix := uniqueObjectSuffix()
 	if len(category) > 0 && category[0] != "" {
-		// 如果有目录分类，添加到对象名称前缀
-		objectName = fmt.Sprintf("%s/%s_%d%s", category[0], fileName, time.Now().Unix(), getFileExtension(header.Filename))
+		objectName = fmt.Sprintf("%s/%s_%s%s", category[0], fileName, suffix, getFileExtension(header.Filename))
 	} else {
-		objectName = fmt.Sprintf("%s_%d%s", fileName, time.Now().Unix(), getFileExtension(header.Filename))
+		objectName = fmt.Sprintf("%s_%s%s", fileName, suffix, getFileExtension(header.Filename))
 	}
 
 	// 读取到内存以便压缩 / 处理
@@ -158,13 +226,13 @@ func UploadFileByFieldName(fieldName string, fileName string, reader *http.Reque
 		return "", fmt.Errorf("文件大小不能超过 15MB")
 	}
 
-	// 生成唯一的对象名称
+	// 生成唯一的对象名称（纳秒+随机，避免同一秒批量上传互相覆盖）
 	var objectName string
+	suffix := uniqueObjectSuffix()
 	if len(category) > 0 && category[0] != "" {
-		// 如果有目录分类，添加到对象名称前缀
-		objectName = fmt.Sprintf("%s/%s_%d%s", category[0], fileName, time.Now().Unix(), getFileExtension(header.Filename))
+		objectName = fmt.Sprintf("%s/%s_%s%s", category[0], fileName, suffix, getFileExtension(header.Filename))
 	} else {
-		objectName = fmt.Sprintf("%s_%d%s", fileName, time.Now().Unix(), getFileExtension(header.Filename))
+		objectName = fmt.Sprintf("%s_%s%s", fileName, suffix, getFileExtension(header.Filename))
 	}
 
 	// 读取到内存以便压缩 / 处理

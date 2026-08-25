@@ -3,6 +3,8 @@ package model
 import (
 	"database/sql"
 	"time"
+
+	"go_backend/internal/utils"
 )
 
 // Carousel 轮播图结构体
@@ -32,6 +34,7 @@ func GetCarousels(db *sql.DB) ([]Carousel, error) {
 		if err := rows.Scan(&carousel.ID, &carousel.Image, &carousel.Title, &carousel.Link, &carousel.Sort, &carousel.Status, &carousel.CreatedAt, &carousel.UpdatedAt); err != nil {
 			return nil, err
 		}
+		carousel.Image = utils.RewriteMinIOPublicURL(carousel.Image)
 		carousels = append(carousels, carousel)
 	}
 
@@ -57,6 +60,7 @@ func GetAllCarousels(db *sql.DB) ([]Carousel, error) {
 		if err := rows.Scan(&carousel.ID, &carousel.Image, &carousel.Title, &carousel.Link, &carousel.Sort, &carousel.Status, &carousel.CreatedAt, &carousel.UpdatedAt); err != nil {
 			return nil, err
 		}
+		carousel.Image = utils.RewriteMinIOPublicURL(carousel.Image)
 		carousels = append(carousels, carousel)
 	}
 
@@ -78,6 +82,7 @@ func GetCarouselByID(db *sql.DB, id int) (*Carousel, error) {
 		}
 		return nil, err
 	}
+	carousel.Image = utils.RewriteMinIOPublicURL(carousel.Image)
 	return &carousel, nil
 }
 
