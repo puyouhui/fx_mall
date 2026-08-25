@@ -27,7 +27,7 @@
               <text class="buy-count">已买{{ item.buy_count }}次</text>
             </view>
             <view class="add-btn" @click.stop="onAddBtnClick(item)">
-              <uni-icons type="plusempty" size="18" color="#fff"></uni-icons>
+              <uni-icons type="plusempty" size="18" color="#1D2087"></uni-icons>
             </view>
           </view>
         </view>
@@ -168,7 +168,7 @@ export default {
 }
 
 .page-header {
-  background-color: #20CB6B;
+  background-color: #91CFFF;
   position: fixed;
   top: 0;
   left: 0;
@@ -271,7 +271,7 @@ export default {
 
 .buy-count {
   font-size: 22rpx;
-  color: #20CB6B;
+  color: #1D2087;
   background-color: #e8f8ef;
   padding: 4rpx 12rpx;
   border-radius: 20rpx;
@@ -282,7 +282,7 @@ export default {
 .add-btn {
   width: 56rpx;
   height: 56rpx;
-  background-color: #20CB6B;
+  background-color: #91CFFF;
   border-radius: 50%;
   display: flex;
   align-items: center;

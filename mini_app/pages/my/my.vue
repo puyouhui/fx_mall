@@ -29,7 +29,7 @@
       <view class="login-prompt" v-else @click="goToLogin">
         <view class="avatar-wrapper">
           <view class="avatar-placeholder">
-            <uni-icons type="person-filled" size="40" color="#20CB6B"></uni-icons>
+            <uni-icons type="person-filled" size="40" color="#1D2087"></uni-icons>
           </view>
         </view>
         <view class="user-info">
@@ -172,18 +172,18 @@ export default {
       userPoints: 0,
       carousels: [],
       showLoginModal: false,
-      companyName: '橙心选（云南）供应链管理有限公司',
+      companyName: '云南竹江纸业有限公司',
       icpFiling: '滇ICP备2026001621号-1X',
       functions: [
-        { name: '地址管理', icon: 'location', iconPath: '/static/icon/address.png', path: '/pages/address/address', color: '#20CB6B' },
-        // { name: '我的账单', icon: 'wallet', iconPath: '/static/icon/bills.png', path: '/pages/bill/bill', color: '#20CB6B' },
-        { name: '发票抬头', icon: 'paperplane', iconPath: '/static/icon/invoice.png', path: '/pages/invoice/invoice', color: '#20CB6B' },
-        { name: '新品需求', icon: 'star', iconPath: '/static/icon/new.png', path: '/pages/product-request/product-request', color: '#20CB6B' },
-        { name: '分享有礼', icon: 'person-add', iconPath: '/static/icon/referral.png', path: '/pages/referral/referral', color: '#20CB6B' },
-        { name: '客服与帮助', icon: 'chatbubble', iconPath: '/static/icon/customer_service.png', path: '/pages/customer-service/customer-service', color: '#20CB6B' },
-        { name: '系统设置', icon: 'gear', iconPath: '/static/icon/set.png', path: '/pages/settings/settings', color: '#20CB6B' },
-        { name: '供应商合作', icon: 'shop', iconPath: '/static/icon/suppliers.png', path: '/pages/supplier/supplier', color: '#20CB6B' },
-        { name: '关于我们', icon: 'information', iconPath: '/static/icon/About.png', path: '/pages/about-us/about-us', color: '#20CB6B' }
+        { name: '地址管理', icon: 'location', iconPath: '/static/icon/address.png', path: '/pages/address/address', color: '#1D2087' },
+        // { name: '我的账单', icon: 'wallet', iconPath: '/static/icon/bills.png', path: '/pages/bill/bill', color: '#1D2087' },
+        { name: '发票抬头', icon: 'paperplane', iconPath: '/static/icon/invoice.png', path: '/pages/invoice/invoice', color: '#1D2087' },
+        { name: '新品需求', icon: 'star', iconPath: '/static/icon/new.png', path: '/pages/product-request/product-request', color: '#1D2087' },
+        { name: '分享有礼', icon: 'person-add', iconPath: '/static/icon/referral.png', path: '/pages/referral/referral', color: '#1D2087' },
+        { name: '客服与帮助', icon: 'chatbubble', iconPath: '/static/icon/customer_service.png', path: '/pages/customer-service/customer-service', color: '#1D2087' },
+        { name: '系统设置', icon: 'gear', iconPath: '/static/icon/set.png', path: '/pages/settings/settings', color: '#1D2087' },
+        { name: '供应商合作', icon: 'shop', iconPath: '/static/icon/suppliers.png', path: '/pages/supplier/supplier', color: '#1D2087' },
+        { name: '关于我们', icon: 'information', iconPath: '/static/icon/About.png', path: '/pages/about-us/about-us', color: '#1D2087' }
       ]
     };
   },
@@ -665,12 +665,12 @@ export default {
 <style scoped>
 .my-page {
   min-height: 100vh;
-  background: linear-gradient(180deg, #E8F8F0 0%, #E8F8F0 20%, #f5f5f5 40%, #f5f5f5 100%);
+  background: linear-gradient(180deg, #E8F6FF 0%, #E8F6FF 20%, #f5f5f5 40%, #f5f5f5 100%);
 }
 
 /* 个人信息区域 */
 .user-section {
-  /* background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%); */
+  /* background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%); */
   padding: 0 30rpx 90rpx 30rpx;
   border-radius: 0 0 0 0;
 }
@@ -700,7 +700,7 @@ export default {
 .avatar-placeholder {
   width: 100%;
   height: 100%;
-  background-color: rgba(32, 203, 107, 0.8);
+  background-color: rgba(145, 207, 255, 0.8);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -748,8 +748,8 @@ export default {
   font-size: 24rpx;
   padding: 0 10rpx;
   border-radius: 20rpx;
-  background-color: #E8F8F0;
-  color: #20CB6B;
+  background-color: #E8F6FF;
+  color: #1D2087;
   height: 40rpx;
   line-height: 40rpx;
 }
@@ -771,8 +771,8 @@ export default {
 }
 
 .type-retail {
-  background-color: #E8F8F0;
-  color: #20CB6B;
+  background-color: #E8F6FF;
+  color: #1D2087;
 }
 
 .type-wholesale {

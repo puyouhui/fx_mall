@@ -1541,7 +1541,7 @@ const executePrint = async (orderData) => {
     }
 
     // 订单标题：根据是否环保小票显示不同标题
-    const title = hidePrice ? "橙心选（环保票）" : "橙心选"
+    const title = hidePrice ? "竹江纸业（环保票）" : "竹江纸业"
     panel.addPrintText({
       options: {
         width: 220, // 尝试更大的值以占满 80mm 宽度
@@ -1889,7 +1889,7 @@ const executePrint = async (orderData) => {
         width: 220, // 尝试更大的值以占满 80mm 宽度
         top: currentTop,
         left: 0,
-        title: "微信搜索“橙心选”小程序，",
+        title: "微信搜索“竹江纸业”小程序，",
         textAlign: "center", // 居中对齐
         fontSize: 11
       },
@@ -2073,7 +2073,7 @@ const handlePrintMaterial = async (orderData, options = {}) => {
 
       let currentTop = 5
 
-      // 标题：买一次性用品,橙心选更方便!
+      // 标题：买一次性用品,竹江纸业更方便!
       panel.addPrintText({
         options: {
           width: 170,

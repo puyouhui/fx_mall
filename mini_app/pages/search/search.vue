@@ -2,13 +2,13 @@
   <view class="search-page">
     <!-- 自定义头部 - 绿色背景 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #20CB6B;">
+      <view class="navbar-fixed" style="background-color: #91CFFF;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+            <uni-icons type="left" size="20" color="#1D2087"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">搜索</text>
@@ -50,7 +50,7 @@
         <view class="suggestions-list">
           <view class="suggestion-item" v-for="(suggestion, index) in suggestions" :key="index" @click="selectSuggestion(suggestion)">
             <view class="suggestion-icon-wrapper">
-              <uni-icons type="search" size="16" color="#20CB6B" class="suggestion-icon"></uni-icons>
+              <uni-icons type="search" size="16" color="#1D2087" class="suggestion-icon"></uni-icons>
             </view>
             <text class="suggestion-text">{{ suggestion }}</text>
             <view class="suggestion-arrow">
@@ -110,7 +110,7 @@
                   <view class="product-bottom-info">
                     <text class="product-price">¥{{ product.displayPrice || product.price }}</text>
                     <view class="add-btn" @click.stop="onAddBtnClick(product)">
-                      <uni-icons type="plusempty" size="18" color="#fff"></uni-icons>
+                      <uni-icons type="plusempty" size="18" color="#1D2087"></uni-icons>
                     </view>
                   </view>
                 </view>
@@ -137,7 +137,7 @@
                   <view class="product-bottom-info">
                     <text class="product-price">¥{{ product.displayPrice || product.price }}</text>
                     <view class="add-btn" @click.stop="onAddBtnClick(product)">
-                      <uni-icons type="plusempty" size="18" color="#fff"></uni-icons>
+                      <uni-icons type="plusempty" size="18" color="#1D2087"></uni-icons>
                     </view>
                   </view>
                 </view>
@@ -827,7 +827,7 @@ page{
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 500;
-  color: #fff;
+  color: #1D2087;
 }
 
 .navbar-right {
@@ -921,12 +921,12 @@ page{
 .search-btn {
   height: 100%;
   padding: 0 30rpx;
-  background-color: #20CB6B;
+  background-color: #91CFFF;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 28rpx;
-  color: #fff;
+  color: #1D2087;
   flex-shrink: 0;
   cursor: pointer;
   white-space: nowrap;
@@ -1004,7 +1004,7 @@ page{
 }
 
 .processing-title .title-text {
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .hot-badge {
@@ -1282,7 +1282,7 @@ page{
 .add-btn {
   width: 50rpx;
   height: 50rpx;
-  background-color: #20CB6B;
+  background-color: #91CFFF;
   border-radius: 50%;
   display: flex;
   align-items: center;

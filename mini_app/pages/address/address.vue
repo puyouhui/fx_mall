@@ -2,20 +2,20 @@
   <view class="address-page">
     <!-- 自定义导航栏 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #20CB6B;">
+      <view class="navbar-fixed" style="background-color: #91CFFF;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+            <uni-icons type="left" size="20" color="#1D2087"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">{{ selectMode ? '选择收货地址' : '我的收货地址' }}</text>
           </view>
           <view class="navbar-right">
-            <uni-icons type="more-filled" size="20" color="#fff" style="margin-right: 20rpx;"></uni-icons>
-            <uni-icons type="gear" size="20" color="#fff"></uni-icons>
+            <uni-icons type="more-filled" size="20" color="#1D2087" style="margin-right: 20rpx;"></uni-icons>
+            <uni-icons type="gear" size="20" color="#1D2087"></uni-icons>
           </view>
         </view>
       </view>
@@ -45,12 +45,12 @@
         </view>
         <view class="address-actions" v-if="!selectMode">
           <view class="address-action" @click.stop="handleEdit(address)">
-            <uni-icons type="compose" size="22" color="#20CB6B"></uni-icons>
+            <uni-icons type="compose" size="22" color="#1D2087"></uni-icons>
             <text class="action-text">编辑</text>
           </view>
         </view>
         <view class="address-actions" v-if="selectMode">
-          <uni-icons type="checkmarkempty" size="24" color="#20CB6B" v-if="false"></uni-icons>
+          <uni-icons type="checkmarkempty" size="24" color="#1D2087" v-if="false"></uni-icons>
         </view>
       </view>
       
@@ -181,7 +181,7 @@ export default {
         content: `确定要切换到"${address.name}"吗？`,
         confirmText: '切换',
         cancelText: '取消',
-        confirmColor: '#20CB6B',
+        confirmColor: '#1D2087',
         success: (res) => {
           if (res.confirm) {
             // 用户确认切换，通过事件总线传递选中的地址
@@ -247,7 +247,7 @@ export default {
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 600;
-  color: #fff;
+  color: #1D2087;
 }
 
 .navbar-right {
@@ -283,9 +283,9 @@ export default {
 }
 
 .address-item.default-address {
-  background: linear-gradient(135deg, #F0FDF6 0%, #E8F8F0 100%);
-  border: 2rpx solid #20CB6B;
-  box-shadow: 0 4rpx 20rpx rgba(32, 203, 107, 0.15);
+  background: linear-gradient(135deg, #F0F9FF 0%, #E8F6FF 100%);
+  border: 2rpx solid #91CFFF;
+  box-shadow: 0 4rpx 20rpx rgba(145, 207, 255, 0.15);
 }
 
 .address-content {
@@ -308,22 +308,22 @@ export default {
 }
 
 .address-name.default-name {
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .default-badge {
-  background: linear-gradient(135deg, #20CB6B 0%, #16b35d 100%);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
   border-radius: 8rpx;
   padding: 6rpx 16rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2rpx 8rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 2rpx 8rpx rgba(145, 207, 255, 0.3);
 }
 
 .default-text {
   font-size: 22rpx;
-  color: #FFFFFF;
+  color: #1D2087;
   font-weight: 600;
 }
 
@@ -360,18 +360,18 @@ export default {
   padding: 16rpx 12rpx;
   /* background-color: #f0fdf6; */
   border-radius: 12rpx;
-  /* border: 1rpx solid #e8f8f0; */
+  /* border: 1rpx solid #E8F6FF; */
   transition: all 0.3s ease;
 }
 
 .address-action:active {
-  background-color: #e8f8f0;
+  background-color: #E8F6FF;
   transform: scale(0.95);
 }
 
 .action-text {
   font-size: 22rpx;
-  color: #20CB6B;
+  color: #1D2087;
   margin-top: 6rpx;
   font-weight: 500;
 }
@@ -411,12 +411,12 @@ export default {
 .add-btn {
   width: 100%;
   height: 88rpx;
-  background-color: #20CB6B;
+  background-color: #91CFFF;
   border-radius: 44rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 4rpx 16rpx rgba(145, 207, 255, 0.3);
 }
 
 .add-btn:active {
@@ -426,7 +426,7 @@ export default {
 
 .add-btn-text {
   font-size: 32rpx;
-  color: #FFFFFF;
+  color: #1D2087;
   font-weight: 600;
 }
 </style>

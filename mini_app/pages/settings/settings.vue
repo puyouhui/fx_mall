@@ -2,13 +2,13 @@
   <view class="settings-page">
     <!-- 自定义导航栏 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #20CB6B;">
+      <view class="navbar-fixed" style="background-color: #91CFFF;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+            <uni-icons type="left" size="20" color="#1D2087"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">系统设置</text>
@@ -28,7 +28,7 @@
         <view class="settings-item" @click="goToProfile">
           <view class="item-left">
             <view class="item-icon profile-icon">
-              <uni-icons type="person" size="22" color="#20CB6B"></uni-icons>
+              <uni-icons type="person" size="22" color="#1D2087"></uni-icons>
             </view>
             <text class="item-text">个人资料</text>
           </view>
@@ -41,7 +41,7 @@
         <view class="settings-item" @click="goToAbout">
           <view class="item-left">
             <view class="item-icon about-icon">
-              <uni-icons type="info" size="22" color="#20CB6B"></uni-icons>
+              <uni-icons type="info" size="22" color="#1D2087"></uni-icons>
             </view>
             <text class="item-text">关于我们</text>
           </view>
@@ -54,7 +54,7 @@
         <view class="settings-item" @click="handlePrivacy">
           <view class="item-left">
             <view class="item-icon privacy-icon">
-              <uni-icons type="locked" size="22" color="#20CB6B"></uni-icons>
+              <uni-icons type="locked" size="22" color="#1D2087"></uni-icons>
             </view>
             <text class="item-text">隐私政策</text>
           </view>
@@ -63,7 +63,7 @@
         <view class="settings-item" @click="handleTerms">
           <view class="item-left">
             <view class="item-icon terms-icon">
-              <uni-icons type="paperplane" size="22" color="#20CB6B"></uni-icons>
+              <uni-icons type="paperplane" size="22" color="#1D2087"></uni-icons>
             </view>
             <text class="item-text">用户协议</text>
           </view>
@@ -177,7 +177,7 @@ export default {
         content: '确定要退出登录吗？',
         confirmText: '退出',
         cancelText: '取消',
-        confirmColor: '#20CB6B',
+        confirmColor: '#1D2087',
         success: (res) => {
           if (res.confirm) {
             // 清除登录信息
@@ -224,7 +224,7 @@ export default {
   left: 0;
   right: 0;
   z-index: 1000;
-  background-color: #20CB6B;
+  background-color: #91CFFF;
 }
 
 .navbar-content {
@@ -252,7 +252,7 @@ export default {
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 600;
-  color: #fff;
+  color: #1D2087;
 }
 
 .navbar-right {
@@ -307,24 +307,24 @@ export default {
   align-items: center;
   justify-content: center;
   margin-right: 28rpx;
-  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
-  box-shadow: 0 2rpx 8rpx rgba(32, 203, 107, 0.15);
+  background: linear-gradient(135deg, #E8F6FF 0%, #F0F9FF 100%);
+  box-shadow: 0 2rpx 8rpx rgba(145, 207, 255, 0.15);
 }
 
 .profile-icon {
-  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
+  background: linear-gradient(135deg, #E8F6FF 0%, #F0F9FF 100%);
 }
 
 .about-icon {
-  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
+  background: linear-gradient(135deg, #E8F6FF 0%, #F0F9FF 100%);
 }
 
 .privacy-icon {
-  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
+  background: linear-gradient(135deg, #E8F6FF 0%, #F0F9FF 100%);
 }
 
 .terms-icon {
-  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
+  background: linear-gradient(135deg, #E8F6FF 0%, #F0F9FF 100%);
 }
 
 .item-text {

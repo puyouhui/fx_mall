@@ -2,11 +2,11 @@
   <view class="order-list-page">
     <!-- 自定义导航栏 - 绿色背景 -->
     <view class="custom-navbar">
-      <view class="navbar-fixed" style="background-color: #20CB6B;">
+      <view class="navbar-fixed" style="background-color: #91CFFF;">
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+            <uni-icons type="left" size="20" color="#1D2087"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">我的订单</text>
@@ -434,7 +434,7 @@ export default {
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 500;
-  color: #fff;
+  color: #1D2087;
 }
 
 .navbar-right {
@@ -465,7 +465,7 @@ export default {
 }
 
 .status-tab.active {
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 600;
 }
 
@@ -477,7 +477,7 @@ export default {
   transform: translateX(-50%);
   width: 60rpx;
   height: 4rpx;
-  background-color: #20CB6B;
+  background-color: #91CFFF;
   border-radius: 2rpx;
 }
 
@@ -503,7 +503,7 @@ export default {
 
 .order-number-query-link {
   font-size: 26rpx;
-  color: #20CB6B;
+  color: #1D2087;
   text-decoration: underline;
 }
 
@@ -533,7 +533,7 @@ export default {
 
 .order-number-query-btn {
   font-size: 28rpx;
-  color: #20CB6B;
+  color: #1D2087;
   padding: 12rpx 20rpx;
 }
 
@@ -587,7 +587,7 @@ export default {
 }
 
 .status-green {
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .status-cancelled {
@@ -674,8 +674,8 @@ export default {
 .action-btn {
   padding: 10rpx 28rpx;
   font-size: 24rpx;
-  color: #20CB6B;
-  border: 1px solid #20CB6B;
+  color: #1D2087;
+  border: 1px solid #91CFFF;
   border-radius: 8rpx;
 }
 

@@ -177,3 +177,11 @@ fix_powershell_encoding.ps1
 
 # 本地商品采集与导入素材（体积较大，不提交）
 /products/
+
+# 本地导入脚本生成的环境状态
+/scripts/seed_local_categories/tag_category_map.json
+/scripts/upload_local_products/upload_state.json
+
+# Python 运行缓存
+__pycache__/
+*.py[cod]

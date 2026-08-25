@@ -727,7 +727,7 @@ body {
 	height: 100vh;
 	display: flex;
 	flex-direction: column;
-	background: linear-gradient(180deg, #e7fff3 0%, #f8f9fb 40%, #f5f6f8 100%);
+	background: linear-gradient(180deg, #E8F6FF 0%, #f8f9fb 40%, #f5f6f8 100%);
 	overflow: hidden;
 }
 
@@ -789,8 +789,8 @@ body {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(32, 203, 107, 0.12);
-	box-shadow: inset 0 0 0 1px rgba(32, 203, 107, 0.25);
+	background: rgba(145, 207, 255, 0.12);
+	box-shadow: inset 0 0 0 1px rgba(145, 207, 255, 0.25);
 }
 
 .tabs {
@@ -821,14 +821,14 @@ body {
 	padding: 12rpx 32rpx;
 	border-radius: 999rpx;
 	font-size: 26rpx;
-	color: #20cb6b;
+	color: #1D2087;
 	background: #fff;
 	font-weight: 600;
 }
 
 .tab_edit.active {
-	background: #20cb6b;
-	color: #fff;
+	background: #91CFFF;
+	color: #1D2087;
 }
 
 .tab_delete {
@@ -841,13 +841,13 @@ body {
 }
 
 .tab.active {
-	background: #dff9ef;
+	background: #D6EEFF;
 }
 
 .tab-frequent {
 	background: transparent;
-	color: #20CB6B;
-	color: #20cb6b;
+	color: #1D2087;
+	color: #1D2087;
 	font-weight: 600;
 }
 
@@ -882,9 +882,9 @@ body {
 }
 
 .select-dot.active {
-	background: linear-gradient(135deg, #20cb6b, #17b76b);
+	background: linear-gradient(135deg, #91CFFF, #6BB8F0);
 	border-color: transparent;
-	box-shadow: 0 4rpx 8rpx rgba(32, 203, 107, 0.35);
+	box-shadow: 0 4rpx 8rpx rgba(145, 207, 255, 0.35);
 	position: relative;
 }
 
@@ -967,9 +967,9 @@ body {
 
 .item-tags {
 	font-size: 24rpx;
-	color: #20cb6b;
+	color: #1D2087;
 	padding: 6rpx 18rpx;
-	background: #ddf8ed;
+	background: #D6EEFF;
 	border-radius: 999rpx;
 	width: fit-content;
 }
@@ -999,11 +999,11 @@ body {
 
 .qty-btn.minus {
 	background: #F7F8F9;
-	/* border: 1rpx solid rgba(32, 203, 107, 0.3); */
+	/* border: 1rpx solid rgba(145, 207, 255, 0.3); */
 }
 
 .qty-btn.plus {
-	background: #20CB6B;
+	background: #91CFFF;
 }
 
 .qty-icon {
@@ -1185,7 +1185,7 @@ body {
 
 .bottom-discount-amount {
 	font-size: 24rpx;
-	color: #20cb6b;
+	color: #1D2087;
 }
 
 .bottom-actions {
@@ -1195,8 +1195,8 @@ body {
 }
 
 .checkout-btn {
-	background: linear-gradient(135deg, #20cb6b, #17b76b);
-	color: #fff;
+	background: linear-gradient(135deg, #91CFFF, #6BB8F0);
+	color: #1D2087;
 	font-weight: 600;
 	width: 280rpx;
 	height: 86rpx;
@@ -1359,7 +1359,7 @@ body {
 
 .coupon-selected {
 	font-size: 24rpx;
-	color: #20CB6B;
+	color: #1D2087;
 	font-weight: 500;
 }
 
@@ -1370,7 +1370,7 @@ body {
 
 .coupon-change {
 	font-size: 22rpx;
-	color: #20CB6B;
+	color: #1D2087;
 }
 
 /* 优惠券选择弹窗 */
@@ -1458,7 +1458,7 @@ body {
 }
 
 .coupon-option.active {
-	border-color: #20CB6B;
+	border-color: #91CFFF;
 	background-color: #f0f9f4;
 }
 

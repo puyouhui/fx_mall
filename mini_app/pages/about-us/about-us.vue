@@ -2,13 +2,13 @@
   <view class="about-us-page">
     <!-- 自定义导航栏 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #20CB6B;">
+      <view class="navbar-fixed" style="background-color: #91CFFF;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+            <uni-icons type="left" size="20" color="#1D2087"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">关于我们</text>
@@ -27,10 +27,10 @@
       <view class="brand-section">
         <view class="logo-wrapper">
         <view class="logo-placeholder">
-          <text class="logo-text">橙心选</text>
+          <text class="logo-text">竹江纸业</text>
         </view>
         </view>
-        <text class="app-name">橙心选（云南）供应链管理有限公司</text>
+        <text class="app-name">云南竹江纸业有限公司</text>
         <text class="app-version">Version 1.0.9</text>
       </view>
 
@@ -39,10 +39,7 @@
         <view class="section-title">公司简介</view>
         <view class="section-content">
           <text class="content-text">
-            橙心选（云南）供应链管理有限公司，扎根云南本地服务实体商户，是一家专注餐饮与商超场景的数字化供应链服务商。
-            我们整合上游品牌工厂与区域核心仓配资源，以数据驱动的精细运营能力，为客户提供一站式采购解决方案。
-            业务覆盖纸品纸巾、PP餐盒、纸碗纸杯、筷子餐具、清洁洗护、打包耗材、定制系列及更多高频刚需品类，
-            通过标准化产品体系与柔性供应能力，帮助客户真正做到“少跑一趟仓，多赚一分利”。
+            云南竹江纸业有限公司，扎根云南本地服务实体商户，是一家专注于纸品、清洁、包装等一体化用料方案的供应商。
           </text>
         </view>
       </view>
@@ -76,7 +73,7 @@
         <view class="section-content">
           <view class="contact-item" @click="makePhoneCall('19969106710')">
             <view class="contact-icon-wrapper">
-              <uni-icons type="phone" size="20" color="#20CB6B"></uni-icons>
+              <uni-icons type="phone" size="20" color="#1D2087"></uni-icons>
             </view>
             <view class="contact-info">
               <text class="contact-label">商务 / 客服</text>
@@ -86,7 +83,7 @@
           </view>
           <view class="contact-item">
             <view class="contact-icon-wrapper">
-              <uni-icons type="email" size="20" color="#20CB6B"></uni-icons>
+              <uni-icons type="email" size="20" color="#1D2087"></uni-icons>
             </view>
             <view class="contact-info">
               <text class="contact-label">邮箱地址</text>
@@ -95,7 +92,7 @@
           </view>
           <!-- <view class="contact-item">
             <view class="contact-icon-wrapper">
-              <uni-icons type="location" size="20" color="#20CB6B"></uni-icons>
+              <uni-icons type="location" size="20" color="#1D2087"></uni-icons>
             </view>
             <view class="contact-info">
               <text class="contact-label">公司地址</text>
@@ -107,7 +104,7 @@
 
       <!-- 版权信息 -->
       <view class="copyright-section">
-        <text class="copyright-text">© 2024 橙心选（云南）供应链管理有限公司</text>
+        <text class="copyright-text">© 2024 云南竹江纸业有限公司</text>
         <text class="copyright-text">All Rights Reserved</text>
       </view>
     </view>
@@ -157,7 +154,7 @@ export default {
 <style scoped>
 .about-us-page {
   min-height: 100vh;
-  background: linear-gradient(180deg, #E8F8F0 0%, #E8F8F0 30%, #f5f5f5 50%, #f5f5f5 100%);
+  background: linear-gradient(180deg, #E8F6FF 0%, #E8F6FF 30%, #f5f5f5 50%, #f5f5f5 100%);
 }
 
 /* 自定义导航栏 */
@@ -170,7 +167,7 @@ export default {
 }
 
 .navbar-fixed {
-  background-color: #20CB6B;
+  background-color: #91CFFF;
 }
 
 .navbar-content {
@@ -198,7 +195,7 @@ export default {
 .navbar-title-text {
   font-size: 36rpx;
   font-weight: 600;
-  color: #fff;
+  color: #1D2087;
 }
 
 .navbar-right {
@@ -225,18 +222,18 @@ export default {
 .logo-placeholder {
   width: 160rpx;
   height: 160rpx;
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
   border-radius: 32rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8rpx 24rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 8rpx 24rpx rgba(145, 207, 255, 0.3);
 }
 
 .logo-text {
   font-size: 48rpx;
   font-weight: 700;
-  color: #fff;
+  color: #1D2087;
 }
 
 .app-name {
@@ -292,7 +289,7 @@ export default {
 .service-icon {
   width: 40rpx;
   height: 40rpx;
-  background-color: #E8F8F0;
+  background-color: #E8F6FF;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -300,7 +297,7 @@ export default {
   flex-shrink: 0;
   margin-top: 4rpx;
   font-size: 24rpx;
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 600;
 }
 
@@ -326,7 +323,7 @@ export default {
 .contact-icon-wrapper {
   width: 64rpx;
   height: 64rpx;
-  background-color: #E8F8F0;
+  background-color: #E8F6FF;
   border-radius: 50%;
   display: flex;
   align-items: center;

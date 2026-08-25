@@ -2,13 +2,13 @@
   <view class="results-page">
     <!-- 自定义头部 - 绿色背景 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #20CB6B;">
+      <view class="navbar-fixed" style="background-color: #91CFFF;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+            <uni-icons type="left" size="20" color="#1D2087"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">搜索结果</text>
@@ -35,7 +35,7 @@
                 <text class="product-price">¥{{ product.displayPrice || product.price_range || '暂无价格' }}</text>
               </view>
               <view class="add-btn" @click.stop="onAddBtnClick(product)">
-                <uni-icons type="plusempty" size="18" color="#fff"></uni-icons>
+                <uni-icons type="plusempty" size="18" color="#1D2087"></uni-icons>
               </view>
             </view>
           </view>
@@ -372,7 +372,7 @@ export default {
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 500;
-  color: #fff;
+  color: #1D2087;
 }
 
 .navbar-right {
@@ -462,13 +462,13 @@ export default {
 .add-btn {
   width: 60rpx;
   height: 60rpx;
-  background-color: #20CB6B;
+  background-color: #91CFFF;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 4rpx 12rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 4rpx 12rpx rgba(145, 207, 255, 0.3);
 }
 
 .no-more-tip {

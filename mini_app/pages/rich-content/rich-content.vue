@@ -13,7 +13,7 @@
 
     <!-- 加载中 -->
     <view v-if="loading" class="loading-container">
-      <uni-icons type="spinner-cycle" size="40" color="#20CB6B"></uni-icons>
+      <uni-icons type="spinner-cycle" size="40" color="#1D2087"></uni-icons>
       <text class="loading-text">加载中...</text>
     </view>
 
@@ -180,7 +180,7 @@ export default {
 
 /* 自定义导航栏 */
 .custom-navbar {
-  background-color: #20CB6B;
+  background-color: #91CFFF;
   position: fixed;
   top: 0;
   left: 0;
@@ -309,8 +309,8 @@ export default {
   width: 200px;
   height: 40px;
   line-height: 40px;
-  background-color: #20CB6B;
-  color: #fff;
+  background-color: #91CFFF;
+  color: #1D2087;
   border-radius: 20px;
   font-size: 14px;
   border: none;

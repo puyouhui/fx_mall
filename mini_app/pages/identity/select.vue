@@ -193,8 +193,8 @@ export default {
 }
 
 .identity-card.active {
-  border-color: #20cb6b;
-  box-shadow: 0 12rpx 36rpx rgba(32, 203, 107, 0.18);
+  border-color: #91CFFF;
+  box-shadow: 0 12rpx 36rpx rgba(145, 207, 255, 0.18);
 }
 
 .card-icon {
@@ -242,15 +242,15 @@ export default {
 }
 
 .identity-card.active .card-check {
-  border-color: #20cb6b;
-  background-color: rgba(32, 203, 107, 0.12);
+  border-color: #91CFFF;
+  background-color: rgba(145, 207, 255, 0.12);
 }
 
 .check-dot {
   width: 20rpx;
   height: 20rpx;
   border-radius: 50%;
-  background-color: #20cb6b;
+  background-color: #91CFFF;
 }
 
 .tip-box {
@@ -269,8 +269,8 @@ export default {
   line-height: 88rpx;
   text-align: center;
   border-radius: 999rpx;
-  background: linear-gradient(120deg, #20cb6b, #16b35d);
-  color: #fff;
+  background: linear-gradient(120deg, #91CFFF, #6BB8F0);
+  color: #1D2087;
   font-size: 32rpx;
   font-weight: 600;
   border: none;

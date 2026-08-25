@@ -5,7 +5,7 @@
       <view v-if="!loginSuccess">
         <view class="login-modal-header">
           <!-- <view class="login-modal-icon-wrapper">
-            <uni-icons type="person-filled" size="48" color="#20CB6B"></uni-icons>
+            <uni-icons type="person-filled" size="48" color="#1D2087"></uni-icons>
           </view> -->
           <text class="login-modal-title">登录提示</text>
         </view>
@@ -37,7 +37,7 @@
             <text class="user-code-label">您的用户编号</text>
             <view class="user-code-display" @click="copyUserCode">
               <text class="user-code-text">{{ userCode || '暂无' }}</text>
-              <uni-icons type="copy" size="20" color="#20CB6B" class="copy-icon"></uni-icons>
+              <uni-icons type="copy" size="20" color="#1D2087" class="copy-icon"></uni-icons>
             </view>
           </view>
           <view class="tip-section">
@@ -316,19 +316,19 @@ export default {
 .login-modal-header {
   padding: 50rpx 30rpx 0 30rpx;
   text-align: center;
-  background: linear-gradient(180deg, #E8F8F0 0%, #fff 100%);
+  background: linear-gradient(180deg, #E8F6FF 0%, #fff 100%);
 }
 
 .login-modal-icon-wrapper {
   width: 120rpx;
   height: 120rpx;
   margin: 0 auto 24rpx;
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 4rpx 16rpx rgba(145, 207, 255, 0.3);
 }
 
 .login-modal-title {
@@ -380,7 +380,7 @@ export default {
 }
 
 .confirm-btn {
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
   position: relative;
   overflow: hidden;
 }
@@ -411,7 +411,7 @@ export default {
 }
 
 .confirm-btn .login-modal-btn-text {
-  color: #fff;
+  color: #1D2087;
   font-weight: 600;
 }
 
@@ -426,19 +426,19 @@ export default {
 .success-header {
   padding: 60rpx 30rpx 0 30rpx;
   text-align: center;
-  background: linear-gradient(180deg, #E8F8F0 0%, #fff 100%);
+  background: linear-gradient(180deg, #E8F6FF 0%, #fff 100%);
 }
 
 .success-icon-wrapper {
   width: 140rpx;
   height: 140rpx;
   margin: 0 auto 30rpx;
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6rpx 20rpx rgba(32, 203, 107, 0.4);
+  box-shadow: 0 6rpx 20rpx rgba(145, 207, 255, 0.4);
   animation: scaleIn 0.4s ease;
 }
 
@@ -456,7 +456,7 @@ export default {
 .success-title {
   font-size: 44rpx;
   font-weight: 600;
-  color: #20CB6B;
+  color: #1D2087;
   display: block;
 }
 
@@ -482,23 +482,23 @@ export default {
   align-items: center;
   justify-content: space-between;
   padding: 20rpx 40rpx;
-  background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
-  border: 2rpx solid #20CB6B;
+  background: linear-gradient(135deg, #E8F6FF 0%, #F0F9FF 100%);
+  border: 2rpx solid #91CFFF;
   border-radius: 16rpx;
   transition: all 0.3s;
   cursor: pointer;
 }
 
 .user-code-display:active {
-  background: linear-gradient(135deg, #D8F5E8 0%, #E8F8F0 100%);
+  background: linear-gradient(135deg, #D6EEFF 0%, #E8F6FF 100%);
   transform: scale(0.98);
-  box-shadow: 0 4rpx 12rpx rgba(32, 203, 107, 0.2);
+  box-shadow: 0 4rpx 12rpx rgba(145, 207, 255, 0.2);
 }
 
 .user-code-text {
   font-size: 64rpx;
   font-weight: 700;
-  color: #20CB6B;
+  color: #1D2087;
   letter-spacing: 4rpx;
   font-family: 'Courier New', monospace;
   flex: 1;
@@ -536,12 +536,12 @@ export default {
 .copy-close-btn {
   width: 100%;
   height: 100rpx;
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
   border-radius: 50rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 4rpx 16rpx rgba(145, 207, 255, 0.3);
   transition: all 0.3s;
   position: relative;
   overflow: hidden;
@@ -560,7 +560,7 @@ export default {
 
 .copy-close-btn:active {
   transform: scale(0.98);
-  box-shadow: 0 2rpx 8rpx rgba(32, 203, 107, 0.2);
+  box-shadow: 0 2rpx 8rpx rgba(145, 207, 255, 0.2);
 }
 
 .copy-close-btn:active::before {
@@ -570,7 +570,7 @@ export default {
 .copy-close-btn-text {
   font-size: 34rpx;
   font-weight: 600;
-  color: #fff;
+  color: #1D2087;
   letter-spacing: 2rpx;
 }
 </style>

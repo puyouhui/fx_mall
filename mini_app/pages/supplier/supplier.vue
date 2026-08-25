@@ -2,13 +2,13 @@
   <view class="supplier-page">
     <!-- 自定义导航栏 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #20CB6B;">
+      <view class="navbar-fixed" style="background-color: #91CFFF;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+            <uni-icons type="left" size="20" color="#1D2087"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">供应商合作</text>
@@ -24,7 +24,7 @@
     <!-- 顶部提示 -->
     <view class="tip-banner">
       <view class="tip-content">
-        <uni-icons type="info" size="18" color="#20CB6B"></uni-icons>
+        <uni-icons type="info" size="18" color="#1D2087"></uni-icons>
         <text class="tip-text">目前平台正在招募以下类目供应商：生鲜食材、调料干货、日用消耗品、清洁用品、办公用品、包装材料等，欢迎优质供应商加入合作！</text>
       </view>
     </view>
@@ -319,7 +319,7 @@ export default {
 }
 
 .navbar-fixed {
-  background-color: #20CB6B;
+  background-color: #91CFFF;
 }
 
 .navbar-content {
@@ -347,7 +347,7 @@ export default {
 .navbar-title-text {
   font-size: 36rpx;
   font-weight: 600;
-  color: #fff;
+  color: #1D2087;
 }
 
 .navbar-right {
@@ -356,11 +356,11 @@ export default {
 
 /* 顶部提示 */
 .tip-banner {
-  background: linear-gradient(135deg, #E8F8F0 0%, #F0FDF4 100%);
+  background: linear-gradient(135deg, #E8F6FF 0%, #F0F9FF 100%);
   padding: 24rpx 30rpx;
   margin: 24rpx 30rpx 24rpx 30rpx;
   border-radius: 16rpx;
-  border-left: 6rpx solid #20CB6B;
+  border-left: 6rpx solid #91CFFF;
 }
 
 .tip-content {
@@ -452,8 +452,8 @@ export default {
 }
 
 .category-item.active {
-  background-color: #E8F8F0;
-  border-color: #20CB6B;
+  background-color: #E8F6FF;
+  border-color: #91CFFF;
 }
 
 .category-text {
@@ -462,7 +462,7 @@ export default {
 }
 
 .category-item.active .category-text {
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 600;
 }
 
@@ -482,12 +482,12 @@ export default {
 .submit-btn {
   width: 100%;
   height: 88rpx;
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
   border-radius: 44rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 12rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 4rpx 12rpx rgba(145, 207, 255, 0.3);
 }
 
 .submit-btn.loading {
@@ -497,7 +497,7 @@ export default {
 .submit-btn-text {
   font-size: 32rpx;
   font-weight: 600;
-  color: #fff;
+  color: #1D2087;
 }
 </style>
 

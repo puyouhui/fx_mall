@@ -2,7 +2,7 @@
   <view class="profile-page">
     <!-- 自定义导航栏 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #E8F8F0;">
+      <view class="navbar-fixed" style="background-color: #E8F6FF;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
@@ -442,7 +442,7 @@ export default {
 <style scoped>
 .profile-page {
   min-height: 100vh;
-  background: linear-gradient(180deg, #E8F8F0 0%, #E8F8F0 20%, #f5f5f5 40%, #f5f5f5 100%);
+  background: linear-gradient(180deg, #E8F6FF 0%, #E8F6FF 20%, #f5f5f5 40%, #f5f5f5 100%);
 }
 
 /* 自定义导航栏 */
@@ -660,7 +660,7 @@ export default {
 }
 
 .name-input:focus {
-  border-color: #20CB6B;
+  border-color: #91CFFF;
   background: #fff;
 }
 
@@ -696,7 +696,7 @@ export default {
 }
 
 .confirm-btn {
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 600;
 }
 

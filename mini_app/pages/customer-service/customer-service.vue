@@ -2,7 +2,7 @@
   <view class="customer-service-page">
     <!-- 自定义导航栏 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #E8F8F0;">
+      <view class="navbar-fixed" style="background-color: #E8F6FF;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
@@ -32,7 +32,7 @@
       </view>
       <view class="mascot">
         <view class="mascot-placeholder">
-          <uni-icons type="chatbubble-filled" size="48" color="#20CB6B"></uni-icons>
+          <uni-icons type="chatbubble-filled" size="48" color="#1D2087"></uni-icons>
           <text class="mascot-hi">hi</text>
         </view>
       </view>
@@ -49,14 +49,14 @@
         :session-from="wxSessionFrom"
       >
         <view class="btn-icon online-service-icon">
-          <uni-icons type="chatbubble" size="32" color="#20CB6B"></uni-icons>
+          <uni-icons type="chatbubble" size="32" color="#1D2087"></uni-icons>
         </view>
         <text class="btn-text">在线客服</text>
       </button>
       <!-- #else -->
       <view class="action-btn" @click="handleOnlineService">
         <view class="btn-icon online-service-icon">
-          <uni-icons type="chatbubble" size="32" color="#20CB6B"></uni-icons>
+          <uni-icons type="chatbubble" size="32" color="#1D2087"></uni-icons>
         </view>
         <text class="btn-text">在线客服</text>
       </view>
@@ -86,7 +86,7 @@
       <view class="sales-employee-card" @click="callSalesEmployee">
         <view class="sales-employee-info">
           <view class="sales-employee-avatar">
-            <uni-icons type="person-filled" size="32" color="#20CB6B"></uni-icons>
+            <uni-icons type="person-filled" size="32" color="#1D2087"></uni-icons>
           </view>
           <view class="sales-employee-details">
             <text class="sales-employee-name">{{ salesEmployee.name }}</text>
@@ -263,7 +263,7 @@ export default {
         content: question.answer,
         showCancel: false,
         confirmText: '知道了',
-        confirmColor: '#20CB6B'
+        confirmColor: '#1D2087'
       });
     },
     
@@ -284,7 +284,7 @@ export default {
         content: '投诉功能开发中，您可以通过"联系客服"按钮联系我们。',
         showCancel: false,
         confirmText: '知道了',
-        confirmColor: '#20CB6B'
+        confirmColor: '#1D2087'
       });
       // TODO: 跳转到投诉页面
     },
@@ -296,7 +296,7 @@ export default {
         content: '功能反馈功能开发中，您可以通过"联系客服"按钮联系我们。',
         showCancel: false,
         confirmText: '知道了',
-        confirmColor: '#20CB6B'
+        confirmColor: '#1D2087'
       });
       // TODO: 跳转到功能反馈页面
     },
@@ -321,7 +321,7 @@ export default {
           content: '当前不在服务时间内（8:30-21:30），您可以留言，我们会在服务时间内尽快回复您。',
           confirmText: '去留言',
           cancelText: '取消',
-          confirmColor: '#20CB6B',
+          confirmColor: '#1D2087',
           success: (res) => {
             if (res.confirm) {
               // TODO: 跳转到留言页面
@@ -391,7 +391,7 @@ export default {
 <style scoped>
 .customer-service-page {
   min-height: 100vh;
-  background: linear-gradient(180deg, #E8F8F0 0%, #E8F8F0 15%, #F5FCF8 30%, #FFFFFF 60%);
+  background: linear-gradient(180deg, #E8F6FF 0%, #E8F6FF 15%, #F5FAFF 30%, #FFFFFF 60%);
   padding-bottom: calc(128rpx + env(safe-area-inset-bottom));
 }
 
@@ -477,7 +477,7 @@ export default {
 
 .time-value {
   font-size: 26rpx;
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 500;
 }
 
@@ -492,12 +492,12 @@ export default {
 .mascot-placeholder {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #E8F8F0 0%, #D4F4E0 100%);
+  background: linear-gradient(135deg, #E8F6FF 0%, #CDE9FF 100%);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 12rpx rgba(32, 203, 107, 0.2);
+  box-shadow: 0 4rpx 12rpx rgba(145, 207, 255, 0.2);
   position: relative;
 }
 
@@ -555,7 +555,7 @@ export default {
 }
 
 .online-service-icon {
-  background-color: #E8F8F0;
+  background-color: #E8F6FF;
 }
 
 .complaint-icon {
@@ -608,14 +608,14 @@ export default {
   align-items: center;
   justify-content: space-between;
   padding: 24rpx;
-  background-color: #F0FDF6;
+  background-color: #F0F9FF;
   border-radius: 16rpx;
-  border: 1rpx solid #E8F8F0;
+  border: 1rpx solid #E8F6FF;
   transition: all 0.3s;
 }
 
 .sales-employee-card:active {
-  background-color: #E8F8F0;
+  background-color: #E8F6FF;
   transform: scale(0.98);
 }
 
@@ -629,7 +629,7 @@ export default {
   width: 80rpx;
   height: 80rpx;
   border-radius: 50%;
-  background-color: #E8F8F0;
+  background-color: #E8F6FF;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -661,14 +661,14 @@ export default {
   justify-content: center;
   width: 80rpx;
   height: 80rpx;
-  background-color: #20CB6B;
+  background-color: #91CFFF;
   border-radius: 50%;
   flex-shrink: 0;
   transition: all 0.3s;
 }
 
 .call-button:active {
-  background-color: #18B85A;
+  background-color: #6BB8F0;
   transform: scale(0.95);
 }
 
@@ -694,7 +694,7 @@ export default {
 }
 
 .tab-item.active {
-  background-color: #20CB6B;
+  background-color: #91CFFF;
 }
 
 .tab-text {
@@ -703,7 +703,7 @@ export default {
 }
 
 .tab-item.active .tab-text {
-  color: #fff;
+  color: #1D2087;
   font-weight: 500;
 }
 
@@ -734,7 +734,7 @@ export default {
 
 .question-number {
   font-size: 28rpx;
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 500;
   margin-right: 16rpx;
   min-width: 40rpx;
@@ -763,12 +763,12 @@ export default {
 .contact-btn {
   width: 100%;
   height: 88rpx;
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
   border-radius: 44rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 4rpx 16rpx rgba(145, 207, 255, 0.3);
   /* 重置 button 默认样式 */
   border: none;
   padding: 0;

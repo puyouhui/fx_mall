@@ -291,7 +291,7 @@ export default {
 }
 
 .tab.active {
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 600;
 }
 
@@ -303,7 +303,7 @@ export default {
   transform: translateX(-50%);
   width: 60rpx;
   height: 4rpx;
-  background-color: #20CB6B;
+  background-color: #91CFFF;
   border-radius: 2rpx;
 }
 
@@ -340,7 +340,7 @@ export default {
   top: 0;
   bottom: 0;
   width: 8rpx;
-  background-color: #20CB6B;
+  background-color: #91CFFF;
 }
 
 .coupon-item.coupon-used::before {
@@ -382,8 +382,8 @@ export default {
 }
 
 .delivery-tag {
-  background-color: #E8F8F0;
-  color: #20CB6B;
+  background-color: #E8F6FF;
+  color: #1D2087;
 }
 
 .amount-tag {
@@ -409,7 +409,7 @@ export default {
 
 .value-text {
   font-size: 36rpx;
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 600;
 }
 
@@ -431,11 +431,11 @@ export default {
 }
 
 .coupon-item.coupon-unused .coupon-status {
-  background-color: #E8F8F0;
+  background-color: #E8F6FF;
 }
 
 .coupon-item.coupon-unused .status-text {
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .coupon-item.coupon-used .status-text {
@@ -517,12 +517,12 @@ export default {
 .go-use-btn {
   width: 100%;
   height: 88rpx;
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
   border-radius: 44rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 4rpx 16rpx rgba(145, 207, 255, 0.3);
   transition: all 0.3s;
 }
 
@@ -533,7 +533,7 @@ export default {
 
 .go-use-btn-text {
   font-size: 32rpx;
-  color: #fff;
+  color: #1D2087;
   font-weight: 600;
 }
 </style>

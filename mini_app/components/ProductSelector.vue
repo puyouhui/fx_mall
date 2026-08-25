@@ -703,7 +703,7 @@ defineExpose({
 }
 
 .ps-spec-count {
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .ps-price-range {
@@ -768,8 +768,8 @@ defineExpose({
 }
 
 .ps-spec.active {
-  border-color: rgba(32, 203, 107, 0.5);
-  background: rgba(32, 203, 107, 0.04);
+  border-color: rgba(145, 207, 255, 0.5);
+  background: rgba(145, 207, 255, 0.04);
 }
 
 .ps-spec-info {
@@ -843,7 +843,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #20CB6B;
+  background: #91CFFF;
 }
 
 .ps-spec-qty {
@@ -856,16 +856,16 @@ defineExpose({
   width: 64rpx;
   height: 64rpx;
   border-radius: 50%;
-  /* border: 1rpx solid rgba(32, 203, 107, 0.3); */
+  /* border: 1rpx solid rgba(145, 207, 255, 0.3); */
   display: flex;
   align-items: center;
   justify-content: center;
-  /* background: rgba(32, 203, 107, 0.08); */
+  /* background: rgba(145, 207, 255, 0.08); */
   background-color: #F7F8F9;
 }
 
 .ps-spec-btn.plus {
-  background: #20CB6B;
+  background: #91CFFF;
   border-color: transparent;
 }
 
@@ -904,8 +904,8 @@ defineExpose({
 }
 
 .ps-plus {
-  background-color: #20CB6B;
-  border-color: rgba(32, 203, 107, 0.2);
+  background-color: #91CFFF;
+  border-color: rgba(145, 207, 255, 0.2);
 }
 
 .ps-minus-icon {
@@ -924,11 +924,11 @@ defineExpose({
 
 .ps-confirm {
   width: 100%;
-  background: linear-gradient(90deg, #20CB6B, #12a458);
+  background: linear-gradient(90deg, #91CFFF, #6BB8F0);
   border-radius: 999rpx;
   text-align: center;
   padding: 28rpx 0;
-  color: #fff;
+  color: #1D2087;
   font-size: 30rpx;
   font-weight: 600;
 }

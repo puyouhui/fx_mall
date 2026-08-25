@@ -92,11 +92,11 @@
 							</view>
 							<text class="quantity">{{ spec.quantity }}</text>
 							<view class="plus-btn" @click="increaseQuantity(spec)">
-								<uni-icons type="plusempty" size="20" color="#fff"></uni-icons>
+								<uni-icons type="plusempty" size="20" color="#1D2087"></uni-icons>
 							</view>
 						</view>
 						<view class="add-btn" v-else @click="addSpecToCart(spec)">
-							<uni-icons type="plusempty" size="20" color="#fff"></uni-icons>
+							<uni-icons type="plusempty" size="20" color="#1D2087"></uni-icons>
 						</view>
 					</view>
 				</view>
@@ -203,8 +203,8 @@
 						<text class="action-text">首页</text>
 					</view> -->
 					<view class="action-btn" @click="collectProduct">
-						<uni-icons :type="isCollected ? 'star-filled' : 'star'" size="28" :color="isCollected ? '#20CB6B' : '#2C2C2C'"></uni-icons>
-						<text class="action-text" :style="{ color: isCollected ? '#20CB6B' : '#2C2C2C' }">收藏</text>
+						<uni-icons :type="isCollected ? 'star-filled' : 'star'" size="28" :color="isCollected ? '#1D2087' : '#2C2C2C'"></uni-icons>
+						<text class="action-text" :style="{ color: isCollected ? '#1D2087' : '#2C2C2C' }">收藏</text>
 					</view>
 					<view class="action-btn" @click="goToCustomerService">
 						<uni-icons type="chat" size="28" color="#2C2C2C"></uni-icons>
@@ -238,7 +238,7 @@
 					<text class="user-code-label">您的用户编号</text>
 					<view class="user-code-display" @click="copyUserCode">
 						<text class="user-code-text">{{ currentUserCode || '暂无' }}</text>
-						<uni-icons type="copy" size="20" color="#20CB6B" class="copy-icon"></uni-icons>
+						<uni-icons type="copy" size="20" color="#1D2087" class="copy-icon"></uni-icons>
 					</view>
 				</view>
 				<view class="tip-section">
@@ -1430,8 +1430,8 @@ export default {
 .add-btn {
 	width: 30px;
 	height: 30px;
-	background-color: #20CB6B;
-	color: #fff;
+	background-color: #91CFFF;
+	color: #1D2087;
 	font-size: 36rpx;
 	border-radius: 30rpx;
 	font-weight: bold;
@@ -1451,7 +1451,7 @@ export default {
 .plus-btn {
 	width: 32px;
 	height: 32px;
-	background-color: #20CB6B;
+	background-color: #91CFFF;
 	color: #333;
 	font-size: 24rpx;
 	display: flex;
@@ -1820,8 +1820,8 @@ export default {
 
 .add-to-cart-btn {
 	width: 90%;
-	background-color: #20CB6B;
-	color: #fff;
+	background-color: #91CFFF;
+	color: #1D2087;
 	font-size: 32rpx;
 	font-weight: bold;
 	padding: 20rpx 0;
@@ -1896,7 +1896,7 @@ export default {
 .faq-title {
 	width: 100%;
 	text-align: center;
-	color: #20CB6B;
+	color: #1D2087;
 	font-size: 32rpx;
 	font-weight: bold;
 	margin-bottom: 20rpx;
@@ -2005,19 +2005,19 @@ export default {
 .user-code-success-header {
 	padding: 60rpx 30rpx 0 30rpx;
 	text-align: center;
-	background: linear-gradient(180deg, #E8F8F0 0%, #fff 100%);
+	background: linear-gradient(180deg, #E8F6FF 0%, #fff 100%);
 }
 
 .user-code-success-icon-wrapper {
 	width: 140rpx;
 	height: 140rpx;
 	margin: 0 auto 30rpx;
-	background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+	background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
 	border-radius: 50%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	box-shadow: 0 6rpx 20rpx rgba(32, 203, 107, 0.4);
+	box-shadow: 0 6rpx 20rpx rgba(145, 207, 255, 0.4);
 	animation: scaleIn 0.4s ease;
 }
 
@@ -2035,7 +2035,7 @@ export default {
 .user-code-success-title {
 	font-size: 44rpx;
 	font-weight: 600;
-	color: #20CB6B;
+	color: #1D2087;
 	display: block;
 }
 
@@ -2061,22 +2061,22 @@ export default {
 	align-items: center;
 	justify-content: space-between;
 	padding: 20rpx 40rpx;
-	background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
-	border: 2rpx solid #20CB6B;
+	background: linear-gradient(135deg, #E8F6FF 0%, #F0F9FF 100%);
+	border: 2rpx solid #91CFFF;
 	border-radius: 16rpx;
 	transition: all 0.3s;
 }
 
 .user-code-display:active {
-	background: linear-gradient(135deg, #D8F5E8 0%, #E8F8F0 100%);
+	background: linear-gradient(135deg, #D6EEFF 0%, #E8F6FF 100%);
 	transform: scale(0.98);
-	box-shadow: 0 4rpx 12rpx rgba(32, 203, 107, 0.2);
+	box-shadow: 0 4rpx 12rpx rgba(145, 207, 255, 0.2);
 }
 
 .user-code-text {
 	font-size: 64rpx;
 	font-weight: 700;
-	color: #20CB6B;
+	color: #1D2087;
 	letter-spacing: 4rpx;
 	font-family: 'Courier New', monospace;
 	flex: 1;
@@ -2133,8 +2133,8 @@ export default {
 }
 
 .user-code-btn.confirm-btn {
-	color: #fff;
-	background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+	color: #1D2087;
+	background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
 	font-weight: 600;
 }
 

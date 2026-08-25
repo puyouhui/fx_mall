@@ -296,7 +296,7 @@ export default {
 }
 
 .log-points.positive {
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .log-points.negative {

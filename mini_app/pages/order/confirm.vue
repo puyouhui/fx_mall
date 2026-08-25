@@ -64,7 +64,7 @@
           <switch 
             :checked="isUrgent" 
             @change="onUrgentChange"
-            color="#20CB6B"
+            color="#1D2087"
             class="urgent-switch"
           />
         </view>
@@ -151,7 +151,7 @@
             <radio 
               :value="item.value" 
               :checked="outOfStockStrategy === item.value"
-              color="#20CB6B"
+              color="#1D2087"
             />
             <text class="strategy-text">{{ item.label }}</text>
           </label>
@@ -169,7 +169,7 @@
         <switch 
           :checked="trustReceipt" 
           @change="trustReceipt = $event.detail.value"
-          color="#20CB6B"
+          color="#1D2087"
         />
       </view>
 
@@ -181,7 +181,7 @@
         <switch 
           :checked="hidePrice" 
           @change="hidePrice = $event.detail.value"
-          color="#20CB6B"
+          color="#1D2087"
         />
       </view>
 
@@ -193,7 +193,7 @@
         <switch 
           :checked="requirePhoneContact" 
           @change="requirePhoneContact = $event.detail.value"
-          color="#20CB6B"
+          color="#1D2087"
         />
       </view>
     </view>
@@ -647,8 +647,8 @@ export default {
   margin-left: 12rpx;
   padding: 4rpx 12rpx;
   font-size: 20rpx;
-  color: #20CB6B;
-  background-color: #E8F8F0;
+  color: #1D2087;
+  background-color: #E8F6FF;
   border-radius: 4rpx;
   line-height: 1.2;
 }
@@ -814,17 +814,17 @@ export default {
 .urgent-title {
   font-size: 28rpx;
   font-weight: 600;
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .urgent-tag {
   display: inline-block;
   padding: 4rpx 12rpx;
-  color: #20CB6B;
+  color: #1D2087;
   font-size: 24rpx;
   font-weight: 500;
   border-radius: 12rpx;
-  background-color: #E8F8F0;
+  background-color: #E8F6FF;
 }
 
 .urgent-right {
@@ -843,7 +843,7 @@ export default {
 .urgent-price {
   font-size: 32rpx;
   font-weight: 700;
-  color: #20CB6B;
+  color: #1D2087;
   line-height: 1;
 }
 
@@ -889,7 +889,7 @@ export default {
 }
 
 .amount-value.free-text {
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .amount-value.muted {
@@ -897,7 +897,7 @@ export default {
 }
 
 .amount-value.discount-text {
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 500;
 }
 
@@ -917,15 +917,15 @@ export default {
 .urgent-fee-tag {
   display: inline-block;
   padding: 4rpx 12rpx;
-  background-color: #E8F8F0;
-  color: #20CB6B;
+  background-color: #E8F6FF;
+  color: #1D2087;
   font-size: 20rpx;
   border-radius: 8rpx;
   font-weight: 500;
 }
 
 .urgent-fee-value {
-  color: #20CB6B;
+  color: #1D2087;
   font-size: 30rpx;
 }
 
@@ -1002,8 +1002,8 @@ export default {
 }
 
 .strategy-item-active {
-  background-color: #E8F8F0;
-  border-color: #20CB6B;
+  background-color: #E8F6FF;
+  border-color: #91CFFF;
 }
 
 .strategy-text {
@@ -1087,14 +1087,14 @@ export default {
   width: 50%;
   height: 48px;
   line-height: 48px;
-  background-color: #20CB6B;
-  color: #fff;
+  background-color: #91CFFF;
+  color: #1D2087;
   font-size: 32rpx;
   font-weight: 600;
   padding: 0 60rpx;
   border-radius: 50rpx;
   border: none;
-  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 4rpx 16rpx rgba(145, 207, 255, 0.3);
   transition: all 0.3s;
   box-sizing: border-box;
 }
@@ -1194,7 +1194,7 @@ export default {
 }
 
 .coupon-option.active {
-  border-color: #20CB6B;
+  border-color: #91CFFF;
   background-color: #f0f9f4;
 }
 

@@ -2,13 +2,13 @@
   <view class="referral-page">
     <!-- 自定义导航栏 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #20CB6B;">
+      <view class="navbar-fixed" style="background-color: #91CFFF;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+            <uni-icons type="left" size="20" color="#1D2087"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">推荐朋友</text>
@@ -45,7 +45,7 @@
       <view class="activity-section">
         <view class="section-header">
           <view class="section-title-wrapper">
-            <uni-icons type="info" size="20" color="#20CB6B"></uni-icons>
+            <uni-icons type="info" size="20" color="#1D2087"></uni-icons>
             <text class="section-title">活动说明</text>
           </view>
         </view>
@@ -66,7 +66,7 @@
 
         <!-- 加载中 -->
         <view v-if="loading" class="loading-container">
-          <uni-icons type="spinner-cycle" size="40" color="#20CB6B"></uni-icons>
+          <uni-icons type="spinner-cycle" size="40" color="#1D2087"></uni-icons>
           <text class="loading-text">加载中...</text>
         </view>
 
@@ -427,7 +427,7 @@ export default {
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 600;
-  color: #fff;
+  color: #1D2087;
 }
 
 .navbar-right {
@@ -442,14 +442,14 @@ export default {
 
 /* 统计数据卡片 */
 .stats-card {
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
   border-radius: 20rpx;
   padding: 40rpx 30rpx;
   margin-bottom: 20rpx;
   display: flex;
   align-items: center;
   justify-content: space-around;
-  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 4rpx 16rpx rgba(145, 207, 255, 0.3);
 }
 
 .stats-item {
@@ -462,12 +462,12 @@ export default {
 .stats-value {
   font-size: 48rpx;
   font-weight: 700;
-  color: #fff;
+  color: #1D2087;
 }
 
 .stats-label {
   font-size: 24rpx;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(29, 32, 135, 0.75);
 }
 
 .stats-divider {
@@ -525,7 +525,7 @@ export default {
   width: 12rpx;
   height: 12rpx;
   border-radius: 50%;
-  background-color: #20CB6B;
+  background-color: #91CFFF;
   margin-top: 8rpx;
   flex-shrink: 0;
 }
@@ -576,7 +576,7 @@ export default {
 .user-avatar-placeholder {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -690,7 +690,7 @@ export default {
 
 .load-more-text {
   font-size: 28rpx;
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .no-more {
@@ -714,8 +714,8 @@ export default {
   width: 100rpx;
   height: 100rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
-  box-shadow: 0 8rpx 24rpx rgba(32, 203, 107, 0.4);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
+  box-shadow: 0 8rpx 24rpx rgba(145, 207, 255, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;

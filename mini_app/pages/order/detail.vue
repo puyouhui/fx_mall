@@ -2,11 +2,11 @@
   <view class="order-detail-page">
     <!-- 自定义导航栏 - 绿色背景 -->
     <view class="custom-navbar">
-      <view class="navbar-fixed" style="background-color: #20CB6B;">
+      <view class="navbar-fixed" style="background-color: #91CFFF;">
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+            <uni-icons type="left" size="20" color="#1D2087"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">订单详情</text>
@@ -37,7 +37,7 @@
           :enable-scroll="true"
         ></map>
         <view class="map-refresh-btn" @click="refreshDeliveryLocation">
-          <uni-icons type="reload" size="20" color="#20CB6B"></uni-icons>
+          <uni-icons type="reload" size="20" color="#1D2087"></uni-icons>
         </view>
       </view>
       
@@ -239,7 +239,7 @@
       <!-- 客服提示 -->
       <view class="customer-service-tip" @click="goToCustomerService">
         <view class="service-avatar">
-          <uni-icons type="chatbubble" size="20" color="#20CB6B"></uni-icons>
+          <uni-icons type="chatbubble" size="20" color="#1D2087"></uni-icons>
         </view>
         <text class="service-text">有问题不能解决？点我试试~</text>
       </view>
@@ -661,7 +661,7 @@ export default {
                 color: '#fff',
                 fontSize: 12,
                 borderRadius: 4,
-                bgColor: location.is_realtime ? '#20cb6b' : '#20cb6b',
+                bgColor: location.is_realtime ? '#91CFFF' : '#91CFFF',
                 padding: 8,
                 display: 'ALWAYS'
               }
@@ -1098,7 +1098,7 @@ export default {
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 500;
-  color: #fff;
+  color: #1D2087;
 }
 
 .navbar-right {
@@ -1145,7 +1145,7 @@ export default {
   left: 0;
   right: 0;
   height: 6rpx;
-  background: linear-gradient(90deg, #20CB6B 0%, #1AB85A 100%);
+  background: linear-gradient(90deg, #91CFFF 0%, #6BB8F0 100%);
 }
 
 .status-icon {
@@ -1349,7 +1349,7 @@ export default {
 }
 
 .amount-value.discount-text {
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 500;
 }
 
@@ -1391,7 +1391,7 @@ export default {
 }
 
 .urgent-container.urgent-active {
-  background-color: #E8F8F0;
+  background-color: #E8F6FF;
   padding: 20rpx;
 }
 
@@ -1410,13 +1410,13 @@ export default {
 .urgent-title {
   font-size: 28rpx;
   font-weight: 600;
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .urgent-tag {
   display: inline-block;
   padding: 4rpx 12rpx;
-  color: #20CB6B;
+  color: #1D2087;
   font-size: 24rpx;
   font-weight: 500;
   border-radius: 12rpx;
@@ -1439,7 +1439,7 @@ export default {
 .urgent-price {
   font-size: 32rpx;
   font-weight: 700;
-  color: #20CB6B;
+  color: #1D2087;
   line-height: 1;
 }
 
@@ -1458,15 +1458,15 @@ export default {
 .urgent-fee-tag {
   display: inline-block;
   padding: 4rpx 12rpx;
-  background-color: #E8F8F0;
-  color: #20CB6B;
+  background-color: #E8F6FF;
+  color: #1D2087;
   font-size: 20rpx;
   border-radius: 8rpx;
   font-weight: 500;
 }
 
 .urgent-fee-value {
-  color: #20CB6B;
+  color: #1D2087;
   font-size: 30rpx;
 }
 
@@ -1574,7 +1574,7 @@ export default {
 
 .option-status-active {
   font-size: 26rpx;
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .option-status-value {
@@ -1590,7 +1590,7 @@ export default {
 }
 
 .status-green {
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .status-cancelled {
@@ -1642,15 +1642,15 @@ export default {
   align-items: center;
   gap: 10rpx;
   padding: 20rpx 36rpx;
-  background: #20CB6B;
+  background: #91CFFF;
   border-radius: 8rpx;
   font-size: 28rpx;
-  color: #fff;
+  color: #1D2087;
   font-weight: 500;
 }
 
 .contact-btn:active {
-  background-color: #1AB85A;
+  background-color: #6BB8F0;
 }
 
 .contact-buttons-section {
@@ -1670,19 +1670,19 @@ export default {
   justify-content: center;
   gap: 8rpx;
   padding: 16rpx 32rpx;
-  background: #20CB6B;
-  border: 1rpx solid #20CB6B;
+  background: #91CFFF;
+  border: 1rpx solid #91CFFF;
   border-radius: 12rpx;
   font-size: 26rpx;
-  color: #fff;
+  color: #1D2087;
   font-weight: 400;
   flex: 1;
   transition: all 0.2s;
 }
 
 .contact-btn-small:active {
-  background-color: #1AB85A;
-  border-color: #1AB85A;
+  background-color: #6BB8F0;
+  border-color: #6BB8F0;
 }
 
 .top-gradient-section {
@@ -1724,7 +1724,7 @@ export default {
 
 .gradient-background {
   width: 100%;
-  background: linear-gradient(180deg, #20CB6B 0%, #1AB85A 30%, rgba(26, 184, 90, 0.6) 70%, rgba(245, 245, 245, 1) 100%);
+  background: linear-gradient(180deg, #91CFFF 0%, #6BB8F0 30%, rgba(107, 184, 240, 0.6) 70%, rgba(245, 245, 245, 1) 100%);
   padding: 40rpx 30rpx 120rpx;
   box-sizing: border-box;
   position: relative;
@@ -1814,7 +1814,7 @@ export default {
   align-items: center;
   justify-content: center;
   font-size: 28rpx;
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 500;
 }
 
@@ -1927,8 +1927,8 @@ export default {
   min-width: 500rpx;
   height: 80rpx;
   line-height: 80rpx;
-  background-color: #20CB6B;
-  color: #fff;
+  background-color: #91CFFF;
+  color: #1D2087;
   font-size: 30rpx;
   font-weight: 600;
   padding: 0 56rpx;
@@ -1944,7 +1944,7 @@ export default {
 }
 
 .action-main-btn:active {
-  background-color: #1AB85A;
+  background-color: #6BB8F0;
 }
 
 
@@ -1990,7 +1990,7 @@ export default {
 
 .service-text {
   font-size: 28rpx;
-  color: #20CB6B;
+  color: #1D2087;
 }
 </style>
 

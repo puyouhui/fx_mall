@@ -137,8 +137,8 @@
       "path": "pages/order/confirm",
       "style": {
         "navigationBarTitleText": "提交订单",
-        "navigationBarBackgroundColor": "#20CB6B",
-        "navigationBarTextStyle": "white"
+        "navigationBarBackgroundColor": "#91CFFF",
+        "navigationBarTextStyle": "black"
       }
     },
     {
@@ -195,7 +195,7 @@
   },
   "tabBar": {
     "color": "#a19f9d",
-    "selectedColor": "#20CB6B",
+    "selectedColor": "#666666",
     "backgroundColor": "#ffffff",
     "list": [{
         "pagePath": "pages/index/index",

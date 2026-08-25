@@ -2,11 +2,11 @@
   <view class="checkout-page">
     <!-- 自定义导航栏 - 绿色背景统一风格 -->
     <view class="custom-navbar">
-      <view class="navbar-fixed" style="background-color: #20CB6B;">
+      <view class="navbar-fixed" style="background-color: #91CFFF;">
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+            <uni-icons type="left" size="20" color="#1D2087"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">订单结算</text>
@@ -300,7 +300,7 @@ export default {
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 500;
-  color: #fff;
+  color: #1D2087;
 }
 
 .navbar-right {
@@ -355,7 +355,7 @@ export default {
   background: #F8FAF9;
   border-radius: 12rpx;
   margin-bottom: 20rpx;
-  border-left: 4rpx solid #20CB6B;
+  border-left: 4rpx solid #91CFFF;
 }
 
 .goods-name {
@@ -394,7 +394,7 @@ export default {
 .amount-value {
   font-size: 38rpx;
   font-weight: 600;
-  color: #20CB6B;
+  color: #1D2087;
   letter-spacing: 1rpx;
 }
 
@@ -415,8 +415,8 @@ export default {
 }
 
 .payment-item-active {
-  background: #E8F8F0;
-  border-color: #20CB6B;
+  background: #E8F6FF;
+  border-color: #91CFFF;
 }
 
 .payment-left {
@@ -474,8 +474,8 @@ export default {
 }
 
 .radio-checked {
-  border-color: #20CB6B;
-  background: #20CB6B;
+  border-color: #91CFFF;
+  background: #91CFFF;
 }
 
 .radio-inner {
@@ -521,7 +521,7 @@ export default {
 .footer-amount {
   font-size: 40rpx;
   font-weight: 600;
-  color: #20CB6B;
+  color: #1D2087;
   margin-left: 8rpx;
   flex-shrink: 0;
 }
@@ -531,14 +531,14 @@ export default {
   min-width: 240rpx;
   height: 48px;
   line-height: 48px;
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
-  color: #fff;
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
+  color: #1D2087;
   font-size: 32rpx;
   font-weight: 600;
   padding: 0 60rpx;
   border-radius: 50rpx;
   border: none;
-  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 4rpx 16rpx rgba(145, 207, 255, 0.3);
   box-sizing: border-box;
   flex-shrink: 0;
 }

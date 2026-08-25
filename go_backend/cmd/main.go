@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"strings"
 	"time"
 
 	"go_backend/internal/api"
@@ -43,6 +46,9 @@ func main() {
 
 	// 静态文件服务
 	router.Static("/static", "./static")
+	// 本地把 MinIO 挂到后端同端口，避免小程序访问 9000 被拦截
+	router.GET("/minio/*filepath", proxyMinIO)
+	router.HEAD("/minio/*filepath", proxyMinIO)
 
 	// API路由
 	apiGroup := router.Group("/api/mini")
@@ -519,4 +525,30 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("服务器启动失败: %v", err)
 	}
+}
+
+func proxyMinIO(c *gin.Context) {
+	endpoint := strings.TrimSpace(config.Config.MinIO.Endpoint)
+	if endpoint == "" {
+		c.Status(http.StatusBadGateway)
+		return
+	}
+	target, err := url.Parse("http://" + endpoint)
+	if err != nil {
+		c.Status(http.StatusBadGateway)
+		return
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		req.URL.Scheme = target.Scheme
+		req.URL.Host = target.Host
+		req.URL.Path = strings.TrimPrefix(req.URL.Path, "/minio")
+		if req.URL.Path == "" {
+			req.URL.Path = "/"
+		}
+		req.Host = target.Host
+	}
+	proxy.ServeHTTP(c.Writer, c.Request)
 }

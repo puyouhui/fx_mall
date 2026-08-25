@@ -2,13 +2,13 @@
   <view class="policy-page">
     <!-- 自定义导航栏 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #20CB6B;">
+      <view class="navbar-fixed" style="background-color: #91CFFF;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+            <uni-icons type="left" size="20" color="#1D2087"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">{{ pageTitle }}</text>
@@ -28,8 +28,8 @@
         <view v-if="policyType === 'privacy'">
           <view class="section-title">一、总则</view>
           <text class="paragraph">
-            橙心选（云南）供应链管理有限公司（以下简称“本公司”或“我们”）非常重视您的个人信息和隐私保护。
-            您在使用橙心选小程序服务（包括但不限于商品浏览、下单、支付、售后等功能）时，我们将按照本《隐私政策》收集、
+            竹江纸业（云南）有限公司（以下简称“本公司”或“我们”）非常重视您的个人信息和隐私保护。
+            您在使用竹江纸业小程序服务（包括但不限于商品浏览、下单、支付、售后等功能）时，我们将按照本《隐私政策》收集、
             使用和保护您的相关信息。本政策旨在向您清晰说明我们如何处理您的信息，以及您享有的权利。
           </text>
 
@@ -107,8 +107,8 @@
         <view v-else>
           <view class="section-title">一、协议声明</view>
           <text class="paragraph">
-            本《用户协议》（以下简称“本协议”）是您（以下简称“用户”或“您”）与橙心选（云南）供应链管理有限公司
-            就使用橙心选小程序相关服务所达成的法律协议。您访问或使用本小程序，即视为您已阅读、理解并同意受本协议约束。
+            本《用户协议》（以下简称“本协议”）是您（以下简称“用户”或“您”）与竹江纸业（云南）有限公司
+            就使用竹江纸业小程序相关服务所达成的法律协议。您访问或使用本小程序，即视为您已阅读、理解并同意受本协议约束。
           </text>
 
           <view class="section-title">二、账户注册与使用</view>
@@ -249,7 +249,7 @@ export default {
 }
 
 .navbar-fixed {
-  background-color: #20CB6B;
+  background-color: #91CFFF;
 }
 
 .navbar-content {
@@ -278,7 +278,7 @@ export default {
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 600;
-  color: #fff;
+  color: #1D2087;
 }
 
 .content-scroll {

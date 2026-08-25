@@ -41,7 +41,7 @@
 		<view class="expand-categories-btn" @click="toggleCategoriesExpand">
 			<text>展</text>
 			<text style="margin-top: 5rpx;">开</text>
-			<uni-icons :type="isCategoriesExpanded ? 'down' : 'down'" size="14" color="#20CB6B" class="expand-icon"
+			<uni-icons :type="isCategoriesExpanded ? 'down' : 'down'" size="14" color="#1D2087" class="expand-icon"
 				style="margin-left: -2rpx;"></uni-icons>
 		</view>
 	</view>
@@ -1110,7 +1110,7 @@ export default {
 
 <style>
 page {
-	background-color: #EEF7F4;
+	background-color: #E8F6FF;
 }
 
 /* 商品选择弹窗样式 */
@@ -1420,7 +1420,7 @@ page {
 }
 
 .navbar-fixed {
-	background-color: #EEF7F4;
+	background-color: #E8F6FF;
 }
 
 .navbar-content {
@@ -1439,7 +1439,7 @@ page {
 	background-color: #fff;
 	border-radius: 16px;
 	padding: 0 12px;
-	border: 1rpx solid #20CB6B;
+	border: 1rpx solid #91CFFF;
 }
 
 .navbar-search_icon {
@@ -1463,7 +1463,7 @@ page {
 	right: 0;
 	height: 90px;
 	/* 固定高度 */
-	background-color: #EEF7F4;
+	background-color: #E8F6FF;
 	z-index: 90;
 	overflow: hidden;
 }
@@ -1505,13 +1505,13 @@ page {
 }
 
 .primary-category-item.active {
-	color: #20CB6B;
+	color: #1D2087;
 }
 
 .primary-category-item.active .primary-category-name {
-	color: #fff;
+	color: #1D2087;
 	font-weight: bold;
-	background-color: #20CB6B;
+	background-color: #91CFFF;
 	padding: 0 12rpx;
 	border-radius: 16rpx;
 }
@@ -1520,7 +1520,7 @@ page {
 .expand-categories-btn {
 	width: 40px;
 	height: 100%;
-	background-color: #EEF7F4;
+	background-color: #E8F6FF;
 	position: absolute;
 	right: 0;
 	top: 50%;
@@ -1530,7 +1530,7 @@ page {
 	align-items: center;
 	justify-content: center;
 	font-size: 26rpx;
-	color: #20CB6B;
+	color: #1D2087;
 	z-index: 10;
 }
 
@@ -1552,8 +1552,8 @@ page {
 
 .all-categories {
 	width: 100%;
-	background-color: #EEF7F4;
-	background-image: linear-gradient(#EEF7F4, #f5f7f6);
+	background-color: #E8F6FF;
+	background-image: linear-gradient(#E8F6FF, #f5f7f6);
 	border-radius: 0 0 30rpx 30rpx;
 	overflow: hidden;
 }
@@ -1616,9 +1616,9 @@ page {
 }
 
 .category-grid-item.active .category-grid-name {
-	color: #fff;
+	color: #1D2087;
 	font-weight: bold;
-	background-color: #20CB6B;
+	background-color: #91CFFF;
 	padding: 0 12rpx;
 	border-radius: 16rpx;
 }
@@ -1663,9 +1663,9 @@ page {
 }
 
 .secondary-category-item.active {
-	color: #20CB6B;
+	color: #1D2087;
 	font-weight: bold;
-	background-color: #EEF7F4;
+	background-color: #E8F6FF;
 }
 
 .secondary-category-item.active::after {
@@ -1677,7 +1677,7 @@ page {
 	width: 8rpx;
 	height: 40rpx;
 	border-radius: 20rpx;
-	background-color: #20CB6B;
+	background-color: #91CFFF;
 }
 
 // 商品列表容器 - 右侧占据剩余空间，flex 列布局，禁止 overflow 滚动（改用 scroll-view）
@@ -1719,7 +1719,7 @@ page {
 // 	bottom: -1rpx;
 // 	width: 60rpx;
 // 	height: 4rpx;
-// 	background-color: #20CB6B;
+// 	background-color: #91CFFF;
 // }
 
 /* 商品列表样式 */
@@ -1765,8 +1765,8 @@ page {
 	gap: 10rpx;
 	padding: 10rpx 18rpx;
 	border-radius: 999rpx;
-	background: rgba(32, 203, 107, 0.08);
-	border: 1rpx solid rgba(32, 203, 107, 0.22);
+	background: rgba(145, 207, 255, 0.08);
+	border: 1rpx solid rgba(145, 207, 255, 0.22);
 	backdrop-filter: blur(6px);
 	transition: transform 120ms ease, opacity 120ms ease, background 120ms ease, border-color 120ms ease;
 	transform: translateY(0) scale(1);
@@ -1778,8 +1778,8 @@ page {
 }
 
 .hint-pill--active {
-	background: #20CB6B;
-	border-color: #20CB6B;
+	background: #91CFFF;
+	border-color: #91CFFF;
 }
 
 .hint-pill--disabled {
@@ -1800,7 +1800,7 @@ page {
 }
 
 .hint-pill--active .hint-text {
-	color: #fff;
+	color: #1D2087;
 }
 
 .hint-pill--disabled .hint-text {
@@ -1898,7 +1898,7 @@ page {
 .add-cart-btn {
 	width: 50rpx;
 	height: 50rpx;
-	background-color: #20CB6B;
+	background-color: #91CFFF;
 	border-radius: 50%;
 	display: flex;
 	align-items: center;
@@ -2068,8 +2068,8 @@ page {
 	}
 
 	.modal-spec-item.active {
-		border-color: #20CB6B;
-		color: #20CB6B;
+		border-color: #91CFFF;
+		color: #1D2087;
 		background-color: #f0fff4;
 	}
 
@@ -2116,7 +2116,7 @@ page {
 
 .modal-increase-btn {
 	margin-left: 30rpx;
-	background-color: #20CB6B !important;
+	background-color: #91CFFF !important;
 }
 
 .modal-decrease-btn.disabled {
@@ -2135,8 +2135,8 @@ page {
 }
 
 .modal-add-to-cart-btn {
-	background-color: #20CB6B !important;
-	color: #fff;
+	background-color: #91CFFF !important;
+	color: #1D2087;
 	font-size: 32rpx;
 	font-weight: bold;
 	text-align: center;

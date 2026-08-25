@@ -2,13 +2,13 @@
   <view class="invoice-page">
     <!-- 自定义导航栏 -->
     <view class="custom-header">
-      <view class="navbar-fixed" style="background-color: #20CB6B;">
+      <view class="navbar-fixed" style="background-color: #91CFFF;">
         <!-- 状态栏撑起高度 -->
         <view :style="{ height: statusBarHeight + 'px' }"></view>
         <!-- 导航栏内容区域 -->
         <view class="navbar-content" :style="{ height: navBarHeight + 'px' }">
           <view class="navbar-left" @click="goBack">
-            <uni-icons type="left" size="20" color="#fff"></uni-icons>
+            <uni-icons type="left" size="20" color="#1D2087"></uni-icons>
           </view>
           <view class="navbar-title">
             <text class="navbar-title-text">发票抬头</text>
@@ -326,7 +326,7 @@ export default {
 .navbar-title-text {
   font-size: 32rpx;
   font-weight: 600;
-  color: #fff;
+  color: #1D2087;
 }
 
 .navbar-right {
@@ -374,8 +374,8 @@ export default {
 }
 
 .type-item.active {
-  border-color: #20CB6B;
-  background-color: #E8F8F0;
+  border-color: #91CFFF;
+  background-color: #E8F6FF;
 }
 
 .type-text {
@@ -385,7 +385,7 @@ export default {
 }
 
 .type-item.active .type-text {
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 600;
 }
 
@@ -464,12 +464,12 @@ export default {
 .save-btn {
   width: 100%;
   height: 88rpx;
-  background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+  background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
   border-radius: 44rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 16rpx rgba(32, 203, 107, 0.3);
+  box-shadow: 0 4rpx 16rpx rgba(145, 207, 255, 0.3);
   transition: all 0.3s;
 }
 
@@ -484,7 +484,7 @@ export default {
 
 .save-btn-text {
   font-size: 32rpx;
-  color: #fff;
+  color: #1D2087;
   font-weight: 600;
 }
 </style>

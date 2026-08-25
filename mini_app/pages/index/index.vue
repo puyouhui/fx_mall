@@ -2,7 +2,7 @@
 	<!-- 自定义头部 - 按照参考文章实现 -->
 	<view class="custom-header">
 		<!-- 固定导航栏 -->
-		<view class="navbar-fixed" :style="{ backgroundColor: isHeaderBgVisible ? '#20CB6B' : 'transparent' }">
+		<view class="navbar-fixed" :style="{ backgroundColor: isHeaderBgVisible ? '#91CFFF' : 'transparent' }">
 			<!-- 状态栏撑起高度 -->
 			<view :style="{ height: statusBarHeight + 'px' }"></view>
 			<!-- 导航栏内容区域 -->
@@ -41,15 +41,15 @@
 			<view class="feature-tags">
 				<view class="tag-item">
 					<image src="/static/icon/coin.png" class="tag-icon"></image>
-					<text class="tag-text">价格透明</text>
+					<text class="tag-text">源头厂家</text>
 				</view>
 				<view class="tag-item">
 					<image src="/static/icon/coin1.png" class="tag-icon"></image>
-					<text class="tag-text">一件起送</text>
+					<text class="tag-text">批发零售</text>
 				</view>
 				<view class="tag-item">
 					<image src="/static/icon/tag-2.png" class="tag-icon"></image>
-					<text class="tag-text">品类齐全</text>
+					<text class="tag-text">品质保障</text>
 				</view>
 			</view>
 
@@ -72,7 +72,7 @@
 				<view class="section-left">
 					<view class="hot-tag">HOT</view>
 					<view class="section-title-text">
-						<text class="section-name">热销产品</text>
+						<text class="section-name">人气产品</text>
 						<!-- <text class="section-subtitle">人气精选 · 限量推荐</text> -->
 					</view>
 				</view>
@@ -151,7 +151,7 @@
 					<text class="user-code-label">您的用户编号</text>
 					<view class="user-code-display" @click="copyUserCode">
 						<text class="user-code-text">{{ currentUserCode || '暂无' }}</text>
-						<uni-icons type="copy" size="20" color="#20CB6B" class="copy-icon"></uni-icons>
+						<uni-icons type="copy" size="20" color="#1D2087" class="copy-icon"></uni-icons>
 					</view>
 				</view>
 				<view class="tip-section">
@@ -1025,7 +1025,7 @@ export default {
 .feature-tags {
 	display: flex;
 	padding: 10rpx 20rpx;
-	background-color: #F3FBF7;
+	background-color: #e8f5ff;
 	justify-content: space-around;
 	border-radius: 20rpx 20rpx 0 0;
 }
@@ -1100,16 +1100,16 @@ export default {
 
 .special-section-title {
 	padding: 10rpx 20rpx;
-	/* background: linear-gradient(90deg, rgba(32, 203, 107, 0.08), rgba(32, 203, 107, 0.02)); */
+	/* background: linear-gradient(90deg, rgba(145, 207, 255, 0.08), rgba(145, 207, 255, 0.02)); */
 	border-radius: 16rpx;
-	/* border: 1rpx solid rgba(32, 203, 107, 0.15); */
+	/* border: 1rpx solid rgba(145, 207, 255, 0.15); */
 }
 
 .hot-section-title {
 	padding: 10rpx 20rpx;
-	/* background: linear-gradient(90deg, rgba(32, 203, 107, 0.12), rgba(32, 203, 107, 0.02)); */
+	/* background: linear-gradient(90deg, rgba(145, 207, 255, 0.12), rgba(145, 207, 255, 0.02)); */
 	border-radius: 16rpx;
-	/* box-shadow: 0 10rpx 20rpx rgba(32, 203, 107, 0.12); */
+	/* box-shadow: 0 10rpx 20rpx rgba(145, 207, 255, 0.12); */
 }
 
 .section-left {
@@ -1119,7 +1119,7 @@ export default {
 }
 
 .hot-tag {
-	background: linear-gradient(135deg, #20CB6B, #10b05a);
+	background: linear-gradient(135deg, #91CFFF, #6BB8F0);
 	color: #fff;
 	font-size: 22rpx;
 	padding: 4rpx 14rpx;
@@ -1127,7 +1127,7 @@ export default {
 	font-weight: 600;
 	letter-spacing: 1rpx;
 	margin-right: 6rpx;
-	box-shadow: 0 6rpx 16rpx rgba(32, 203, 107, 0.2);
+	box-shadow: 0 6rpx 16rpx rgba(145, 207, 255, 0.2);
 }
 
 .section-name {
@@ -1143,14 +1143,14 @@ export default {
 }
 
 .special-tag {
-	background: linear-gradient(135deg, #20CB6B, #12a458);
-	color: #fff;
+	background: linear-gradient(135deg, #91CFFF, #6BB8F0);
+	color: #1D2087;
 	font-size: 20rpx;
 	padding: 4rpx 14rpx;
 	border-radius: 40rpx;
 	font-weight: 600;
 	letter-spacing: 1rpx;
-	box-shadow: 0 6rpx 16rpx rgba(32, 203, 107, 0.2);
+	box-shadow: 0 6rpx 16rpx rgba(145, 207, 255, 0.2);
 }
 
 .special-subtitle {
@@ -1163,7 +1163,7 @@ export default {
 }
 
 .more-link {
-	color: #20CB6B;
+	color: #666666;
 	font-weight: 500;
 	display: flex;
 	align-items: center;
@@ -1171,7 +1171,7 @@ export default {
 }
 
 .special-more {
-	color: #20CB6B;
+	color: #666666;
 	font-weight: 600;
 }
 
@@ -1433,19 +1433,19 @@ export default {
 .user-code-success-header {
 	padding: 60rpx 30rpx 0 30rpx;
 	text-align: center;
-	background: linear-gradient(180deg, #E8F8F0 0%, #fff 100%);
+	background: linear-gradient(180deg, #E8F6FF 0%, #fff 100%);
 }
 
 .user-code-success-icon-wrapper {
 	width: 140rpx;
 	height: 140rpx;
 	margin: 0 auto 30rpx;
-	background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+	background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
 	border-radius: 50%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	box-shadow: 0 6rpx 20rpx rgba(32, 203, 107, 0.4);
+	box-shadow: 0 6rpx 20rpx rgba(145, 207, 255, 0.4);
 	animation: scaleIn 0.4s ease;
 }
 
@@ -1463,7 +1463,7 @@ export default {
 .user-code-success-title {
 	font-size: 44rpx;
 	font-weight: 600;
-	color: #20CB6B;
+	color: #1D2087;
 	display: block;
 }
 
@@ -1489,22 +1489,22 @@ export default {
 	align-items: center;
 	justify-content: space-between;
 	padding: 20rpx 40rpx;
-	background: linear-gradient(135deg, #E8F8F0 0%, #F0FBF5 100%);
-	border: 2rpx solid #20CB6B;
+	background: linear-gradient(135deg, #E8F6FF 0%, #F0F9FF 100%);
+	border: 2rpx solid #91CFFF;
 	border-radius: 16rpx;
 	transition: all 0.3s;
 }
 
 .user-code-display:active {
-	background: linear-gradient(135deg, #D8F5E8 0%, #E8F8F0 100%);
+	background: linear-gradient(135deg, #D6EEFF 0%, #E8F6FF 100%);
 	transform: scale(0.98);
-	box-shadow: 0 4rpx 12rpx rgba(32, 203, 107, 0.2);
+	box-shadow: 0 4rpx 12rpx rgba(145, 207, 255, 0.2);
 }
 
 .user-code-text {
 	font-size: 64rpx;
 	font-weight: 700;
-	color: #20CB6B;
+	color: #1D2087;
 	letter-spacing: 4rpx;
 	font-family: 'Courier New', monospace;
 	flex: 1;
@@ -1561,8 +1561,8 @@ export default {
 }
 
 .user-code-btn.confirm-btn {
-	color: #fff;
-	background: linear-gradient(135deg, #20CB6B 0%, #18B85A 100%);
+	color: #1D2087;
+	background: linear-gradient(135deg, #91CFFF 0%, #6BB8F0 100%);
 	font-weight: 600;
 }
 
@@ -1573,8 +1573,8 @@ export default {
 .add-btn {
 	width: 32px;
 	height: 32px;
-	background-color: #20CB6B;
-	color: #fff;
+	background-color: #91CFFF;
+	color: #1D2087;
 	font-size: 36rpx;
 	border-radius: 30rpx;
 	font-weight: bold;

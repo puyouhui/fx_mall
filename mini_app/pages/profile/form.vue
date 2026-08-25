@@ -9,10 +9,10 @@
     <view class="form-card">
       <!-- 选择店铺定位按钮 -->
       <view class="location-selector" @click="selectLocation">
-        <uni-icons type="location" size="20" color="#20CB6B" class="location-icon"></uni-icons>
+        <uni-icons type="location" size="20" color="#1D2087" class="location-icon"></uni-icons>
         <view class="location-content">
           <text class="location-text">{{ formData.address || '点击选择店铺定位' }}</text>
-          <uni-icons type="right" size="18" color="#20CB6B" style="margin-top: 6rpx;"></uni-icons>
+          <uni-icons type="right" size="18" color="#1D2087" style="margin-top: 6rpx;"></uni-icons>
         </view>
       </view>
 
@@ -66,7 +66,7 @@
         <view class="form-item sales-code-item" v-if="showAddressFields && !userHasSalesCode">
           <view v-if="!showSalesCodeInput" class="sales-code-link" @click="showSalesCodeInput = true">
             <text class="link-text">绑定业务员</text>
-            <uni-icons type="right" size="14" color="#20CB6B" style="margin-top: 4rpx;"></uni-icons>
+            <uni-icons type="right" size="14" color="#1D2087" style="margin-top: 4rpx;"></uni-icons>
           </view>
           <view v-else class="sales-code-wrapper">
             <view class="sales-code-header">
@@ -88,7 +88,7 @@
         <view class="form-item default-address-item" v-if="showAddressFields">
           <view class="default-address-switch">
             <text class="form-label">设置为默认地址</text>
-            <switch :checked="formData.isDefault" @change="onDefaultAddressChange" color="#20CB6B" />
+            <switch :checked="formData.isDefault" @change="onDefaultAddressChange" color="#1D2087" />
           </view>
         </view>
       </view>
@@ -122,7 +122,7 @@
           <view v-for="(type, index) in storeTypeOptions" :key="index" class="popup-item"
             :class="{ active: formData.storeType === type }" @click="selectStoreType(type)">
             <text>{{ type }}</text>
-            <uni-icons v-if="formData.storeType === type" type="checkmarkempty" size="18" color="#20CB6B"></uni-icons>
+            <uni-icons v-if="formData.storeType === type" type="checkmarkempty" size="18" color="#1D2087"></uni-icons>
           </view>
         </scroll-view>
       </view>
@@ -809,7 +809,7 @@ export default {
   display: flex;
   align-items: center;
   padding: 20rpx 32rpx;
-  border: 2rpx solid #20CB6B;
+  border: 2rpx solid #91CFFF;
   border-radius: 16rpx;
   margin-bottom: 40rpx;
   background-color: #fff;
@@ -836,7 +836,7 @@ export default {
 .location-text {
   font-size: 32rpx;
   font-weight: 600;
-  color: #20CB6B;
+  color: #1D2087;
   flex: 1;
   text-align: center;
   overflow: hidden;
@@ -886,7 +886,7 @@ export default {
 
 .photo-label {
   font-size: 28rpx;
-  color: #20CB6B;
+  color: #1D2087;
   font-weight: 500;
 }
 
@@ -956,7 +956,7 @@ export default {
   justify-content: space-between;
   padding: 10rpx 0;
   margin: 20rpx auto 0 auto;
-  color: #20CB6B;
+  color: #1D2087;
 }
 
 .link-text {
@@ -1032,8 +1032,8 @@ export default {
 }
 
 .submit-btn {
-  background: linear-gradient(120deg, #20cb6b, #16b35d);
-  color: #fff;
+  background: linear-gradient(120deg, #91CFFF, #6BB8F0);
+  color: #1D2087;
 }
 
 .import-btn {
@@ -1124,7 +1124,7 @@ export default {
 }
 
 .popup-item.active {
-  color: #20CB6B;
+  color: #1D2087;
   background-color: #f0fdf6;
 }
 
@@ -1137,7 +1137,7 @@ export default {
   padding: 16rpx;
   background-color: #f0fdf6;
   border-radius: 8rpx;
-  border-left: 4rpx solid #20CB6B;
+  border-left: 4rpx solid #91CFFF;
 }
 
 .tip-text {
