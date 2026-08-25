@@ -5,7 +5,13 @@
       <div class="logo">橙心选供应链</div>
       <div class="login-form-wrapper">
         <h1 class="login-title">登录您的账号</h1>
-        <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" class="login-form">
+        <el-form
+          ref="loginFormRef"
+          :model="loginForm"
+          :rules="loginRules"
+          class="login-form"
+          @submit.prevent="handleLogin"
+        >
           <el-form-item prop="username">
             <el-input 
               v-model="loginForm.username" 
@@ -31,10 +37,10 @@
           <el-form-item>
             <el-button
               type="primary"
+              native-type="submit"
               :loading="loading"
               class="login-button"
               size="large"
-              @click="handleLogin"
             >
               使用账号登录
             </el-button>
@@ -88,6 +94,7 @@ const handleForgotPassword = () => {
 
 // 处理登录
 const handleLogin = async () => {
+  if (loading.value) return
   try {
     // 验证表单
     await loginFormRef.value.validate()
@@ -111,12 +118,8 @@ const handleLogin = async () => {
       ElMessage.error('登录失败，返回数据格式不正确')
     }
   } catch (error) {
-    loading.value = false
-    if (error.response && error.response.data && error.response.data.message) {
-      ElMessage.error(error.response.data.message || '登录失败，请稍后再试')
-    } else {
-      ElMessage.error('登录失败，请稍后再试')
-    }
+    const message = error?.response?.data?.message || error?.message || '登录失败，请稍后再试'
+    ElMessage.error(message)
   } finally {
     loading.value = false
   }

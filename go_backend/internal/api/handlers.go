@@ -1317,9 +1317,7 @@ func GetAllSpecialProductsForAdmin(c *gin.Context) {
 		}
 
 		// 解析JSON字符串到切片
-		if err := json.Unmarshal([]byte(imagesJSON), &product.Images); err != nil {
-			product.Images = []string{}
-		}
+		product.Images = model.ParseProductImages(imagesJSON)
 
 		if err := json.Unmarshal([]byte(specsJSON), &product.Specs); err != nil {
 			product.Specs = []model.Spec{}

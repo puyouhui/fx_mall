@@ -3,6 +3,9 @@ import axios from 'axios'
 // 根据环境自动选择 API 地址
 // 开发环境使用 localhost，生产环境使用相对路径（通过 Nginx 代理）
 const getBaseURL = () => {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL
+  }
   // 如果是开发环境（localhost 或 127.0.0.1）
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     return 'http://localhost:8082/api/mini/supplier' // 开发环境
@@ -96,4 +99,3 @@ request.interceptors.response.use(
 )
 
 export default request
-

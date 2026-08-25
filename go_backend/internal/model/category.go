@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go_backend/internal/database"
+	"go_backend/internal/utils"
 )
 
 // Category 分类模型
@@ -38,6 +39,7 @@ func GetAllCategories() ([]map[string]interface{}, error) {
 		if err := rows.Scan(&category.ID, &category.Name, &category.ParentID, &category.Sort, &category.Status, &category.CreatedAt, &category.UpdatedAt, &category.Icon); err != nil {
 			return nil, err
 		}
+		category.Icon = utils.RewriteMinIOPublicURL(category.Icon)
 		categories = append(categories, category)
 	}
 
@@ -146,6 +148,7 @@ func GetCategoryByID(id int) (*Category, error) {
 		}
 		return nil, err
 	}
+	category.Icon = utils.RewriteMinIOPublicURL(category.Icon)
 	return &category, nil
 }
 

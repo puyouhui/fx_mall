@@ -3,10 +3,12 @@ import axios from 'axios'
 // 根据环境自动选择 API 地址
 // 开发环境使用 localhost，生产环境使用相对路径（通过 Nginx 代理）
 const getBaseURL = () => {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL
+  }
   // 如果是开发环境（localhost 或 127.0.0.1）
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    // return 'http://localhost:8082/api/mini'
-  return 'https://api.sscchh.com/api_mall/mini' // 生产环境
+    return 'http://localhost:8082/api/mini'
   }
   // 生产环境使用相对路径，通过 Nginx 代理到后端
   // 注意：后端 Nginx 配置为 /api_mall/，所以这里使用 /api_mall/mini
@@ -55,16 +57,21 @@ request.interceptors.response.use(
       const errorData = error.response.data || {}
 
       switch (error.response.status) {
-        case 401:
-          // 未授权，跳转到登录页
-          localStorage.removeItem('token')
+        case 401: {
+          const reqUrl = error.config?.url || ''
           const currentPath = window.location.pathname
-          let loginPath = '/login'
-          if (currentPath.startsWith('/admin')) {
-            loginPath = '/admin/login'
+          const isLoginRequest = reqUrl.includes('/admin/login') || reqUrl.includes('/supplier/login')
+          const isOnLoginPage = currentPath === '/login' || currentPath.endsWith('/login')
+          if (!isLoginRequest && !isOnLoginPage) {
+            localStorage.removeItem('token')
+            let loginPath = '/login'
+            if (currentPath.startsWith('/admin')) {
+              loginPath = '/admin/login'
+            }
+            window.location.href = loginPath
           }
-          window.location.href = loginPath
           break
+        }
         case 403:
           console.log('您没有权限执行此操作')
           break
@@ -79,8 +86,10 @@ request.interceptors.response.use(
       // 返回错误数据，保持与成功响应相同的数据结构
       return Promise.reject({
         response: {
-          data: errorData
+          data: errorData,
+          status: error.response.status
         },
+        config: error.config,
         message: errorData.message || '请求失败'
       })
     }

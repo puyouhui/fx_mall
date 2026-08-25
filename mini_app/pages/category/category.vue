@@ -93,7 +93,7 @@
 					scroll-with-animation>
 					<view class="secondary-category-item" 
 						v-for="category in secondaryCategories" 
-						:key="category.id"
+						:key="category.isAll ? ('all-' + category.id) : category.id"
 						:id="'secondary-' + category.id"
 						:class="{ active: selectedSecondaryCategoryId === category.id || selectedSecondaryCategoryId == category.id }"
 						@click="selectSecondaryCategory(category)">
@@ -444,25 +444,9 @@ export default {
 				this.buildCategoriesGrid();
 			} catch (error) {
 				console.error('加载分类失败:', error);
-				// 使用模拟数据
-				this.useMockCategories();
+				this.primaryCategories = [];
+				uni.showToast({ title: '分类加载失败', icon: 'none' });
 			}
-		},
-
-		// 使用模拟分类数据
-		useMockCategories() {
-			this.primaryCategories = [
-				{ id: 1, name: '热门推荐', parentId: 0, icon: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' },
-				{ id: 2, name: '新鲜水果', parentId: 0, icon: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' },
-				{ id: 3, name: '休闲零食', parentId: 0, icon: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' },
-				{ id: 4, name: '生鲜蔬菜', parentId: 0, icon: 'https://mall.sscchh.com/minio/fengxing/products/product_1769156291.jpg' }
-			];
-
-			if (this.primaryCategories.length > 0 && this.selectedPrimaryCategoryId === 0) {
-				this.selectPrimaryCategory(this.primaryCategories[0].id);
-			}
-
-			this.buildCategoriesGrid();
 		},
 
 		// 构建分类网格 - 现在直接使用primaryCategories数组
@@ -471,54 +455,45 @@ export default {
 			this.allCategoriesGrid = [];
 		},
 
-		// 加载二级分类
+		// 加载二级分类：固定首项「全部」(用一级分类 ID 聚合商品)，其后接真实二级分类
 		async loadSecondaryCategories(primaryCategoryId) {
+			let realChildren = [];
 			try {
 				const res = await getCategories();
-				const allCategories = res.data;
-
-				// 查找当前一级分类
+				const allCategories = res.data || [];
 				const primaryCategory = allCategories.find(cat => cat.id === primaryCategoryId);
-
-				// 如果找到了一级分类且有子分类
-				if (primaryCategory && primaryCategory.children && primaryCategory.children.length > 0) {
-					// 过滤出启用的子分类
-					this.secondaryCategories = primaryCategory.children
+				if (primaryCategory && Array.isArray(primaryCategory.children)) {
+					realChildren = primaryCategory.children
 						.filter(child => child.status === 1 || child.status === undefined)
 						.map(child => ({
 							...child,
-							parentId: child.parent_id || primaryCategoryId // 统一键名
+							parentId: child.parent_id || primaryCategoryId,
+							isAll: false
 						}));
-				} else {
-					// 否则使用模拟数据
-					this.secondaryCategories = this.generateMockSecondaryCategories(primaryCategoryId);
 				}
 			} catch (error) {
 				console.error('加载二级分类失败:', error);
-				// 使用模拟数据
-				this.secondaryCategories = this.generateMockSecondaryCategories(primaryCategoryId);
+				uni.showToast({ title: '二级分类加载失败', icon: 'none' });
 			}
 
-			// 确保至少有一个二级分类
-			if (this.secondaryCategories.length === 0) {
-				// 如果没有二级分类，创建一个默认的分类项
-				this.secondaryCategories = [{
-					id: primaryCategoryId * 10 + 1,
+			// 「全部」固定第一，不可排序；真实二级按接口 sort 往下排
+			this.secondaryCategories = [
+				{
+					id: primaryCategoryId,
 					name: '全部',
-					parentId: primaryCategoryId
-				}];
-			}
+					parentId: primaryCategoryId,
+					isAll: true
+				},
+				...realChildren
+			];
 
-			// 自动选择第一个二级分类
-			this.selectedSecondaryCategoryId = this.secondaryCategories[0].id;
-			// 更新当前分类名称为二级分类名称
-			this.currentCategoryName = this.secondaryCategories[0].name;
-			// 更新左侧二级分类列表的滚动位置
+			// 默认选中「全部」
+			this.selectedSecondaryCategoryId = primaryCategoryId;
+			this.currentCategoryName = '全部';
 			this.$nextTick(() => {
 				this.secondaryScrollIntoView = 'secondary-' + this.selectedSecondaryCategoryId;
 			});
-			// 使用二级分类ID加载对应商品
-			this.loadProductsByCategory(this.selectedSecondaryCategoryId);
+			this.loadProductsByCategory(primaryCategoryId);
 		},
 
 		// 显示商品选择弹窗
@@ -622,50 +597,6 @@ export default {
 		formatRangePriceValue(value) {
 			const num = Number(value) || 0;
 			return num.toFixed(2);
-		},
-
-		// 生成模拟二级分类数据
-		generateMockSecondaryCategories(primaryCategoryId) {
-			const primaryCategory = this.primaryCategories.find(cat => cat.id === primaryCategoryId);
-			const categoryName = primaryCategory ? primaryCategory.name : '热门';
-
-			// 根据一级分类ID生成不同的二级分类名称
-			if (primaryCategoryId === 4 || categoryName.includes('蔬菜')) {
-				// 叶菜类应该显示具体的蔬菜品种
-				if (this.selectedPrimaryCategoryId === 4 && this.selectedSecondaryCategoryId === 0) {
-					// 默认显示叶菜类的具体品种
-					return [
-						{ id: primaryCategoryId * 100 + 1, name: '生菜', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 100 + 2, name: '菜心', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 100 + 3, name: '芹菜', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 100 + 4, name: '油麦菜', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 100 + 5, name: '大白菜', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 100 + 6, name: '娃娃菜', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 100 + 7, name: '芥兰', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 100 + 8, name: '枸杞叶', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 100 + 9, name: '西洋菜', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 100 + 10, name: '香菜', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 100 + 11, name: '紫苏', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 100 + 12, name: '韭菜', parentId: primaryCategoryId }
-					];
-				} else {
-					return [
-						{ id: primaryCategoryId * 10 + 1, name: '叶菜类', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 10 + 2, name: '根茎类', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 10 + 3, name: '豆芽豆类', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 10 + 4, name: '茄瓜类', parentId: primaryCategoryId },
-						{ id: primaryCategoryId * 10 + 5, name: '葱姜蒜', parentId: primaryCategoryId }
-					];
-				}
-			} else {
-				return [
-					{ id: primaryCategoryId * 10 + 1, name: categoryName + '精选', parentId: primaryCategoryId },
-					{ id: primaryCategoryId * 10 + 2, name: '新品上架', parentId: primaryCategoryId },
-					{ id: primaryCategoryId * 10 + 3, name: '特价优惠', parentId: primaryCategoryId },
-					{ id: primaryCategoryId * 10 + 4, name: '销量排行', parentId: primaryCategoryId },
-					{ id: primaryCategoryId * 10 + 5, name: '新品尝鲜', parentId: primaryCategoryId }
-				];
-			}
 		},
 
 		// 加载更多商品（分页追加）

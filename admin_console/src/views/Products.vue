@@ -66,7 +66,8 @@
           <el-table-column prop="images" label="图片" align="center">
             <template #default="scope">
               <el-image v-if="scope.row.images && scope.row.images.length > 0" :src="getImageUrl(scope.row.images[0])"
-                :preview-src-list="getImageUrlList(scope.row.images)" style="width: 40px; height: 40px;" fit="cover" />
+                :preview-src-list="getImageUrlList(scope.row.images)" :preview-teleported="true"
+                style="width: 40px; height: 40px;" fit="cover" />
               <span v-else>暂无</span>
             </template>
           </el-table-column>
